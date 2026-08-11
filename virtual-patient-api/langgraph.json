@@ -1,0 +1,17 @@
+{
+    "dependencies": [
+        "langchain_azure_openai",
+        "./app"
+    ],
+    "graphs": {
+        "my_agent": "./app/agents/virtual_patient_workflow.py:create_virtual_patient_workflow"
+    },
+    "env": "./.env",
+    "store": {
+        "index": {
+          "embed": "azure_openai:text-embedding-ada-002",
+          "dims": 1536,
+          "fields": ["$"]
+        }
+      }
+}

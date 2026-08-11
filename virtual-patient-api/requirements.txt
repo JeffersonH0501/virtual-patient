@@ -1,0 +1,53 @@
+# Core FastAPI and web framework dependencies
+fastapi==0.109.2
+uvicorn==0.27.1
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+python-multipart==0.0.9
+pydantic==2.11.7
+python-dotenv==1.0.1
+requests==2.31.0
+sqlalchemy==2.0.27
+alembic==1.13.1
+psycopg2-binary==2.9.9
+click==8.1.7
+bcrypt==3.2.2
+email_validator==2.2.0
+
+# LangGraph and LangChain dependencies
+langgraph==0.6.0
+langchain==0.3.27
+langchain-openai==0.3.28
+langchain-community==0.3.27
+langchain-core==0.3.72
+langchain-text-splitters==0.3.9
+langchain-anthropic==0.3.18
+langmem==0.0.29
+langgraph-checkpoint-postgres==2.0.23
+langgraph-checkpoint==2.1.1
+langgraph-prebuilt==0.6.0
+langgraph-sdk==0.2.0
+langsmith==0.4.8
+
+# PostgreSQL vector search support
+pgvector==0.4.1
+psycopg==3.2.9
+psycopg-pool==3.2.6
+
+# OpenAI and AI models
+openai==1.109.1
+anthropic==0.60.0
+
+# Visualization and display
+ipython==9.4.0
+
+# LiveKit dependencies for voice functionality
+livekit==1.0.16
+livekit-agents==1.2.14
+livekit-plugins-openai==1.2.14
+livekit-api==1.0.7
+livekit-protocol==1.0.8
+livekit-blingfire==1.0.0
+
+# Google Cloud Storage for audio file storage
+google-cloud-storage==2.18.2
