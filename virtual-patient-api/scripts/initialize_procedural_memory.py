@@ -4,65 +4,29 @@ Script to initialize PostgresStore and set up procedural memory patterns.
 This should be run once to create the shared procedural memory store that can be used across all interviews.
 """
 
-import os
 import sys
-import traceback
+from pathlib import Path
 
-from dotenv import load_dotenv
-from psycopg import Connection
 from langgraph.store.postgres import PostgresStore
-from langgraph.checkpoint.postgres import PostgresSaver
-from langchain.embeddings import init_embeddings
 from datetime import datetime
 
-# Load environment variables
-load_dotenv()
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
-# Get database connection parameters
-POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
-POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
-POSTGRES_PORT = os.getenv("POSTGRES_PORT", "5432")
-POSTGRES_DB = os.getenv("POSTGRES_DB", "virtual_patient")
-POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+from app.core.azure_openai import EMBEDDING_DIMENSIONS, create_embeddings
+from app.core.config import settings
+from app.core.langgraph_schema import ensure_langgraph_schema
 
-# Construct database URL
-SQLALCHEMY_DATABASE_URL = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
+SQLALCHEMY_DATABASE_URL = settings.database_url
 
 def initialize_postgres_store():
     """Initialize PostgresStore and PostgresSaver"""
     try:
         print("🔧 Initializing PostgresStore and PostgresSaver...")
-        
-        # Initialize embeddings for the store
-        embeddings = init_embeddings(
-            "azure_openai:text-embedding-3-small",
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION")
-        )
-        
-        # Use Connection.connect like in the existing code
-        with Connection.connect(SQLALCHEMY_DATABASE_URL, autocommit=True) as conn:
-            # Initialize PostgresStore with index configuration (this will create store_vectors table)
-            store = PostgresStore(
-                conn=conn,
-                index={
-                    "dims": 1536,
-                    "embed": embeddings,
-                }
-            )
-            checkpointer = PostgresSaver(conn=conn)
-            
-            # Setup the store and checkpointer (this will create all required tables)
-            store.setup()
-            checkpointer.setup()
-            
-            print("✅ PostgresStore and PostgresSaver setup completed")
-            return True
-        
+        print(ensure_langgraph_schema(SQLALCHEMY_DATABASE_URL))
+        return True
     except Exception as e:
         print(f"❌ Error initializing PostgresStore: {e}")
-        print(f"🔍 Full error: {traceback.format_exc()}")
         return False
 
 def setup_procedural_memory_patterns():
@@ -71,18 +35,13 @@ def setup_procedural_memory_patterns():
         print("🧠 Setting up procedural memory patterns...")
         
         # Initialize embeddings
-        embeddings = init_embeddings(
-            "azure_openai:text-embedding-3-small",
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION")
-        )
+        embeddings = create_embeddings()
         
         # Create PostgresStore with embeddings
         with PostgresStore.from_conn_string(
             SQLALCHEMY_DATABASE_URL,
             index={
-                "dims": 1536,
+                "dims": EMBEDDING_DIMENSIONS,
                 "embed": embeddings,
             }
         ) as store:
@@ -183,18 +142,13 @@ def check_existing_patterns():
         print("🔍 Checking for existing procedural memory patterns...")
         
         # Initialize embeddings
-        embeddings = init_embeddings(
-            "azure_openai:text-embedding-3-small",
-            api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-            azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-            api_version=os.getenv("AZURE_OPENAI_API_VERSION")
-        )
+        embeddings = create_embeddings()
         
         # Create PostgresStore with embeddings
         with PostgresStore.from_conn_string(
             SQLALCHEMY_DATABASE_URL,
             index={
-                "dims": 1536,
+                "dims": EMBEDDING_DIMENSIONS,
                 "embed": embeddings,
             }
         ) as store:

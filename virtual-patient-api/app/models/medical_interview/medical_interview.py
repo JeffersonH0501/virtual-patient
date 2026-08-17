@@ -1,6 +1,6 @@
 from __future__ import annotations
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, JSON, Integer
 from sqlalchemy.sql import func
@@ -51,7 +51,7 @@ class MedicalInterviewBase(BaseModel):
     personality_id: Optional[int] = None
 
 class MedicalInterviewCreate(MedicalInterviewBase):
-    pass
+    patient_response_language: Literal["en", "es"] = "en"
 
 class MedicalInterviewUpdate(BaseModel):
     status: Optional[InterviewStatus] = None
@@ -77,4 +77,4 @@ class MedicalInterview(MedicalInterviewBase):
         populate_by_name = True
 
 class MedicalInterviewWithScore(MedicalInterview):
-    evaluation_score: Optional[int] = Field(None, ge=1, le=10, description="Overall evaluation score from 1 to 10") 
+    evaluation_score: Optional[int] = Field(None, ge=1, le=10, description="Overall evaluation score from 1 to 10")

@@ -4,17 +4,13 @@ Uses StateGraph with summary node and thread extractor from langmem
 Reuses existing VirtualPatientAgent
 """
 
-import os
 import time
 from typing import Optional, Dict, Any, List, TypedDict, Annotated
 from operator import add
-from langchain.chat_models import init_chat_model
-from langchain.embeddings import init_embeddings
 from langgraph.graph import StateGraph, END
 from langgraph.store.base import BaseStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain_core.messages import HumanMessage, AIMessage
-from dotenv import load_dotenv
 
 from app.agents.virtual_patient_agent import VirtualPatientAgent
 from app.agents.translator_agent import TranslatorAgent
@@ -22,15 +18,6 @@ from app.agents.translator_agent import TranslatorAgent
 from app.agents.schemas.progress_summary import ProgressSummarySchema
 
 from app.models.clinical_case import ClinicalCaseDB
-
-load_dotenv()
-
-# Azure OpenAI Configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_EMBEDDING_DEPLOYMENT = os.getenv("AZURE_EMBEDDING_DEPLOYMENT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
 
 # State definition for the workflow
 class State(TypedDict):

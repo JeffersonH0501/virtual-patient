@@ -85,6 +85,10 @@
     "selectGender": "Select gender",
     "male": "Male",
     "female": "Female",
+    "patientResponseLanguage": "Patient response language",
+    "selectPatientResponseLanguage": "Select response language",
+    "english": "English",
+    "spanish": "Spanish",
     "patientName": "Patient Name",
     "selectName": "Select name",
     "nameMaria": "Maria",
@@ -162,6 +166,7 @@
     "submitting": "Submitting...",
     "summary": "Summary",
     "refreshSummary": "Refresh Summary",
+    "messageSendError": "The message could not be sent. Please try again.",
     "feedbackDescription": "Provide feedback about the clinical case, interview process, or any other observations about the session.",
     "welcome": {
       "title": "Welcome to Clinical Interview",

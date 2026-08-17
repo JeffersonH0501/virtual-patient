@@ -4,6 +4,7 @@ import {Interview} from '../../types/interview';
 
 type CreateInterviewPayload = {
   clinical_case_id: string;
+  patient_response_language: 'en' | 'es';
   patient_name?: string;
   patient_photo?: string;
   patient_gender?: string;

@@ -8,6 +8,7 @@ import Cookies from 'js-cookie';
 import {getUser} from '../../services/users/getUser';
 import {useTranslation} from 'react-i18next';
 import {useUser} from '../../hooks';
+import {getAuthCookieOptions} from '../../services/auth/authCookie';
 
 export const LoginForm: FC = () => {
   const [userName, setUserName] = useState('');
@@ -57,7 +58,7 @@ export const LoginForm: FC = () => {
       if (!result.access_token) {
         setErrorMessage(t('errors.noAccessToken'));
       } else {
-        Cookies.set('access_token', result.access_token, {secure: true, sameSite: 'strict'});
+        Cookies.set('access_token', result.access_token, getAuthCookieOptions());
         const user = await getUser();
         await setUser(user);
         navigate(ROUTES.clinicalCases);

@@ -17,7 +17,10 @@ from app.controllers.interview_evaluation_controller import InterviewEvaluationC
 from app.controllers.personality_controller import PersonalityController
 from app.agents.evaluation_agent import EvaluationAgent
 from app.agents.schemas import EvaluationResult
-from app.utils.language import convert_language_code_to_name
+from app.utils.language import (
+    convert_language_code_to_name,
+    with_patient_response_language,
+)
 
 router = APIRouter(
     prefix="/medical-interviews", 
@@ -62,11 +65,15 @@ async def create_interview(
     select the appropriate name (female_name or male_name) and photo from the clinical case.
     """
     service = MedicalInterviewController(db)
+    interview_metadata = with_patient_response_language(
+        interview_data.interview_metadata,
+        interview_data.patient_response_language,
+    )
     
     interview = service.create_interview(
         user_id=current_user.id,
         clinical_case_id=interview_data.clinical_case_id,
-        interview_metadata=interview_data.interview_metadata,
+        interview_metadata=interview_metadata,
         patient_name=interview_data.patient_name,
         patient_photo=interview_data.patient_photo,
         patient_gender=interview_data.patient_gender,
@@ -526,4 +533,4 @@ async def get_my_average_score(
     """
     interview_controller = MedicalInterviewController(db)
     result = interview_controller.get_average_score_for_user(current_user.id)
-    return result 
+    return result

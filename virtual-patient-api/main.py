@@ -1,7 +1,7 @@
 import uvicorn
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import settings
 from app.routers import (
     auth, users, organizations, clinical_cases, 
     medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations
@@ -104,12 +104,6 @@ app = FastAPI(
 origins = [
     "http://localhost:5173",  # React app
     "http://127.0.0.1:5173",  # React app alternative
-    "http://localhost:5174",  # React app (Vite default port)
-    "http://127.0.0.1:5174",  # React app (Vite default port alternative)
-    "http://localhost:3000",  # React app alternative port
-    "http://127.0.0.1:3000",  # React app alternative port
-    "https://doctorbot.virtual.uniandes.edu.co",  # Production domain
-    "http://doctorbot.virtual.uniandes.edu.co",   # Production domain (HTTP fallback)
 ]
 
 app.add_middleware(
@@ -143,7 +137,7 @@ async def health_check():
 if __name__ == "__main__":
 
     # Enable auto-reload in development mode
-    reload = os.getenv("ENV", "development") != "production"
+    reload = settings.environment != "production"
     
     uvicorn.run(
         "main:app",  # Use string to enable reload

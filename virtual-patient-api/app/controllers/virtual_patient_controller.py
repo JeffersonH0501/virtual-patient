@@ -3,35 +3,26 @@ Virtual Patient Service
 Handles integration with the virtual patient workflow agent
 """
 
-import os
 import time
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from langgraph.store.postgres import PostgresStore
 from langgraph.checkpoint.postgres import PostgresSaver
-from langchain.embeddings import init_embeddings
 from app.core.database import SQLALCHEMY_DATABASE_URL
+from app.core.azure_openai import EMBEDDING_DIMENSIONS, create_embeddings
 from app.models.clinical_case import ClinicalCaseDB
 from app.models.user import User
 from app.agents.virtual_patient_workflow import create_virtual_patient_workflow
 from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.controllers.message_controller import MessageController
-from app.utils.language import convert_language_code_to_name
-
-
-# Initialize Azure OpenAI embeddings for semantic search
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_EMBEDDING_DEPLOYMENT = os.getenv("AZURE_EMBEDDING_DEPLOYMENT")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-
-embeddings = init_embeddings(
-    "azure_openai:text-embedding-3-small",
-    api_key=AZURE_OPENAI_API_KEY,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    azure_deployment=AZURE_EMBEDDING_DEPLOYMENT,
-    api_version=AZURE_OPENAI_API_VERSION
+from app.utils.language import (
+    convert_language_code_to_name,
+    resolve_patient_response_language,
 )
+
+
+# Initialize Azure OpenAI v1 embeddings for semantic search.
+embeddings = create_embeddings()
 
 
 
@@ -49,7 +40,7 @@ class VirtualPatientController:
         messages: List[Dict[str, str]],
         clinical_case: ClinicalCaseDB,
         thread_id: Optional[str] = None,
-        user_preferred_language: str = "English",
+        patient_response_language: str = "English",
         patient_gender: Optional[str] = None,
         patient_name: Optional[str] = None,
         personality: Optional[str] = None
@@ -62,7 +53,7 @@ class VirtualPatientController:
             messages: List of message dictionaries with role and content
             clinical_case: The clinical case object
             thread_id: Optional thread ID (defaults to interview_id)
-            user_preferred_language: User's preferred language for responses
+            patient_response_language: Language selected for patient responses
             patient_gender: Patient gender ('male' or 'female') - chosen in UI
             patient_name: Patient name - chosen in UI
         
@@ -78,19 +69,19 @@ class VirtualPatientController:
             PostgresStore.from_conn_string(
                 SQLALCHEMY_DATABASE_URL,
                 index={
-                    "dims": 1536,
+                    "dims": EMBEDDING_DIMENSIONS,
                     "embed": embeddings,
                 }
             ) as store,
             PostgresSaver.from_conn_string(SQLALCHEMY_DATABASE_URL) as checkpointer,
         ):
             try:
-                # Create virtual patient workflow with user's preferred language and patient attributes
+                # Create the workflow with the interview-specific response language.
                 workflow = create_virtual_patient_workflow(
                     store=store, 
                     checkpointer=checkpointer, 
                     interview_id=str(interview_id),
-                    current_language=user_preferred_language,
+                    current_language=patient_response_language,
                     patient_gender=patient_gender,
                     patient_name=patient_name,
                     personality=personality
@@ -153,7 +144,6 @@ class VirtualPatientController:
         
         Used by:
         - Text message endpoint (HTTP POST)
-        - LiveKit voice agent (real-time voice)
         
         Args:
             interview_id: The interview ID
@@ -211,10 +201,16 @@ class VirtualPatientController:
         formatted_messages = self.format_messages_for_workflow(interview_messages)
         print(f"📋 Formatted {len(formatted_messages)} messages for workflow")
         
-        # 6. Get user's preferred language
-        user_language_code = current_user.preferred_language or "en"
-        user_language_name = convert_language_code_to_name(user_language_code)
-        print(f"🌍 User language: {user_language_name} ({user_language_code})")
+        # 6. Resolve the patient language stored with this interview.
+        patient_language_code = resolve_patient_response_language(
+            interview.interview_metadata,
+            current_user.preferred_language or "en",
+        )
+        patient_language_name = convert_language_code_to_name(patient_language_code)
+        print(
+            "Patient response language: "
+            f"{patient_language_name} ({patient_language_code})"
+        )
         
         # 7. Process through virtual patient workflow
         thread_id = f"interview-{interview_id}"
@@ -226,7 +222,7 @@ class VirtualPatientController:
             messages=formatted_messages,
             clinical_case=clinical_case,
             thread_id=thread_id,
-            user_preferred_language=user_language_name,
+            patient_response_language=patient_language_name,
             patient_gender=interview.patient_gender,
             patient_name=interview.patient_name,
             personality=interview.personality.namespace_key if interview.personality else None
@@ -239,7 +235,11 @@ class VirtualPatientController:
         
         if not agent_response:
             # Fallback: create a default response
-            agent_response = "I understand your question. Let me think about how to respond based on my medical knowledge and the context of our conversation."
+            fallback_responses = {
+                "en": "I understand your question. Let me think about how to respond based on my medical history and our conversation.",
+                "es": "Entiendo su pregunta. Déjeme pensar cómo responder según mi historia clínica y nuestra conversación.",
+            }
+            agent_response = fallback_responses[patient_language_code]
             print("⚠️  Warning: No agent response found, using fallback response")
         else:
             print(f"✅ Agent response extracted: {agent_response[:100]}...")

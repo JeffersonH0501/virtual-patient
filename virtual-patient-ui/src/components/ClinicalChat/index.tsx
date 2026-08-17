@@ -41,6 +41,7 @@ export const ClinicalChat: FC = () => {
 
   const [messages, setMessages] = useState<Message[]>();
   const [isLoading, setIsLoading] = useState(false);
+  const [messageError, setMessageError] = useState<string | null>(null);
   const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
   const interviewId = interviewIdParam ? parseInt(interviewIdParam, 10) : null;
   const [interview, setInterview] = useState<CompleteInterviewResponse>();
@@ -72,60 +73,61 @@ export const ClinicalChat: FC = () => {
   const fetchInterview = async () => {
     if (!interviewId) return;
 
-    const interview = await getInterview(interviewId.toString());
-    setInterview(interview);
+    const interviewData = await getInterview(interviewId.toString());
+    setInterview(interviewData);
 
     // Set messages from interview response with proper avatars
-    setMessages(processMessagesWithAvatars(interview.messages, interview.patientGender));
+    setMessages(processMessagesWithAvatars(interviewData.messages, interviewData.patientGender));
 
     // Initialize patient data from interview patient fields
     setPatient((prevPatient) => ({
       ...prevPatient,
-      name: interview.patientName || 'John Doe',
-      id: interview.clinicalCase?.id.toString() || 'unknown',
-      avatar: interview.patientPhoto || getPatientImage(interview.patientGender || undefined),
+      name: interviewData.patientName || 'John Doe',
+      id: interviewData.clinicalCase?.id.toString() || 'unknown',
+      avatar:
+        interviewData.patientPhoto || getPatientImage(interviewData.patientGender || undefined),
       basicInfo: {
-        age: interview.clinicalCase?.age || 0,
-        gender: interview.patientGender || 'Unknown',
+        age: interviewData.clinicalCase?.age || 0,
+        gender: interviewData.patientGender || 'Unknown',
         bloodType: '', // Not available in clinical case data
-        weight: interview.clinicalCase?.weightInKg
-          ? `${interview.clinicalCase.weightInKg} kg`
+        weight: interviewData.clinicalCase?.weightInKg
+          ? `${interviewData.clinicalCase.weightInKg} kg`
           : 'Not specified',
       },
     }));
 
     // Process progress summary if it exists in the response
-    if (interview.progressSummary) {
-      setPatient(processSummaryData(interview.progressSummary));
+    if (interviewData.progressSummary) {
+      setPatient(processSummaryData(interviewData.progressSummary));
     }
 
     // Set evaluation data if interview is completed and has evaluation
-    if (interview.status === 'completed' && interview.interviewEvaluation) {
+    if (interviewData.status === 'completed' && interviewData.interviewEvaluation) {
       setEvaluationData({
         interview: {
-          id: interview.id,
-          userId: interview.userId,
-          clinicalCaseId: interview.clinicalCaseId,
-          status: interview.status,
-          startTime: interview.startTime,
-          endTime: interview.endTime,
-          totalDuration: interview.totalDuration || 0,
-          createdAt: interview.createdAt,
-          clinicalCase: interview.clinicalCase,
-          progressSummary: interview.progressSummary,
-          interviewMetadata: interview.interviewMetadata,
-          messages: interview.messages,
-          sessionNotes: interview.sessionNotes,
-          isOwner: interview.isOwner,
-          hypotheses: interview.hypotheses,
+          id: interviewData.id,
+          userId: interviewData.userId,
+          clinicalCaseId: interviewData.clinicalCaseId,
+          status: interviewData.status,
+          startTime: interviewData.startTime,
+          endTime: interviewData.endTime,
+          totalDuration: interviewData.totalDuration || 0,
+          createdAt: interviewData.createdAt,
+          clinicalCase: interviewData.clinicalCase,
+          progressSummary: interviewData.progressSummary,
+          interviewMetadata: interviewData.interviewMetadata,
+          messages: interviewData.messages,
+          sessionNotes: interviewData.sessionNotes,
+          isOwner: interviewData.isOwner,
+          hypotheses: interviewData.hypotheses,
         },
-        evaluationResults: interview.interviewEvaluation.evaluationResults,
+        evaluationResults: interviewData.interviewEvaluation.evaluationResults,
       });
     }
 
     // Set submitted hypotheses if they exist
-    if (interview.hypotheses && interview.hypotheses.length > 0) {
-      setSubmittedHypotheses(interview.hypotheses);
+    if (interviewData.hypotheses && interviewData.hypotheses.length > 0) {
+      setSubmittedHypotheses(interviewData.hypotheses);
       setHypothesesSubmitted(true);
     }
 
@@ -139,7 +141,7 @@ export const ClinicalChat: FC = () => {
       console.error('Failed to load session note:', error);
     }
 
-    if (interview.messages?.length === 0 && interview?.isOwner) {
+    if (interviewData.messages?.length === 0 && interviewData.isOwner) {
       setOpenWelcomeModal(true);
     }
   };
@@ -181,7 +183,7 @@ export const ClinicalChat: FC = () => {
       if (summaryResponse.summary_result) {
         setPatient(processSummaryData(summaryResponse.summary_result));
       } else {
-        console.log(`${context}: Summary not available yet`);
+        console.warn(`${context}: Summary not available yet`);
       }
     } catch (error) {
       console.error(`Failed to fetch ${context}:`, error);
@@ -204,6 +206,7 @@ export const ClinicalChat: FC = () => {
     // Add user message to the conversation immediately
     setMessages((prev) => (prev ? [...prev, userMessage] : [userMessage]));
 
+    setMessageError(null);
     setIsLoading(true);
     try {
       const response = await sendMessage(interviewId.toString(), content);
@@ -224,7 +227,7 @@ export const ClinicalChat: FC = () => {
       setMessages(processedMessages);
     } catch (error) {
       console.error('Failed to send message:', error);
-      // You might want to show an error message to the user here
+      setMessageError(t('clinicalChat.messageSendError'));
     } finally {
       setIsLoading(false);
     }
@@ -237,7 +240,7 @@ export const ClinicalChat: FC = () => {
   const handleEndInterview = () => {
     // Only allow ending interview if user is the owner
     if (!isOwner) {
-      console.log('Cannot end interview: User is not the owner');
+      console.warn('Cannot end interview: User is not the owner');
       return;
     }
     setOpenEndConfirmationModal(true);
@@ -270,6 +273,11 @@ export const ClinicalChat: FC = () => {
 
   // Map i18n language to speech recognition language code
   const getSpeechLanguage = () => {
+    const patientResponseLanguage = interview?.interviewMetadata?.patientResponseLanguage;
+    if (patientResponseLanguage === 'es') return 'es-ES';
+    if (patientResponseLanguage === 'en') return 'en-US';
+
+    // Legacy interviews follow the interface language.
     const lang = i18n.language;
     if (lang.startsWith('es')) return 'es-ES';
     return 'en-US';
@@ -308,11 +316,18 @@ export const ClinicalChat: FC = () => {
         {ending && !hypothesesSubmitted ? (
           <ClinicalHypotheses onHypothesesSubmitted={handleHypothesesSubmitted} />
         ) : interview?.status === 'completed' ? null : isOwner ? ( // Show nothing when interview is completed - just the chat history
-          <ChatInput
-            onSend={handleSendMessage}
-            disabled={isLoading}
-            language={getSpeechLanguage()}
-          />
+          <>
+            {messageError && (
+              <div className="mx-6 mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
+                {messageError}
+              </div>
+            )}
+            <ChatInput
+              onSend={handleSendMessage}
+              disabled={isLoading}
+              language={getSpeechLanguage()}
+            />
+          </>
         ) : (
           // Show read-only message for non-owners
           <div className="p-4 bg-gray-100 text-center text-gray-600">

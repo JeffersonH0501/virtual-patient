@@ -8,6 +8,7 @@ import {getUser} from '../../services/users/getUser';
 import {useNavigate} from 'react-router-dom';
 import {useUser} from '../../hooks';
 import {useTranslation} from 'react-i18next';
+import {getAuthCookieOptions} from '../../services/auth/authCookie';
 
 export const SignUpForm: FC = () => {
   const [email, setEmail] = useState('');
@@ -68,7 +69,7 @@ export const SignUpForm: FC = () => {
       }
 
       // Store the access_token in cookies
-      Cookies.set('access_token', result.access_token, {secure: true, sameSite: 'strict'});
+      Cookies.set('access_token', result.access_token, getAuthCookieOptions());
 
       // Fetch user data after successful sign up
       const user = await getUser();

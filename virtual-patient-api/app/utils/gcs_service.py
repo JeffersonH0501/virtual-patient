@@ -6,7 +6,7 @@ Handles uploading files to Google Cloud Storage and generating public URLs.
 import os
 import tempfile
 from typing import Optional
-from dotenv import load_dotenv
+from app.core.config import settings
 
 try:
     from google.cloud import storage
@@ -15,16 +15,13 @@ except ImportError:
     GCS_AVAILABLE = False
     print("⚠️  google-cloud-storage not installed. GCS functionality will be disabled.")
 
-load_dotenv()
-
-
 class GCSService:
     """Service for uploading files to Google Cloud Storage."""
     
     def __init__(self):
         # Get GCS configuration from environment variables
-        self.bucket_name = os.getenv("GCS_BUCKET_NAME")
-        self.credentials_path = os.getenv("GCS_CREDENTIALS_PATH")  # Path to JSON key file
+        self.bucket_name = settings.gcs_bucket_name
+        self.credentials_path = settings.gcs_credentials_path
         
         # Initialize GCS client
         self.client = None
@@ -193,4 +190,3 @@ class GCSService:
         except Exception as e:
             print(f"❌ GCS delete failed: {e}")
             return False
-

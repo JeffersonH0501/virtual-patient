@@ -2,20 +2,14 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 from alembic import context
-import os
 import sys
-from dotenv import load_dotenv
-
-# Load environment variables from .env file (same as app/core/database.py)
-load_dotenv()
+from pathlib import Path
 
 # Add the parent directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 # Import your models here
-from app.models.user import UserDB
-from app.models.organization import OrganizationDB
-from app.models.clinical_case import ClinicalCaseDB
+import app.models  # noqa: F401 - register all SQLAlchemy models
 from app.core.database import Base
 
 # this is the Alembic Config object, which provides
@@ -90,4 +84,4 @@ def run_migrations_online() -> None:
 if context.is_offline_mode():
     run_migrations_offline()
 else:
-    run_migrations_online() 
+    run_migrations_online()

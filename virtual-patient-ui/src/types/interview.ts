@@ -16,16 +16,19 @@ export type CompleteInterviewResponse = {
   startTime: string;
   endTime: string;
   totalDuration: number | null;
-  interviewMetadata: Record<string, any>;
+  interviewMetadata: {
+    patientResponseLanguage?: 'en' | 'es';
+    [key: string]: unknown;
+  };
   createdAt: string;
   clinicalCase: ClinicalCaseWithTranslations;
   messages: Message[];
-  hypotheses?: Array<{
+  hypotheses?: {
     id: number;
     interviewId: number;
     hypothesisText: string;
     hypothesisOrder: number;
-  }>;
+  }[];
   sessionNotes: SessionNote[];
   progressSummary: ProgressSummary;
   interviewEvaluation?: InterviewEvaluation;
@@ -70,5 +73,3 @@ export type OrganizationInterview = {
   teacherFeedback: TeacherFeedback[];
   personality?: Personality | null;
 };
-
-

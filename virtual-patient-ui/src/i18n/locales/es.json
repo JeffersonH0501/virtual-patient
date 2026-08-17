@@ -85,6 +85,10 @@
     "selectGender": "Selecciona género",
     "male": "Masculino",
     "female": "Femenino",
+    "patientResponseLanguage": "Idioma de respuesta del paciente",
+    "selectPatientResponseLanguage": "Selecciona el idioma de respuesta",
+    "english": "Inglés",
+    "spanish": "Español",
     "patientName": "Nombre del Paciente",
     "selectName": "Selecciona nombre",
     "nameMaria": "María",
@@ -162,6 +166,7 @@
     "submitting": "Enviando...",
     "summary": "Resumen",
     "refreshSummary": "Actualizar Resumen",
+    "messageSendError": "No se pudo enviar el mensaje. Por favor, inténtalo de nuevo.",
     "feedbackDescription": "Proporciona retroalimentación sobre el caso clínico, el proceso de entrevista, o cualquier otra observación sobre la sesión.",
     "welcome": {
       "title": "Instrucciones",

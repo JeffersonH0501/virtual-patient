@@ -5,7 +5,6 @@ Seed clinical cases in the database using the new multilingual structure.
 - Creates new cases with English as default and Spanish translations
 """
 
-import os
 import sys
 import json
 from pathlib import Path
@@ -16,23 +15,14 @@ sys.path.insert(0, str(project_root))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
 
 # Import the clinical case model
 from app.models.clinical_case import ClinicalCaseDB, CaseType
-
-# Load environment variables
-load_dotenv()
+from app.core.config import settings
 
 def get_database_url():
-    """Get database URL from environment variables"""
-    db_host = os.getenv('POSTGRES_HOST', 'localhost')
-    db_port = os.getenv('POSTGRES_PORT', '5432')
-    db_name = os.getenv('POSTGRES_DB', 'virtual_patient')
-    db_user = os.getenv('POSTGRES_USER', 'andrea.bayona')
-    db_password = os.getenv('POSTGRES_PASSWORD', '')
-    
-    return f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    """Return the centralized application database URL."""
+    return settings.database_url
 
 def load_case_data(case_name, language):
     """Load case data from file"""

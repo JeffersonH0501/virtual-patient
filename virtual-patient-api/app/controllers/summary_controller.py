@@ -3,24 +3,17 @@ Summary Controller
 Handles summary workflow processing separately from the main interview workflow
 """
 
-import os
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
 from langgraph.store.postgres import PostgresStore
 from langgraph.checkpoint.postgres import PostgresSaver
-from langchain.embeddings import init_embeddings
-
 from app.agents.summary_workflow import create_summary_workflow
+from app.core.azure_openai import EMBEDDING_DIMENSIONS, create_embeddings
 from app.core.database import SQLALCHEMY_DATABASE_URL
 from app.models.clinical_case import ClinicalCaseDB
 
-# Initialize embeddings
-embeddings = init_embeddings(
-    "azure_openai:text-embedding-3-small",
-    api_key=os.getenv("AZURE_OPENAI_API_KEY"),
-    azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT"),
-    api_version=os.getenv("AZURE_OPENAI_API_VERSION")
-)
+# Initialize Azure OpenAI v1 embeddings.
+embeddings = create_embeddings()
 
 
 class SummaryController:
@@ -57,7 +50,7 @@ class SummaryController:
             PostgresStore.from_conn_string(
                 SQLALCHEMY_DATABASE_URL,
                 index={
-                    "dims": 1536,
+                    "dims": EMBEDDING_DIMENSIONS,
                     "embed": embeddings,
                 }
             ) as store,

@@ -3,15 +3,12 @@ Summary Workflow Agent
 Handles progress summary generation and translation separately from the main interview workflow
 """
 
-import os
 import time
 from typing import Optional, Dict, Any, List, TypedDict, Annotated
-from langchain.chat_models import init_chat_model
 from langgraph.graph import StateGraph, END
 from langgraph.store.base import BaseStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain_core.messages import HumanMessage, AIMessage
-from dotenv import load_dotenv
 
 from langmem import create_thread_extractor
 
@@ -20,23 +17,10 @@ from app.agents.prompts.progress_summary import get_thread_extractor_instruction
 from app.agents.schemas.progress_summary import ProgressSummarySchema
 from app.agents.helpers import normalize_summary_data
 from app.models.clinical_case import ClinicalCaseDB
+from app.core.azure_openai import create_chat_model
 
-load_dotenv()
-
-# Azure OpenAI Configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-
-# Initialize LLM with Azure OpenAI
-llm = init_chat_model(
-    "azure_openai:gpt-4.1",
-    api_key=AZURE_OPENAI_API_KEY,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
-    api_version=AZURE_OPENAI_API_VERSION,
-)
+# Initialize the globally selected Azure OpenAI v1 LLM.
+llm = create_chat_model()
 
 class SummaryState(TypedDict):
     """State for the summary workflow"""

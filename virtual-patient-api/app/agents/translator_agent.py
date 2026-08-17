@@ -3,13 +3,10 @@ Translator Agent with Personality Support
 Translates messages to specific languages and adds personality traits to responses
 """
 
-import os
 import json
 import asyncio
 from typing import Optional, Dict, Any, List, Union, TYPE_CHECKING
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, AIMessage
-from dotenv import load_dotenv
 from pydantic import BaseModel
 from .schemas.progress_summary import ProgressSummarySchema
 
@@ -22,35 +19,11 @@ from .prompts.translator import (
 )
 from .prompts.personalities import build_personality_prompt
 from .schemas.clinical_case import ClinicalCaseTranslatableFields
+from app.core.azure_openai import create_chat_model
 
-load_dotenv()
-
-# Azure OpenAI Configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-AZURE_OPENAI_DEPLOYMENT_NAME_MINI = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME_MINI")
-AZURE_OPENAI_API_VERSION_MINI = os.getenv("AZURE_OPENAI_API_VERSION_MINI")
-
-# Initialize LLM with Azure OpenAI
-llm = init_chat_model(
-    "azure_openai:gpt-4o-mini",
-    api_key=AZURE_OPENAI_API_KEY,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME_MINI,
-    api_version=AZURE_OPENAI_API_VERSION_MINI,
-    temperature=0.2
-)
-
-llm_personality = init_chat_model(
-    "azure_openai:gpt-4.1",
-    api_key=AZURE_OPENAI_API_KEY,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
-    api_version=AZURE_OPENAI_API_VERSION,
-    temperature=1
-)
+# Both workloads follow the globally selected LLM variant.
+llm = create_chat_model(temperature=0.2)
+llm_personality = create_chat_model(temperature=1)
 
 
 class TranslatorAgent:

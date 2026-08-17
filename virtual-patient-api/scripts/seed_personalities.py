@@ -6,7 +6,6 @@ Seed (reset) personalities in the database.
 - Uses English name as base `name` and Spanish as `name_translations['es']`
 """
 
-import os
 import sys
 from pathlib import Path
 
@@ -16,12 +15,10 @@ sys.path.insert(0, str(project_root))
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
 
 # Models
 from app.models.personality import PersonalityDB
-
-load_dotenv()
+from app.core.config import settings
 
 PERSONALITIES = [
   {
@@ -63,12 +60,7 @@ PERSONALITIES = [
 ]
 
 def get_database_url() -> str:
-    host = os.getenv("POSTGRES_HOST", "localhost")
-    port = os.getenv("POSTGRES_PORT", "5432")
-    db = os.getenv("POSTGRES_DB", "virtual_patient")
-    user = os.getenv("POSTGRES_USER", "andrea.bayona")
-    pwd = os.getenv("POSTGRES_PASSWORD", "")
-    return f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
+    return settings.database_url
 
 def main() -> int:
     print("🎭 Seeding Personalities (reset)...")

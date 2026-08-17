@@ -2,6 +2,12 @@
 Language utilities for the Virtual Patient API
 """
 
+from typing import Any
+
+
+PATIENT_RESPONSE_LANGUAGE_KEY = "patient_response_language"
+SUPPORTED_LANGUAGE_CODES = ("en", "es")
+
 def convert_language_code_to_name(language_code: str) -> str:
     """
     Convert language code to full language name
@@ -25,7 +31,7 @@ def get_supported_language_codes() -> list:
     Returns:
         List of supported language codes
     """
-    return ["en", "es"]
+    return list(SUPPORTED_LANGUAGE_CODES)
 
 def get_supported_language_names() -> list:
     """
@@ -35,3 +41,28 @@ def get_supported_language_names() -> list:
         List of supported language names
     """
     return ["English", "Spanish"]
+
+
+def with_patient_response_language(
+    interview_metadata: dict[str, Any] | None,
+    language_code: str,
+) -> dict[str, Any]:
+    """Return copied interview metadata with its patient language recorded."""
+    metadata = dict(interview_metadata or {})
+    metadata[PATIENT_RESPONSE_LANGUAGE_KEY] = language_code
+    return metadata
+
+
+def resolve_patient_response_language(
+    interview_metadata: dict[str, Any] | None,
+    legacy_language_code: str = "en",
+) -> str:
+    """Resolve the interview language while supporting legacy interviews."""
+    configured_language = (interview_metadata or {}).get(
+        PATIENT_RESPONSE_LANGUAGE_KEY
+    )
+    if configured_language in SUPPORTED_LANGUAGE_CODES:
+        return configured_language
+    if legacy_language_code in SUPPORTED_LANGUAGE_CODES:
+        return legacy_language_code
+    return "en"

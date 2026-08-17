@@ -3,14 +3,11 @@ Evaluation Agent for Virtual Patient System
 Evaluates doctor's performance in medical interviews
 """
 
-import os
 import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
-from langchain.chat_models import init_chat_model
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 from .schemas import EvaluationResult
 from .prompts.evaluation_prompts import get_evaluation_prompts
 from .helpers.formatting_helpers import (
@@ -21,24 +18,10 @@ from .helpers.formatting_helpers import (
 )
 from app.models.clinical_case import ClinicalCase
 from app.models.medical_interview.progress_summary import ProgressSummary
+from app.core.azure_openai import create_chat_model
 
-load_dotenv()
-
-# Azure OpenAI Configuration
-AZURE_OPENAI_API_KEY = os.getenv("AZURE_OPENAI_API_KEY")
-AZURE_OPENAI_ENDPOINT = os.getenv("AZURE_OPENAI_ENDPOINT")
-AZURE_OPENAI_DEPLOYMENT_NAME = os.getenv("AZURE_OPENAI_DEPLOYMENT_NAME")
-AZURE_OPENAI_API_VERSION = os.getenv("AZURE_OPENAI_API_VERSION")
-
-# Initialize LLM
-llm = init_chat_model(
-    "azure_openai:gpt-4.1",
-    api_key=AZURE_OPENAI_API_KEY,
-    azure_endpoint=AZURE_OPENAI_ENDPOINT,
-    azure_deployment=AZURE_OPENAI_DEPLOYMENT_NAME,
-    api_version=AZURE_OPENAI_API_VERSION,
-    temperature=0.7
-)
+# Initialize the globally selected Azure OpenAI v1 LLM.
+llm = create_chat_model(temperature=0.7)
 
 class EvaluationAgent:
     """
