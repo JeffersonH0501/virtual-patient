@@ -16,8 +16,30 @@ x-api-environment: &api-environment
   AZURE_OPENAI_STT_DEPLOYMENT_NAME: ${AZURE_OPENAI_STT_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:-local-not-configured}
+  SPEECH_TTS_PROVIDER: ${SPEECH_TTS_PROVIDER:-azure_openai}
+  SPEECH_STT_PROVIDER: ${SPEECH_STT_PROVIDER:-disabled}
   GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
   GCS_CREDENTIALS_PATH: ${GCS_CREDENTIALS_PATH:-}
+  MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/app/media}
+  MEDIA_RETENTION_DAYS: ${MEDIA_RETENTION_DAYS:-}
+  MEDIA_CONSENT_POLICY_VERSION: ${MEDIA_CONSENT_POLICY_VERSION:-institutional-v1}
+  MEDIA_DURATION_TOLERANCE_MS: ${MEDIA_DURATION_TOLERANCE_MS:-500}
+  MEDIA_MIN_FREE_BYTES: ${MEDIA_MIN_FREE_BYTES:-268435456}
+  PARAVERBAL_ANALYSIS_ENABLED: ${PARAVERBAL_ANALYSIS_ENABLED:-true}
+  PARAVERBAL_MIN_PAUSE_MS: ${PARAVERBAL_MIN_PAUSE_MS:-200}
+  PARAVERBAL_MIN_VOICED_DURATION_MS: ${PARAVERBAL_MIN_VOICED_DURATION_MS:-300}
+  NONVERBAL_ANALYSIS_ENABLED: ${NONVERBAL_ANALYSIS_ENABLED:-true}
+  OPENFACE_DEVICE: ${OPENFACE_DEVICE:-cpu}
+  OPENFACE_WEIGHTS_ROOT: ${OPENFACE_WEIGHTS_ROOT:-/app/openface/weights}
+  OPENFACE_SAMPLE_FPS: ${OPENFACE_SAMPLE_FPS:-2}
+  OPENFACE_GAZE_ALIGNMENT_MAX_RADIANS: ${OPENFACE_GAZE_ALIGNMENT_MAX_RADIANS:-}
+  OPENFACE_AU12_INDEX: ${OPENFACE_AU12_INDEX:-}
+  OPENFACE_AU12_ACTIVE_THRESHOLD: ${OPENFACE_AU12_ACTIVE_THRESHOLD:-}
+  PYFEAT_ANALYSIS_ENABLED: ${PYFEAT_ANALYSIS_ENABLED:-false}
+  PYFEAT_DEVICE: ${PYFEAT_DEVICE:-cpu}
+  PYFEAT_SAMPLE_FPS: ${PYFEAT_SAMPLE_FPS:-2}
+  PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS: ${PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS:-}
+  PYFEAT_AU12_ACTIVE_THRESHOLD: ${PYFEAT_AU12_ACTIVE_THRESHOLD:-}
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -49,6 +71,22 @@ services:
         condition: service_healthy
     profiles: ["tools"]
 
+  media-init:
+    build: *api-build
+    user: "root"
+    command: ["sh", "-c", "mkdir -p /app/media && chown -R appuser:appuser /app/media"]
+    volumes:
+      - interview_media:/app/media
+    restart: "no"
+
+  openface-init:
+    build: *api-build
+    user: "root"
+    command: ["sh", "-c", "mkdir -p /app/openface && chown -R appuser:appuser /app/openface"]
+    volumes:
+      - openface_models:/app/openface
+    restart: "no"
+
   api:
     build: *api-build
     environment: *api-environment
@@ -57,9 +95,15 @@ services:
       - "127.0.0.1:8000:8000"
     volumes:
       - ./virtual-patient-api:/app
+      - interview_media:/app/media
+      - openface_models:/app/openface
     depends_on:
       postgres:
         condition: service_healthy
+      media-init:
+        condition: service_completed_successfully
+      openface-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5).raise_for_status()"]
       interval: 10s
@@ -74,8 +118,9 @@ services:
       target: development
     environment:
       VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:-6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI}
-      VITE_API_HOST: ${VITE_API_HOST:-http://localhost}
+      VITE_API_HOST: ${VITE_API_HOST:-http://127.0.0.1}
       VITE_API_PORT: ${VITE_API_PORT:-8000}
+      VITE_SPEECH_INPUT_PROVIDER: ${VITE_SPEECH_INPUT_PROVIDER:-browser}
     ports:
       - "127.0.0.1:5173:5173"
     volumes:
@@ -94,3 +139,5 @@ services:
 volumes:
   postgres_local_data:
   ui_node_modules:
+  interview_media:
+  openface_models:

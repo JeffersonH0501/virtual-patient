@@ -159,6 +159,9 @@ class SummaryWorkflow:
             end_time = time.time()
             print(f"⏱️  TRANSLATE_SUMMARY_NODE: {end_time - start_time:.3f} seconds")
             return {"translated_summary": None}
+
+        if self.current_language.strip().lower() == "english":
+            return {"translated_summary": summary_result}
         
         try:
             # Convert to ProgressSummarySchema if it's not already

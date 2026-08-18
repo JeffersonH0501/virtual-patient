@@ -1,27 +1,33 @@
 import {FC, FormEvent, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {FormInput, Modal} from '../common/';
+import {FormInput} from '../common/';
 import {useParams} from 'react-router-dom';
-import {SubmitHypothesis} from './SubmitHypothesis';
 import {createHypothesis} from '../../services/hypotheses';
 import {completeInterview} from '../../services/interviews';
 import {CreateHypothesisRequest} from '../../types/hypothesis';
 import {InterviewEvaluationResponse} from '../../types/evaluation';
 
 type ClinicalHypothesesProps = {
-  onHypothesesSubmitted?: (evaluationData: InterviewEvaluationResponse) => void;
+  onCancel: () => void;
+  beforeComplete?: () => Promise<void>;
+  onHypothesesSubmitted: (
+    evaluationData: InterviewEvaluationResponse,
+  ) => void | Promise<void>;
 };
 
-export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({ onHypothesesSubmitted }) => {
+export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
+  onCancel,
+  beforeComplete,
+  onHypothesesSubmitted,
+}) => {
   const {t} = useTranslation();
-  const [openSubmitConfirmationModal, setOpenSubmitConfirmationModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hypotheses, setHypotheses] = useState({
     hypothesis1: '',
     hypothesis2: '',
     hypothesis3: '',
   });
-  const { interviewId: interviewIdParam } = useParams<{ interviewId: string }>();
+  const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
   const interviewId = interviewIdParam ? parseInt(interviewIdParam, 10) : null;
 
   const handleHypothesisChange = (field: keyof typeof hypotheses, value: string) => {
@@ -33,11 +39,7 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({ onHypothesesSu
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
-    setOpenSubmitConfirmationModal(true);
-  };
-
-  const close = () => {
-    setOpenSubmitConfirmationModal(false);
+    void submitHypotheses();
   };
 
   const submitHypotheses = async () => {
@@ -48,23 +50,22 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({ onHypothesesSu
 
     setIsSubmitting(true);
     try {
-      // Filter out empty hypotheses and create the request
       const hypothesesToSubmit: CreateHypothesisRequest = [];
-      
+
       if (hypotheses.hypothesis1.trim()) {
         hypothesesToSubmit.push({
           hypothesisText: hypotheses.hypothesis1.trim(),
           hypothesisOrder: 1,
         });
       }
-      
+
       if (hypotheses.hypothesis2.trim()) {
         hypothesesToSubmit.push({
           hypothesisText: hypotheses.hypothesis2.trim(),
           hypothesisOrder: 2,
         });
       }
-      
+
       if (hypotheses.hypothesis3.trim()) {
         hypothesesToSubmit.push({
           hypothesisText: hypotheses.hypothesis3.trim(),
@@ -77,36 +78,29 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({ onHypothesesSu
         return;
       }
 
-      // Call the API to submit hypotheses
       await createHypothesis(interviewId.toString(), hypothesesToSubmit);
-      
-      // Call the complete interview endpoint to get evaluation data
+
+      await beforeComplete?.();
+
       const evaluationData = await completeInterview(interviewId.toString());
-      
-      // Close the modal
-      setOpenSubmitConfirmationModal(false);
-      
-      // Call the callback to show evaluation modal with the evaluation data
-      if (onHypothesesSubmitted) {
-        onHypothesesSubmitted(evaluationData);
-      }
+
+      await onHypothesesSubmitted(evaluationData);
     } catch (error) {
       console.error('Failed to submit hypotheses:', error);
-      // You might want to show an error message to the user here
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const hasHypothesis = Object.values(hypotheses).some((value) => value.trim());
+
   return (
-    <>
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-4 w-[647px] p-8 max-md:px-5 max-md:py-0 max-md:w-full max-sm:px-4 max-sm:py-0 w-full"
-      >
-        <h2 className="mb-6 text-xl font-bold tracking-tighter text-neutral-900 text-left">
+    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4 p-5 sm:p-6">
+      <header className="border-b border-slate-200 pb-3 text-left">
+        <h2 className="text-lg font-semibold text-slate-800">
           {t('clinicalChat.clinicalHypotheses')}
         </h2>
+      </header>
         <FormInput
           label={t('clinicalChat.hypothesis1')}
           value={hypotheses.hypothesis1}
@@ -131,21 +125,23 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({ onHypothesesSu
           id="hypothesis3"
           placeholder={t('clinicalChat.enterHypothesis3')}
         />
+      <div className="mt-2 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          disabled={isSubmitting}
+          className="rounded-lg px-5 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {t('common.cancel')}
+        </button>
         <button
           type="submit"
-          className="ml-auto text-base text-white bg-blue-600 rounded-lg cursor-pointer border-[none] w-[114px] max-sm:w-full hover:bg-blue-700 transition-colors"
+          disabled={!hasHypothesis || isSubmitting}
+          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
         >
-          {t('clinicalChat.submit')}
+          {isSubmitting ? t('common.loading') : t('clinicalChat.submit')}
         </button>
-      </form>
-      <Modal
-        size="medium"
-        open={openSubmitConfirmationModal}
-        closeAction={close}
-        closeOnOutsideClick
-      >
-        <SubmitHypothesis onCancel={close} onConfirm={submitHypotheses} isLoading={isSubmitting} />
-      </Modal>
-    </>
+      </div>
+    </form>
   );
 };

@@ -1,43 +1,42 @@
-import {FC, useState, useEffect} from 'react';
-import {PatientInfo} from './PatientInfo';
-import {CaseDescription} from './CaseDescription';
-import {AssistantNameInput} from './AssistantNameInput';
-import {ActionButtons} from './ActionButtons';
+import {FC, useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
+import {useTranslation} from 'react-i18next';
+import {ActionButtons} from './ActionButtons';
 import {ROUTES} from '../../utils/routes';
 import type {ClinicalCaseSimplified} from '../../services/clinicalCases';
 import {createInterview} from '../../services/interviews/createInterview';
 import {getPersonalities} from '../../services/personalities';
 import {CustomSelect} from '../common';
-import {useTranslation} from 'react-i18next';
 import {Personality} from '../../types';
-import {useUser} from '../../hooks';
 
 type Props = {
   clinicalCase: ClinicalCaseSimplified;
-  caseIndex: number;
   onCancel: () => void;
 };
 
-export const ClinicalSession: FC<Props> = ({clinicalCase, caseIndex, onCancel}) => {
+type ReadOnlyFieldProps = {
+  label: string;
+  value: string;
+};
+
+const ReadOnlyField: FC<ReadOnlyFieldProps> = ({label, value}) => (
+  <div className="min-w-0">
+    <p className="mb-3 text-left text-sm text-black">{label}</p>
+    <div className="min-h-12 truncate rounded-xl border border-slate-300 bg-slate-100 px-3 py-3 text-sm text-slate-700">
+      {value}
+    </div>
+  </div>
+);
+
+export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
   const {t} = useTranslation();
-  const {user} = useUser();
-  const [assistantName, setAssistantName] = useState<string>('Dr. Berg');
   const [personalityId, setPersonalityId] = useState<number | null>(null);
-  const [gender, setGender] = useState<string>(clinicalCase.genderRestriction || '');
+  const [gender, setGender] = useState<string>('');
   const [patientResponseLanguage, setPatientResponseLanguage] = useState<'en' | 'es' | ''>('');
   const [personalities, setPersonalities] = useState<Personality[]>([]);
   const [isLoadingPersonalities, setIsLoadingPersonalities] = useState(true);
   const navigate = useNavigate();
 
-  // Set gender from restriction if present
-  useEffect(() => {
-    if (clinicalCase.genderRestriction) {
-      setGender(clinicalCase.genderRestriction);
-    }
-  }, [clinicalCase.genderRestriction]);
-
-  // Fetch personalities on component mount
   useEffect(() => {
     const fetchPersonalities = async () => {
       try {
@@ -53,23 +52,17 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, caseIndex, onCancel}) 
     fetchPersonalities();
   }, []);
 
-  // Personality options from API
   const personalityOptions = personalities.map((personality) => personality.name);
-
-  // Check if gender is restricted
-  const hasGenderRestriction = !!clinicalCase.genderRestriction;
-  const genderOptions = hasGenderRestriction
-    ? [clinicalCase.genderRestriction === 'female' ? t('clinicalSession.female') : t('clinicalSession.male')]
-    : [t('clinicalSession.male'), t('clinicalSession.female')];
-
-  // Validation logic
-  const isFormValid = () => {
-    return personalityId !== null && gender !== '' && patientResponseLanguage !== '';
-  };
+  const genderOptions = [t('clinicalSession.male'), t('clinicalSession.female')];
+  const patientAge = clinicalCase.age
+    ? t('clinicalCases.ageValue', {age: clinicalCase.age})
+    : t('clinicalCases.notSpecified');
+  const isFormValid =
+    personalityId !== null && gender !== '' && patientResponseLanguage !== '';
 
   const onStartSession = async () => {
-    if (!isFormValid()) {
-      return; // Don't proceed if validation fails
+    if (!isFormValid) {
+      return;
     }
 
     const interview = await createInterview({
@@ -84,93 +77,94 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, caseIndex, onCancel}) 
   };
 
   return (
-    <div className="fixed inset-0 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-      <div className="flex flex-col rounded-2xl max-w-[796px] bg-white">
-        <div className="flex flex-col pt-9 pr-2 pb-4 pl-10 w-full rounded-2xl shadow-[0px_8px_10px_rgba(0,0,0,0.1)] max-md:pl-5 max-md:max-w-full">
-          <h2 className="self-start text-2xl font-semibold leading-none text-black">
-            {t('clinicalSession.newSession', {
-              caseTitle: user?.role === 'student' ? t('clinicalCases.clinicalCaseWithIndex', {index: caseIndex}) : clinicalCase.title,
-            })}
-          </h2>
-          <div className="flex flex-col pr-5 pb-3 mt-9 w-full max-md:max-w-full">
-            <div className="w-full max-w-[700px] max-md:max-w-full">
-              <div className="flex gap-5 max-md:flex-col">
-                <div className="flex flex-col w-[58%] max-md:ml-0 max-md:w-full">
-                  <div className="flex flex-col grow pr-3.5 pb-5 w-full text-sm max-md:mt-5">
-                    <PatientInfo clinicalCase={clinicalCase} />
-                    <CaseDescription clinicalCase={clinicalCase} />
-                  </div>
-                </div>
-                <div className="flex flex-col ml-5 w-[42%] max-md:ml-0 max-md:w-full">
-                  <div className="flex flex-col pb-32 w-full max-md:pb-24 max-md:mt-5">
-                    <AssistantNameInput name={assistantName} onNameChange={setAssistantName} />
+    <div className="min-w-0 max-w-full overflow-x-clip p-4 sm:p-5">
+      <h4 className="mb-4 text-sm font-semibold text-slate-800">
+        {t('clinicalSession.patientInformation')}
+      </h4>
+      <div className="grid min-w-0 gap-x-4 gap-y-4 sm:grid-cols-2">
+        <ReadOnlyField label={t('clinicalCases.patientAge')} value={patientAge} />
 
-                    {/* Patient Configuration Section */}
-                    <div className="mt-6 space-y-4">
-                      <h3 className="text-lg font-semibold text-gray-800">{t('clinicalSession.patientConfiguration')}</h3>
+        <div className="min-w-0">
+          <CustomSelect
+            label={t('clinicalSession.personality')}
+            id={`personality-${clinicalCase.id}`}
+            placeholder={
+              isLoadingPersonalities
+                ? t('clinicalSession.loadingPersonalities')
+                : t('clinicalSession.selectPersonality')
+            }
+            value={
+              personalityId
+                ? personalities.find((personality) => personality.id === personalityId)?.name ||
+                  ''
+                : ''
+            }
+            onChange={(value) => {
+              const selectedPersonality = personalities.find(
+                (personality) => personality.name === value,
+              );
+              setPersonalityId(selectedPersonality?.id || null);
+            }}
+            options={personalityOptions}
+            disabled={isLoadingPersonalities}
+            margin={false}
+          />
+        </div>
 
-                      <CustomSelect
-                        label={`${t('clinicalSession.personality')} *`}
-                        id="personality"
-                        placeholder={isLoadingPersonalities ? t('clinicalSession.loadingPersonalities') : t('clinicalSession.selectPersonality')}
-                        value={personalityId ? personalities.find((p) => p.id === personalityId)?.name || '' : ''}
-                        onChange={(value) => {
-                          const selectedPersonality = personalities.find((p) => p.name === value);
-                          setPersonalityId(selectedPersonality?.id || null);
-                        }}
-                        options={personalityOptions}
-                        disabled={isLoadingPersonalities}
-                      />
+        <div className="min-w-0">
+          <CustomSelect
+            label={t('clinicalSession.gender')}
+            id={`gender-${clinicalCase.id}`}
+            placeholder={t('clinicalSession.selectGender')}
+            value={
+              gender === 'male'
+                ? t('clinicalSession.male')
+                : gender === 'female'
+                  ? t('clinicalSession.female')
+                  : gender
+            }
+            onChange={(value) => {
+              const genderValue =
+                value === t('clinicalSession.male')
+                  ? 'male'
+                  : value === t('clinicalSession.female')
+                    ? 'female'
+                    : value;
+              setGender(genderValue);
+            }}
+            options={genderOptions}
+            margin={false}
+          />
+        </div>
 
-                      <CustomSelect
-                        label={`${t('clinicalSession.gender')} *`}
-                        id="gender"
-                        placeholder={t('clinicalSession.selectGender')}
-                        value={gender === 'male' ? t('clinicalSession.male') :
-                               gender === 'female' ? t('clinicalSession.female') :
-                               gender}
-                        onChange={(value) => {
-                          // Convert translated values to language-agnostic values
-                          const genderValue = value === t('clinicalSession.male') ? 'male' :
-                                            value === t('clinicalSession.female') ? 'female' :
-                                            value;
-                          setGender(genderValue);
-                        }}
-                        options={genderOptions}
-                        disabled={hasGenderRestriction}
-                      />
-
-                      <CustomSelect
-                        label={`${t('clinicalSession.patientResponseLanguage')} *`}
-                        id="patient-response-language"
-                        placeholder={t('clinicalSession.selectPatientResponseLanguage')}
-                        value={
-                          patientResponseLanguage === 'en'
-                            ? t('clinicalSession.english')
-                            : patientResponseLanguage === 'es'
-                              ? t('clinicalSession.spanish')
-                              : ''
-                        }
-                        onChange={(value) => {
-                          setPatientResponseLanguage(
-                            value === t('clinicalSession.spanish') ? 'es' : 'en',
-                          );
-                        }}
-                        options={[
-                          t('clinicalSession.english'),
-                          t('clinicalSession.spanish'),
-                        ]}
-                      />
-
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            <ActionButtons onCancel={onCancel} onStartSession={onStartSession} isFormValid={isFormValid()} />
-          </div>
+        <div className="min-w-0">
+          <CustomSelect
+            label={t('clinicalSession.patientResponseLanguage')}
+            id={`patient-response-language-${clinicalCase.id}`}
+            placeholder={t('clinicalSession.selectPatientResponseLanguage')}
+            value={
+              patientResponseLanguage === 'en'
+                ? t('clinicalSession.english')
+                : patientResponseLanguage === 'es'
+                  ? t('clinicalSession.spanish')
+                  : ''
+            }
+            onChange={(value) => {
+              setPatientResponseLanguage(
+                value === t('clinicalSession.spanish') ? 'es' : 'en',
+              );
+            }}
+            options={[t('clinicalSession.english'), t('clinicalSession.spanish')]}
+            margin={false}
+          />
         </div>
       </div>
+
+      <ActionButtons
+        onCancel={onCancel}
+        onStartSession={onStartSession}
+        isFormValid={isFormValid}
+      />
     </div>
   );
 };

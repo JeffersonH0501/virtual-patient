@@ -52,7 +52,7 @@ export const CustomSelect: FC<CustomSelectProps> = ({
   return (
     <div className="flex flex-col">
       {label && (
-        <label htmlFor={id} className="mb-1 text-left text-black block">
+        <label htmlFor={id} className="mb-3 block text-left text-sm text-black">
           {label}
         </label>
       )}

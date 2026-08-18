@@ -25,6 +25,43 @@ Azure OpenAI uses the standard SDK against the v1 API. The application appends
 STT, TTS, and embedding values are deployment names from the same Azure
 resource.
 
+Speech behavior is selected independently from Azure credentials. The backend
+uses `SPEECH_TTS_PROVIDER=azure_openai` for patient audio and keeps server STT
+disabled by default. The active interview input is
+`VITE_SPEECH_INPUT_PROVIDER=browser`, which uses the browser speech-recognition
+implementation behind a replaceable UI provider contract. Depending on the
+browser, recognition may be processed by an external browser-vendor service.
+Transient service-network failures use bounded exponential reconnect attempts;
+permission and missing-device failures leave the written input available.
+
+Virtual-patient personality is split between semantic behavior and vocal
+delivery. Agent prompts determine what the patient says. A provider-neutral
+vocal-style policy determines pace, pause frequency, energy, intonation,
+hesitation, and configured delivery tone. The Azure OpenAI adapter translates
+that structured profile into `gpt-4o-mini-tts` `instructions` while requiring
+the supplied transcript to remain unchanged. The policy version and synthesis
+parameters are recorded in message metadata; durable audio is reused only when
+its policy version is current.
+
+The interview screen is presented as a call and captures four private,
+continuous sources on one browser timeline: student microphone audio, student
+camera canvas, patient TTS audio, and the rendered patient canvas. Turning off
+the microphone or camera preserves silence or a disabled-camera frame instead
+of shortening the timeline. Temporary chunks use OPFS when available and fall
+back to memory; completed files are uploaded to authenticated private storage.
+
+After an interview, the recap view synchronizes the two recorded video panels
+and mixes the two audio sources locally. Seeking also updates the cumulative
+transcript. Legacy interviews and failed captures retain their full transcript
+and explicitly report that no recording is available. At finalization, the API
+can derive descriptive, per-student-turn OpenSMILE/eGeMAPSv02 observations from
+the private student-audio recording and OpenFace 3.0 observations from the
+private student-video recording. Video outputs include face-tracking validity;
+gaze and AU12 aggregates require explicit research configuration. The pause,
+gaze and AU rules are provisional processing parameters; this does not validate
+VAD, visual alignment, nod detection, non-verbal inference, or multimodal
+evaluation.
+
 ## Quick start
 
 Docker Desktop and Bash are required. On Windows, use Git Bash or WSL.

@@ -7,34 +7,29 @@ export const CustomCaseCard: FC = () => {
   const {t} = useTranslation();
   const navigate = useNavigate();
 
-  const goToCreateCase = () => {
-    navigate(ROUTES.createCase);
-  };
-
   return (
-    <div className="flex flex-col max-md:ml-0 max-md:w-full max-w-[480px] h-full">
-      <div className="flex flex-col justify-between px-9 py-9 mx-auto w-full text-black rounded-2xl border-2 border-gray-200 border-solid bg-slate-50 max-md:px-5 max-md:mt-10 max-md:max-w-full h-full">
-        <div>
-          <img
-            loading="lazy"
-            src="https://cdn.builder.io/api/v1/image/assets/589f29fdf7d24550938c20c0ba89c2a1/846357857de706c727fbd526b3e97d1b47feac04eefe9e5aa2dc34c9b050380d?apiKey=589f29fdf7d24550938c20c0ba89c2a1&"
-            className="object-contain ml-2.5 w-9 aspect-square"
-            alt=""
-          />
-          <div className="mt-4 text-xl font-bold text-left">
-            {t('clinicalCases.createCustomCase')}
-          </div>
-          <div className="mt-4 text-base font-small text-left">
-            {t('clinicalCases.createCustomCaseDescription')}
-          </div>
-        </div>
-        <button
-          className="gap-2 self-stretch px-10 py-3 mt-8 text-lg text-blue-600 bg-white rounded-xl border border-blue-600 border-solid min-h-[45px] max-md:px-5 disabled:bg-gray-200 disabled:text-gray-400 disabled:border-gray-200"
-          onClick={goToCreateCase}
-        >
-          {t('clinicalCases.createNew')}
-        </button>
+    <article className="group flex flex-col gap-4 rounded-2xl border border-dashed border-blue-300 bg-blue-50/50 p-4 text-left transition duration-200 hover:border-blue-400 hover:shadow-md sm:flex-row sm:items-center">
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-2xl font-light text-white">
+          +
       </div>
-    </div>
+      <div className="min-w-0 flex-1">
+        <h3 className="text-base font-bold text-slate-950">
+          {t('clinicalCases.createCustomCase')}
+        </h3>
+        <p className="mt-1 line-clamp-2 text-sm leading-5 text-slate-600">
+          {t('clinicalCases.createCustomCaseDescription')}
+        </p>
+      </div>
+      <button
+        type="button"
+        className="flex min-h-10 shrink-0 items-center gap-2 rounded-xl border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 transition hover:bg-blue-600 hover:text-white focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-blue-200"
+        onClick={() => navigate(ROUTES.createCase)}
+      >
+        <span>{t('clinicalCases.createNew')}</span>
+        <span aria-hidden="true" className="text-lg transition-transform group-hover:translate-x-1">
+          →
+        </span>
+      </button>
+    </article>
   );
 };

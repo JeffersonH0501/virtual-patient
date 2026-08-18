@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from datetime import timedelta
 from app.models.user import User, UserCreate, UserUpdate, UserDB, Token
+from app.models.organization import OrganizationDB
 from app.core.auth import get_current_active_user, get_password_hash, create_access_token, create_refresh_token, ACCESS_TOKEN_EXPIRE_MINUTES
 from app.core.database import get_db
 
@@ -29,6 +30,27 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
                 detail="Email already registered"
             )
     
+    organization = None
+    if user.organization_id is not None:
+        organization = db.query(OrganizationDB).filter(
+            OrganizationDB.id == user.organization_id,
+            OrganizationDB.active.is_(True),
+        ).first()
+        if organization is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Organization not found or inactive",
+            )
+    else:
+        organization = db.query(OrganizationDB).filter(
+            OrganizationDB.active.is_(True)
+        ).order_by(OrganizationDB.id).first()
+        if organization is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="No active organization is available",
+            )
+
     # Create new user
     hashed_password = get_password_hash(user.password)
     db_user = UserDB(
@@ -38,7 +60,8 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
         hashed_password=hashed_password,
         disabled=False,
         preferred_language=user.preferred_language or "en",
-        role=user.role or "student"  # Default to student if not provided
+        role=user.role or "student",  # Default to student if not provided
+        organization_id=organization.id,
     )
     
     db.add(db_user)
@@ -108,4 +131,4 @@ async def update_user_me(
     db.commit()
     db.refresh(db_user)
     
-    return db_user 
+    return db_user

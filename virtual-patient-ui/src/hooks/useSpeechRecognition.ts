@@ -71,14 +71,6 @@ interface UseSpeechRecognitionReturn {
   error: string | null;
 }
 
-// Extend Window interface to include webkitSpeechRecognition
-declare global {
-  interface Window {
-    SpeechRecognition: any;
-    webkitSpeechRecognition: any;
-  }
-}
-
 export const useSpeechRecognition = ({
   onTranscript,
   language = 'en-US',
@@ -98,8 +90,10 @@ export const useSpeechRecognition = ({
   }, [onTranscript]);
 
   // Check if browser supports speech recognition
-  const isSupported =
-    typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+  const isSupported = Boolean(
+    typeof window !== 'undefined' &&
+      (window.SpeechRecognition || window.webkitSpeechRecognition),
+  );
 
   useEffect(() => {
     if (!isSupported) {
@@ -109,6 +103,7 @@ export const useSpeechRecognition = ({
 
     // Initialize speech recognition
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
     const recognition = new SpeechRecognition();
 
     recognition.lang = language;

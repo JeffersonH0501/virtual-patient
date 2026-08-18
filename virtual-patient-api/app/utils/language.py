@@ -8,6 +8,18 @@ from typing import Any
 PATIENT_RESPONSE_LANGUAGE_KEY = "patient_response_language"
 SUPPORTED_LANGUAGE_CODES = ("en", "es")
 
+
+def resolve_ui_language(
+    requested_language: str | None,
+    preferred_language: str | None = None,
+) -> str:
+    """Resolve a supported interface language with a stable English fallback."""
+    if requested_language in SUPPORTED_LANGUAGE_CODES:
+        return requested_language
+    if preferred_language in SUPPORTED_LANGUAGE_CODES:
+        return preferred_language
+    return "en"
+
 def convert_language_code_to_name(language_code: str) -> str:
     """
     Convert language code to full language name

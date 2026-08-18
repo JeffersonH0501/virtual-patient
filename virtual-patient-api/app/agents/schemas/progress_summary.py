@@ -43,6 +43,8 @@ class MedicalHistorySchema(BaseModel):
     """Schema for individual medical history event"""
     type: str = Field(..., description="Type of medical history event (e.g., 'surgery', 'accident', 'hospitalization', 'procedure', 'injury', etc.)")
     date: Optional[str] = Field(None, description="When the event occurred (approximate time, a year ago, 2 years ago, etc.)")
+    description: Optional[str] = Field(None, description="Description of the medical history event")
+    outcome: Optional[str] = Field(None, description="Outcome or current consequence of the event")
  
 class ProgressSummarySchema(BaseModel):
     """Schema for medical interview progress summary"""

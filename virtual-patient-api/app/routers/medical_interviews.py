@@ -1,5 +1,6 @@
-from typing import List, Dict, Any, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+import logging
+from typing import List, Dict, Any, Literal, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -19,8 +20,12 @@ from app.agents.evaluation_agent import EvaluationAgent
 from app.agents.schemas import EvaluationResult
 from app.utils.language import (
     convert_language_code_to_name,
+    resolve_ui_language,
     with_patient_response_language,
 )
+from app.media.storage import get_media_storage
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/medical-interviews", 
@@ -35,6 +40,10 @@ class CompleteInterviewResponse(BaseModel):
     interview: MedicalInterview
     evaluation_results: List[EvaluationResult]
 
+
+class CompleteInterviewRequest(BaseModel):
+    completion_reason: Literal["user_completed", "duration_limit_exceeded"] = "user_completed"
+
 def translate_interview_personality(interview_dict: Dict[str, Any], user_language: str) -> None:
     """Helper to translate personality name in interview dict"""
     if interview_dict.get('personality'):
@@ -42,6 +51,23 @@ def translate_interview_personality(interview_dict: Dict[str, Any], user_languag
             interview_dict['personality'], 
             user_language
         )
+
+
+def localize_interview_content(
+    interview_dict: Dict[str, Any],
+    language: str,
+) -> None:
+    """Localize visible interview metadata without changing patient speech language."""
+    translate_interview_personality(interview_dict, language)
+    clinical_case = interview_dict.get("clinical_case")
+    if not clinical_case or language == "en":
+        return
+
+    for field_name in ("title", "description"):
+        translations = clinical_case.get(f"{field_name}_translations") or {}
+        translated_value = translations.get(language)
+        if translated_value:
+            clinical_case[field_name] = translated_value
 
 @router.post("", response_model=InterviewResponse, status_code=status.HTTP_201_CREATED)
 async def create_interview(
@@ -85,6 +111,7 @@ async def create_interview(
 @router.get("/{interview_id}", response_model=MedicalInterviewComplete)
 async def get_interview(
     interview_id: int,
+    language: Optional[Literal["en", "es"]] = Query(default=None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -123,15 +150,15 @@ async def get_interview(
     interview_dict = interview.model_dump() if hasattr(interview, 'model_dump') else interview.dict()
     interview_dict['isOwner'] = interview_dict.get('user_id') == current_user.id
     
-    # Translate personality name based on user's preferred language
-    user_language = current_user.preferred_language or "en"
-    translate_interview_personality(interview_dict, user_language)
+    interface_language = resolve_ui_language(language, current_user.preferred_language)
+    localize_interview_content(interview_dict, interface_language)
     
     return interview_dict
 
 @router.get("/{interview_id}/complete", response_model=MedicalInterviewComplete)
 async def get_interview_complete(
     interview_id: str,
+    language: Optional[Literal["en", "es"]] = Query(default=None),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -162,9 +189,8 @@ async def get_interview_complete(
     interview_dict = interview.model_dump() if hasattr(interview, 'model_dump') else interview.dict()
     interview_dict['isOwner'] = interview_dict.get('user_id') == current_user.id
     
-    # Translate personality name based on user's preferred language
-    user_language = current_user.preferred_language or "en"
-    translate_interview_personality(interview_dict, user_language)
+    interface_language = resolve_ui_language(language, current_user.preferred_language)
+    localize_interview_content(interview_dict, interface_language)
     
     return interview_dict
 
@@ -271,6 +297,7 @@ async def update_interview(
 @router.post("/{interview_id}/complete", response_model=CompleteInterviewResponse)
 async def complete_interview(
     interview_id: str,
+    completion_data: CompleteInterviewRequest | None = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
@@ -293,6 +320,23 @@ async def complete_interview(
     print(f"Interview ID: {interview_id}")    
     
     try:
+        completion_reason = (
+            completion_data.completion_reason
+            if completion_data is not None
+            else "user_completed"
+        )
+        interview_record = db.query(MedicalInterviewDB).filter(
+            MedicalInterviewDB.id == interview_id
+        ).first()
+        if interview_record:
+            metadata = dict(interview_record.interview_metadata or {})
+            metadata["completion_reason"] = completion_reason
+            if completion_reason == "duration_limit_exceeded":
+                metadata["hypotheses_status"] = "not_consolidated_duration_limit"
+                metadata["duration_limit_seconds"] = 3600
+            interview_record.interview_metadata = metadata
+            db.commit()
+
         # Complete the interview
         interview = interview_controller.complete_interview(interview_id)
         if not interview:
@@ -405,29 +449,43 @@ async def delete_interview(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """
-    Delete an interview (soft delete by marking as abandoned).
-    
-    - **interview_id**: Unique identifier for the interview
-    
-    This is a soft delete that marks the interview as abandoned.
-    """
-    service = MedicalInterviewController(db)
-    
-    # Validate access
-    if not service.validate_interview_access(interview_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this interview"
-        )
-    
-    interview = service.abandon_interview(interview_id)
+    """Permanently delete an owned interview and its private media."""
+    interview = db.query(MedicalInterviewDB).filter(
+        MedicalInterviewDB.id == interview_id,
+        MedicalInterviewDB.user_id == current_user.id,
+    ).first()
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found"
+            detail="Interview not found",
         )
-    
+
+    numeric_interview_id = interview.id
+    try:
+        # This summary references the last message independently of its interview
+        # relationship, so it must be removed before cascading message deletion.
+        if interview.progress_summary is not None:
+            interview.progress_summary = None
+            db.flush()
+        db.delete(interview)
+        db.flush()
+        get_media_storage().delete_interview(numeric_interview_id)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to permanently delete interview",
+            extra={"interview_id": numeric_interview_id, "user_id": current_user.id},
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Interview deletion failed",
+        )
+
+    logger.info(
+        "Interview permanently deleted",
+        extra={"interview_id": numeric_interview_id, "user_id": current_user.id},
+    )
     return None
 
 

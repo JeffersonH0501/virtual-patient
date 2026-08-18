@@ -7,6 +7,22 @@ export type Message = {
     isNew?: boolean;
     sessionId?: string;
     threadId?: string;
+    speechSynthesis?: {
+      voice: string;
+      stylePolicyVersion?: string;
+      vocalStyle?: {
+        profileKey: string;
+        speakingRate: string;
+        pauseFrequency: string;
+        energy: string;
+        intonationVariation: string;
+        hesitationFrequency: string;
+        deliveryTone: string;
+      };
+      provider?: string;
+      model?: string;
+      instructions?: string;
+    };
   };
   interviewId: number;
   senderName?: string;

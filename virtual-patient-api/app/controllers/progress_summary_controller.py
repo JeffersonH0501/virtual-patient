@@ -22,18 +22,47 @@ class ProgressSummaryController:
             ProgressSummaryDB.medical_interview_id == interview_id
         ).first()
         
-        return ProgressSummary.from_orm(summary) if summary else None
+        return ProgressSummary.model_validate(summary) if summary else None
+
+    def get_progress_summary_record(
+        self,
+        interview_id: int,
+    ) -> Optional[ProgressSummaryDB]:
+        """Return the mutable database record for internal summary operations."""
+        return self.db.query(ProgressSummaryDB).filter(
+            ProgressSummaryDB.medical_interview_id == interview_id
+        ).first()
+
+    @staticmethod
+    def to_schema(summary: ProgressSummary | ProgressSummaryDB) -> ProgressSummarySchema:
+        """Convert every persisted clinical field to the agent summary schema."""
+        return ProgressSummarySchema(
+            age=summary.age,
+            weight_in_kg=summary.weight_in_kg,
+            current_symptoms=summary.current_symptoms,
+            allergies=summary.allergies,
+            medications=summary.medications,
+            diet_information=summary.diet_information,
+            current_illnesses=summary.current_illnesses,
+            family_history=summary.family_history,
+            habits=summary.habits,
+            medical_history=summary.medical_history,
+            work_information=summary.work_information,
+            summary_text=summary.summary_text,
+        )
     
     def create_progress_summary(
         self, 
         interview_id: int, 
         summary_data: ProgressSummarySchema,
-        message_id: Optional[int] = None
+        message_id: Optional[int] = None,
+        source_language: str = "en",
+        localized_versions: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> ProgressSummary:
         """Create a new progress summary for an interview"""
         try:
             # Convert Pydantic schema to dict for database storage
-            summary_dict = summary_data.dict()
+            summary_dict = summary_data.model_dump()
             
             # Create database model
             db_summary = ProgressSummaryDB(
@@ -50,6 +79,8 @@ class ProgressSummaryController:
                 medical_history=summary_dict.get('medical_history'),
                 work_information=summary_dict.get('work_information'),
                 summary_text=summary_dict.get('summary_text'),
+                source_language=source_language,
+                localized_versions=localized_versions or {},
                 last_updated_message_id=message_id,
                 update_count=1,
                 confidence_score=0.8  # Default confidence score
@@ -59,7 +90,7 @@ class ProgressSummaryController:
             self.db.commit()
             self.db.refresh(db_summary)
             
-            return ProgressSummary.from_orm(db_summary)
+            return ProgressSummary.model_validate(db_summary)
             
         except IntegrityError:
             self.db.rollback()
@@ -69,7 +100,9 @@ class ProgressSummaryController:
         self, 
         interview_id: int, 
         summary_data: ProgressSummarySchema,
-        message_id: Optional[int] = None
+        message_id: Optional[int] = None,
+        source_language: str = "en",
+        localized_versions: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> ProgressSummary:
         """Update an existing progress summary for an interview"""
         # Get existing summary
@@ -79,10 +112,16 @@ class ProgressSummaryController:
         
         if not db_summary:
             # Create new summary if it doesn't exist
-            return self.create_progress_summary(interview_id, summary_data, message_id)
+            return self.create_progress_summary(
+                interview_id,
+                summary_data,
+                message_id,
+                source_language,
+                localized_versions,
+            )
         
         # Convert Pydantic schema to dict for database storage
-        summary_dict = summary_data.dict()
+        summary_dict = summary_data.model_dump()
         
         # Update fields
         db_summary.age = summary_dict.get('age')
@@ -97,6 +136,8 @@ class ProgressSummaryController:
         db_summary.medical_history = summary_dict.get('medical_history')
         db_summary.work_information = summary_dict.get('work_information')
         db_summary.summary_text = summary_dict.get('summary_text')
+        db_summary.source_language = source_language
+        db_summary.localized_versions = localized_versions or {}
         db_summary.last_updated_message_id = message_id
         db_summary.update_count += 1
         #db_summary.updated_at = datetime.now(timezone.utc)
@@ -104,7 +145,25 @@ class ProgressSummaryController:
         self.db.commit()
         self.db.refresh(db_summary)
         
-        return ProgressSummary.from_orm(db_summary)
+        return ProgressSummary.model_validate(db_summary)
+
+    def cache_localized_summary(
+        self,
+        interview_id: int,
+        language: str,
+        summary_data: ProgressSummarySchema,
+    ) -> ProgressSummary:
+        """Persist one translated summary without changing the canonical fields."""
+        db_summary = self.get_progress_summary_record(interview_id)
+        if not db_summary:
+            raise ValueError(f"Progress summary not found for interview {interview_id}")
+
+        localized_versions = dict(db_summary.localized_versions or {})
+        localized_versions[language] = summary_data.model_dump()
+        db_summary.localized_versions = localized_versions
+        self.db.commit()
+        self.db.refresh(db_summary)
+        return ProgressSummary.model_validate(db_summary)
     
     def delete_progress_summary(self, interview_id: int) -> bool:
         """Delete the progress summary for an interview"""

@@ -6,6 +6,7 @@ export * from './message';
 export * from './patient';
 export * from './personality';
 export * from './progress';
+export * from './recording';
 export * from './sessionNote';
 export * from './teacherFeedback';
 export * from './user';

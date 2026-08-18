@@ -33,7 +33,7 @@ export const ChatDetail = () => {
   return (
     <main className="flex gap-8 p-4 min-h-screen bg-gray-100 max-md:flex-col max-sm:p-4 justify-center w-full">
       <aside className="flex flex-col gap-8 w-80 max-md:w-full">
-        <PatientProfile patient={initialPatient} interviewId={0} />
+        <PatientProfile patient={initialPatient} />
         <NotesCard />
         <HypothesesCard hypotheses={hypotheses} />
       </aside>

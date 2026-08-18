@@ -31,6 +31,56 @@ uses placeholders so services that do not invoke AI can still start. The
 application initially uses the mini LLM, while both chat deployments remain
 configured for explicit selection and validation.
 
+Speech provider switches are separate from deployment names:
+
+```bash
+SPEECH_TTS_PROVIDER=azure_openai
+SPEECH_STT_PROVIDER=disabled
+VITE_SPEECH_INPUT_PROVIDER=browser
+```
+
+The browser provider is the active provisional student STT path. The server
+also exposes an authenticated provider-neutral transcription endpoint, but it
+returns `503` while `SPEECH_STT_PROVIDER=disabled`. Set it to `azure_openai`
+only when the configured deployment is ready to receive application audio.
+Browser speech recognition may use an external service operated by the browser
+vendor and must not be treated as local or private speech processing.
+Patient TTS can be streamed through the authenticated message speech endpoint,
+so local playback does not require GCS. When GCS is configured, generated URLs
+remain supported as optional durable audio artifacts.
+
+Patient TTS uses a versioned, provider-neutral vocal-style profile. Azure
+OpenAI maps the profile to `gpt-4o-mini-tts` `instructions`; other providers
+can implement the same contract with their own controls. The profile affects
+delivery only and must not add or rewrite transcript words. Stored audio paths
+and message metadata include the policy version, and the authenticated endpoint
+redirects to durable audio only when that version matches the active policy.
+
+Interview recording uses a private filesystem provider and a persistent Docker
+volume. Configure it with:
+
+```bash
+MEDIA_STORAGE_ROOT=/app/media
+MEDIA_RETENTION_DAYS=
+MEDIA_CONSENT_POLICY_VERSION=institutional-v1
+MEDIA_DURATION_TOLERANCE_MS=500
+MEDIA_MIN_FREE_BYTES=268435456
+```
+
+`MEDIA_RETENTION_DAYS` records an optional expiry timestamp; this release does
+not delete expired files automatically. Nginx streams uploads without request
+buffering and does not expose the media directory as public static content.
+Playback is authorized by the API and supports HTTP Range requests.
+
+During an interview, four continuous sources share one browser clock:
+`student_audio`, `student_video`, `patient_audio`, and `patient_video`. Student
+video is a 1280x720 canvas representation of the camera feed, while patient
+video is a rendered virtual-patient panel rather than a physical camera signal.
+Patient audio is generated TTS, and student audio is captured from the
+microphone independently of browser speech recognition. OPFS is used for
+temporary chunks when supported, with an in-memory fallback. The transcript
+remains usable when capture or upload fails.
+
 Common commands:
 
 ```bash

@@ -11,7 +11,9 @@ from .medical_interview import (
     ProgressSummaryDB, ProgressSummary, ProgressSummaryCreate, ProgressSummaryUpdate,
     MedicalInterviewWithMessages, MedicalInterviewWithHypotheses, MedicalInterviewWithNotes,
     MedicalInterviewWithSummary, MedicalInterviewComplete,
-    InterviewStatus, SenderType, NoteType
+    InterviewStatus, SenderType, NoteType,
+    InterviewRecordingDB, InterviewMediaAssetDB, InterviewTurnDB,
+    RecordingStatus, MediaAssetKind
 )
 
 __all__ = [
@@ -27,5 +29,7 @@ __all__ = [
     "ProgressSummaryDB", "ProgressSummary", "ProgressSummaryCreate", "ProgressSummaryUpdate",
     "MedicalInterviewWithMessages", "MedicalInterviewWithHypotheses", "MedicalInterviewWithNotes",
     "MedicalInterviewWithSummary", "MedicalInterviewComplete",
-    "InterviewStatus", "SenderType", "NoteType"
+    "InterviewStatus", "SenderType", "NoteType",
+    "InterviewRecordingDB", "InterviewMediaAssetDB", "InterviewTurnDB",
+    "RecordingStatus", "MediaAssetKind"
 ]

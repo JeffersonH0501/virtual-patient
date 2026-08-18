@@ -18,6 +18,7 @@ export const ClinicalCases: FC = () => {
   const [customCases, setCustomCases] = useState<ClinicalCaseSimplified[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [expandedCaseId, setExpandedCaseId] = useState<number | null>(null);
 
   const fetchCases = async () => {
     try {
@@ -60,22 +61,58 @@ export const ClinicalCases: FC = () => {
     );
   }
 
+  const availableCaseCount = defaultCases.length + customCases.length;
+
   return (
-    <>
-      <p className="mt-4 text-xl font-medium text-black max-md:max-w-full">
-        {user?.role === 'student' ? t('clinicalCases.selectCaseToBegin') : t('clinicalCases.selectOrCreate')}
-      </p>
-      <div className="self-stretch mt-10 max-md:mt-10 max-md:max-w-full">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10 items-stretch">
+    <section className="mx-auto w-full max-w-[900px] overflow-x-clip text-left">
+      <div className="flex flex-col items-start gap-3 border-b border-slate-200 pb-4 sm:mt-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+            {t('clinicalCases.caseLibrary')}
+          </p>
+          <h2 className="mt-1 text-xl font-semibold leading-7 tracking-tight text-slate-900 md:text-2xl">
+            {user?.role === 'student'
+              ? t('clinicalCases.selectCaseToBegin')
+              : t('clinicalCases.selectOrCreate')}
+          </h2>
+        </div>
+        <div className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-medium text-slate-500">
+          {t('clinicalCases.availableCount', {count: availableCaseCount})}
+        </div>
+      </div>
+      <div className="mt-4 w-full min-w-0 self-stretch sm:mt-5">
+        <div className="flex min-w-0 flex-col gap-3">
           {defaultCases.map((caseData, index) => (
-            <CaseCard key={caseData.id} type="Default" clinicalCase={caseData} caseIndex={index + 1} />
+            <CaseCard
+              key={caseData.id}
+              type="Default"
+              clinicalCase={caseData}
+              caseIndex={index + 1}
+              expanded={expandedCaseId === caseData.id}
+              onToggle={() =>
+                setExpandedCaseId((currentId) =>
+                  currentId === caseData.id ? null : caseData.id,
+                )
+              }
+            />
           ))}
           {customCases.map((caseData, index) => (
-            <CaseCard key={caseData.id} type="Custom" clinicalCase={caseData} caseIndex={defaultCases.length + index + 1} />
+            <CaseCard
+              key={caseData.id}
+              type="Custom"
+              clinicalCase={caseData}
+              caseIndex={defaultCases.length + index + 1}
+              expanded={expandedCaseId === caseData.id}
+              onToggle={() =>
+                setExpandedCaseId((currentId) =>
+                  currentId === caseData.id ? null : caseData.id,
+                )
+              }
+            />
           ))}
           {(user?.role === 'teacher' || user?.role === 'superuser') && <CustomCaseCard />}
         </div>
       </div>
-    </>
+    </section>
   );
 };

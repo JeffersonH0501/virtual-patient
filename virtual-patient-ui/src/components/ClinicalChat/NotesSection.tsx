@@ -13,10 +13,10 @@ type NotesSectionProps = {
 
 export const NotesSection: FC<NotesSectionProps> = ({title, placeholder, value, onChange, onBlur, disabled = false, description}) => {
   return (
-    <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
-      <h3 className="mb-4 text-base text-gray-600 font-bold text-left">{title}</h3>
+    <section className="rounded-xl bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+      <h3 className="mb-3 text-left text-base font-bold text-gray-600">{title}</h3>
       {description && (
-        <p className="mb-4 text-sm text-gray-500 text-left">{description}</p>
+        <p className="mb-3 text-left text-sm text-gray-500">{description}</p>
       )}
       <FormInput
         label=""
@@ -28,8 +28,8 @@ export const NotesSection: FC<NotesSectionProps> = ({title, placeholder, value, 
         onBlur={onBlur}
         margin={false}
         disabled={disabled}
-        rows={9}
-        resizable={true}
+        rows={7}
+        resizable={false}
       />
     </section>
   );

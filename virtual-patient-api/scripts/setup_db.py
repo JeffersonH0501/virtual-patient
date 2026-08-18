@@ -16,6 +16,7 @@ from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.core.langgraph_schema import ensure_langgraph_schema  # noqa: E402
 import app.models  # noqa: E402,F401 - register all model metadata
 from app.models.clinical_case import CaseType, ClinicalCaseDB  # noqa: E402
+from app.models.organization import OrganizationDB  # noqa: E402
 from app.models.personality import PersonalityDB  # noqa: E402
 from scripts.seed_clinical_cases import seed_clinical_cases  # noqa: E402
 from scripts.seed_personalities import main as seed_personalities  # noqa: E402
@@ -59,6 +60,28 @@ def count_rows(model: type) -> int:
         return len(session.scalars(select(model.id)).all())
 
 
+def ensure_default_organization() -> None:
+    """Ensure user creation always has an active organization on blank schemas."""
+    with SessionLocal() as session:
+        organization = session.scalars(
+            select(OrganizationDB)
+            .where(OrganizationDB.active.is_(True))
+            .order_by(OrganizationDB.id)
+        ).first()
+        if organization is not None:
+            print(f"Keeping active organization {organization.id}: {organization.name}")
+            return
+        session.add(
+            OrganizationDB(
+                name="Default Medical Organization",
+                description="Default organization for local and initial deployments",
+                active=True,
+            )
+        )
+        session.commit()
+        print("Created the default active organization")
+
+
 def seed_empty_reference_tables() -> None:
     with SessionLocal() as session:
         default_case_count = len(
@@ -97,6 +120,7 @@ def main() -> None:
     args = parse_args()
     print(ensure_schema())
     print(ensure_langgraph_schema())
+    ensure_default_organization()
     if not args.skip_seed:
         seed_empty_reference_tables()
     print(f"Clinical cases: {count_rows(ClinicalCaseDB)}")

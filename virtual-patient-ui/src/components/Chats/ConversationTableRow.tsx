@@ -19,6 +19,7 @@ type TableRowProps = {
   };
   clinicalCase: ClinicalCaseSimplified;
   personality?: Personality | null;
+  onDelete: (id: number) => void;
 };
 
 export const ConversationTableRow: FC<TableRowProps> = ({
@@ -31,6 +32,7 @@ export const ConversationTableRow: FC<TableRowProps> = ({
   feedback,
   clinicalCase,
   personality,
+  onDelete,
 }) => {
   const navigate = useNavigate();
   const {t} = useTranslation();
@@ -60,7 +62,7 @@ export const ConversationTableRow: FC<TableRowProps> = ({
           #{id}
         </span>
       </td>
-      
+
       <td className="flex-[1.5] px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
         {new Date(createdAt).toLocaleString(undefined, {
           year: 'numeric',
@@ -91,6 +93,22 @@ export const ConversationTableRow: FC<TableRowProps> = ({
       </td>
       <td className="flex flex-1 items-center px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
         <Badge variant="blue">{feedback?.label || t('common.noFeedback')}</Badge>
+      </td>
+      <td className="flex flex-[0.6] items-center justify-center px-3 py-0">
+        <button
+          type="button"
+          onClick={(event) => {
+            event.stopPropagation();
+            onDelete(Number(id));
+          }}
+          className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-50 text-rose-600 transition-colors hover:bg-rose-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rose-600"
+          aria-label={t('conversations.deleteInterview')}
+          title={t('conversations.deleteInterview')}
+        >
+          <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </button>
       </td>
     </tr>
   );

@@ -9,25 +9,27 @@ type ActionButtonsProps = {
 
 export const ActionButtons: FC<ActionButtonsProps> = ({onCancel, onStartSession, isFormValid}) => {
   const {t} = useTranslation();
-  
+
   return (
-    <div className="flex flex-wrap gap-7 self-end pl-20 mt-3 text-base text-center max-md:pl-5">
+    <div className="mt-4 grid grid-cols-2 gap-2 border-t border-slate-200 pt-4 text-sm sm:flex sm:flex-wrap sm:justify-end">
       <button
+        type="button"
         onClick={onCancel}
-        className="px-4 pt-3 pb-4 text-black whitespace-nowrap hover:bg-gray-100 transition-colors duration-200"
+        className="w-full rounded-lg px-3 py-2 text-slate-600 transition-colors hover:bg-slate-100 sm:w-auto sm:px-4"
       >
         {t('clinicalSession.cancel')}
       </button>
       <button
+        type="button"
         onClick={onStartSession}
         disabled={!isFormValid}
-        className={`flex gap-1 px-5 py-3 text-white rounded-lg max-md:pl-5 transition-colors duration-200 ${
-          isFormValid 
-            ? 'bg-blue-600 hover:bg-blue-700 cursor-pointer' 
+        className={`w-full rounded-lg px-3 py-2 font-semibold text-white transition-colors sm:w-auto sm:px-5 ${
+          isFormValid
+            ? 'cursor-pointer bg-blue-600 hover:bg-blue-700'
             : 'bg-gray-400 cursor-not-allowed'
         }`}
       >
-        <span className="grow">{t('clinicalSession.startSession')}</span>
+        {t('clinicalSession.startSession')}
       </button>
     </div>
   );

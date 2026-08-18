@@ -9,9 +9,9 @@ def get_thread_extractor_instructions() -> str:
 
 ## Instructions
 - Extract and store information from the conversation into the appropriate fields
+- Write every free-text and structured text value in English so the persisted summary has one canonical language
 - Leave fields empty if information has not been provided yet
 - Check existing summary and update it with new information
 - Always return a complete ProgressSummarySchema object
 
 Extract and store the latest information from the conversation thread, updating any existing summary with new details."""
-

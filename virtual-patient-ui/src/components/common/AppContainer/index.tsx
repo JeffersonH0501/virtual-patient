@@ -1,25 +1,48 @@
-import {Outlet} from 'react-router-dom';
+import {useEffect, useState} from 'react';
+import {Outlet, useLocation} from 'react-router-dom';
 import {Header} from '../Header';
 import {Footer} from '../Footer';
 import {TokenExpiredScreen} from '../../TokenExpiredScreen';
 import {useAuthError} from '../../../hooks/useAuthError';
+import {ROUTES} from '../../../utils/routes';
+
+export type AppContainerOutletContext = {
+  setClinicalSimulationActive: (active: boolean) => void;
+};
 
 export const AppContainer = () => {
   const { isTokenExpired } = useAuthError();
+  const {pathname} = useLocation();
+  const isClinicalChat = pathname.startsWith(`${ROUTES.clinicalChat}/`);
+  const [clinicalSimulationActive, setClinicalSimulationActive] = useState(false);
+
+  useEffect(() => {
+    if (!isClinicalChat) setClinicalSimulationActive(false);
+  }, [isClinicalChat]);
 
   if (isTokenExpired) {
     return <TokenExpiredScreen />;
   }
 
   return (
-    <div className="flex flex-col min-h-screen pt-16 w-full bg-neutral-100">
-      <Header />
-      <main className="flex flex-col overflow-auto px-20 pt-10 w-screen h-[100%] items-center flex-1 mb-8">
-        <div className="flex flex-col items-start w-full h-full">
-          <Outlet />
+    <div
+      className={`flex w-full min-w-0 flex-col overflow-hidden bg-neutral-100 ${
+        isClinicalChat ? 'h-dvh' : 'min-h-screen'
+      }`}
+    >
+      <Header clinicalSimulationActive={clinicalSimulationActive} />
+      <main
+        className={`flex w-full min-w-0 flex-1 flex-col items-center ${
+          isClinicalChat
+            ? 'min-h-0 overflow-hidden px-3 py-3 sm:px-4 lg:px-6 lg:py-4'
+            : 'mb-6 px-4 py-6 sm:px-6 md:py-8 lg:px-20 lg:pt-10'
+        }`}
+      >
+        <div className="flex h-full min-h-0 w-full min-w-0 flex-col items-start">
+          <Outlet context={{setClinicalSimulationActive}} />
         </div>
       </main>
-      <Footer />
+      {!isClinicalChat && <Footer />}
     </div>
   );
 };

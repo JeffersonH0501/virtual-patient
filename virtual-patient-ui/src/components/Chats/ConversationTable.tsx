@@ -1,10 +1,11 @@
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {FormInput} from '../common';
+import {FormInput, Modal} from '../common';
 import {TableHeader} from '../common/Table/TableHeader';
 import {getInterviews} from '../../services/interviews/getInterviews';
 import {ConversationTableRow} from './ConversationTableRow';
 import {InterviewListItem} from '../../types/interview';
+import {deleteInterview} from '../../services/interviews';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -15,6 +16,9 @@ export const ConversationTable = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
   const [hasMore, setHasMore] = useState(true);
+  const [interviewToDelete, setInterviewToDelete] = useState<number | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const COLUMN_HEADERS = [
     'ID',
@@ -25,7 +29,28 @@ export const ConversationTable = () => {
     t('conversations.status'),
     t('conversations.score'),
     t('conversations.feedback'),
+    t('conversations.action'),
   ] as const;
+
+  const confirmDelete = async () => {
+    if (interviewToDelete === null || isDeleting) return;
+    setIsDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteInterview(interviewToDelete);
+      setInterviewToDelete(null);
+      if (interviews.length === 1 && currentPage > 1) {
+        setCurrentPage((page) => page - 1);
+      } else {
+        await fetchInterviews(currentPage);
+      }
+    } catch (error) {
+      console.error('Failed to delete interview:', error);
+      setDeleteError(t('conversations.deleteFailed'));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   const fetchInterviews = async (page: number) => {
     try {
@@ -73,13 +98,13 @@ export const ConversationTable = () => {
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     {t('common.loading')}
                   </td>
                 </tr>
               ) : interviews.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
                     {t('conversations.noConversations')}
                   </td>
                 </tr>
@@ -95,6 +120,10 @@ export const ConversationTable = () => {
                     clinicalCase={interview.clinicalCase}
                     score={interview.evaluationScore?.toString()}
                     personality={interview.personality}
+                    onDelete={(id) => {
+                      setDeleteError(null);
+                      setInterviewToDelete(id);
+                    }}
                   />
                 ))
               )}
@@ -129,6 +158,44 @@ export const ConversationTable = () => {
           </button>
         </div>
       </div>
+      <Modal
+        open={interviewToDelete !== null}
+        closeAction={() => {
+          if (!isDeleting) setInterviewToDelete(null);
+        }}
+        closeOnOutsideClick={!isDeleting}
+        size="small"
+      >
+        <div className="p-6">
+          <h2 className="text-xl font-semibold text-slate-900">
+            {t('conversations.deleteInterviewTitle')}
+          </h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            {t('conversations.deleteInterviewDescription')}
+          </p>
+          {deleteError && (
+            <p role="alert" className="mt-3 text-sm text-red-600">{deleteError}</p>
+          )}
+          <div className="mt-6 flex justify-end gap-3">
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => setInterviewToDelete(null)}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              type="button"
+              disabled={isDeleting}
+              onClick={() => void confirmDelete()}
+              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              {isDeleting ? t('conversations.deletingInterview') : t('common.delete')}
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

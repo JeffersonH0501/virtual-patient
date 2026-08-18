@@ -4,7 +4,7 @@ import {useTranslation} from 'react-i18next';
 export const Footer: FC = () => {
   const {t} = useTranslation();
   return (
-    <footer className="w-full bg-white border-t border-solid py-4 flex flex-col items-center justify-center border-t-1 border-solid border-t-gray-200">
+    <footer className="flex w-full min-w-0 flex-col items-center justify-center border-t border-solid border-t-gray-200 bg-white px-4 py-4 text-center">
       <p
         className="text-sm leading-4 text-gray-500 max-sm:text-xs mb-2"
         style={{fontFamily: 'Arial'}}

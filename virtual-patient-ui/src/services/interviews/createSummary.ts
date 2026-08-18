@@ -3,9 +3,13 @@ import { transformToCamelCase } from '../../utils/apiTransform';
 import { API_URL } from '../../utils/request';
 import { getAuthHeaders } from '../auth/authHeaders';
 
-export const createSummary = async (interviewId: string): Promise<CreateSummaryResponse> => {
+export const createSummary = async (
+  interviewId: string,
+  language: 'en' | 'es' = 'en',
+): Promise<CreateSummaryResponse> => {
   const authHeaders = getAuthHeaders();
-  const response = await fetch(`${API_URL}/medical-interviews/${interviewId}/summary`, {
+  const query = new URLSearchParams({language});
+  const response = await fetch(`${API_URL}/medical-interviews/${interviewId}/summary?${query}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',

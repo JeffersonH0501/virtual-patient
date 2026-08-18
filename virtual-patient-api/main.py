@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers import (
     auth, users, organizations, clinical_cases, 
-    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations
+    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings
 )
 
 app = FastAPI(
@@ -127,6 +127,8 @@ app.include_router(interview_hypotheses.router, tags=["interview-hypotheses"])
 app.include_router(summary.router, tags=["summary"])
 app.include_router(personalities.router, tags=["personalities"])
 app.include_router(evaluations.router, tags=["evaluations"])
+app.include_router(speech.router, tags=["speech"])
+app.include_router(interview_recordings.router, tags=["interview-recordings"])
 
 # Health check endpoint for Docker
 @app.get("/health", tags=["health"])

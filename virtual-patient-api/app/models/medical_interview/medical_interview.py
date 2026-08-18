@@ -39,6 +39,18 @@ class MedicalInterviewDB(Base):
     progress_summary = relationship("ProgressSummaryDB", back_populates="medical_interview", uselist=False, cascade="all, delete-orphan")
     interview_evaluation = relationship("InterviewEvaluationDB", back_populates="medical_interview", uselist=False, cascade="all, delete-orphan")
     teacher_feedback = relationship("TeacherFeedbackDB", back_populates="medical_interview", cascade="all, delete-orphan")
+    recording = relationship(
+        "InterviewRecordingDB",
+        back_populates="medical_interview",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    turns = relationship(
+        "InterviewTurnDB",
+        back_populates="medical_interview",
+        cascade="all, delete-orphan",
+        order_by="InterviewTurnDB.sequence",
+    )
 
 # Pydantic Models
 class MedicalInterviewBase(BaseModel):

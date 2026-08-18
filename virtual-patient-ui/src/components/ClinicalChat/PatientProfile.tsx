@@ -2,7 +2,7 @@ import {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Patient} from '../../types';
 import {TagGroup} from './TagGroup';
-import {StatusIndicator, Button} from '../common';
+import {Button} from '../common';
 import {RefreshIcon} from '../../icons';
 import {Personality} from '../../types/personality';
 
@@ -11,12 +11,10 @@ type PatientProfileProps = {
   caseTitle?: string;
   onRefreshSummary?: () => void;
   isLoading?: boolean;
-  interviewStatus?: string;
   personality?: Personality | null;
-  interviewId: number;
 };
 
-export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onRefreshSummary, isLoading, interviewStatus, personality, interviewId}) => {
+export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onRefreshSummary, isLoading, personality}) => {
   const {t} = useTranslation();
 
   const getFieldLabel = (key: string): string => {
@@ -44,83 +42,75 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
     }
     return value;
   };
-  
+
   return (
-    <aside className="p-6 w-80 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white max-md:w-full">
-      <section className="relative text-center border-b border-solid border-b-gray-200 pb-6">
-        {onRefreshSummary && (
-          <div className="absolute top-0 right-0" title={t('clinicalChat.refreshSummary')}>
-            <Button
-              onClick={onRefreshSummary}
-              variant="ghost"
-              size="sm"
-              disabled={isLoading}
-              className="flex items-center gap-1 p-1 !bg-blue-100 hover:!bg-blue-200 !text-blue-700 !focus:outline-none !focus:ring-2 !focus:ring-blue-500 !focus:ring-offset-2 !active:ring-2 !active:ring-blue-500 !active:ring-offset-2"
-            >
-              <RefreshIcon color="#2563eb" size={14} />
-            </Button>
-          </div>
-        )}
-        <div className="relative inline-block">
-          <img
-            src={patient.avatar}
-            alt={patient.name}
-            className="block mx-auto my-0 w-32 h-32 rounded-full border-4 border-gray-100 border-solid"
-          />
-          {interviewStatus === 'completed' ? (
-            <StatusIndicator status="completed" />
-          ) : patient.online ? (
-            <StatusIndicator status="online" />
-          ) : (
-            <StatusIndicator status="offline" />
+    <div className="max-h-[70dvh] w-full min-w-0 overflow-x-hidden overflow-y-auto rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>section:not(:first-child)]:mx-4">
+      <div className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4">
+        <h2 className="py-3 text-left text-sm font-semibold text-slate-800">
+          {t('patientProfile.interviewSummary')}
+        </h2>
+          {onRefreshSummary && (
+            <div title={t('clinicalChat.refreshSummary')}>
+              <Button
+                onClick={onRefreshSummary}
+                variant="ghost"
+                size="sm"
+                disabled={isLoading}
+                className="flex items-center gap-1 p-1 !bg-blue-100 hover:!bg-blue-200 !text-blue-700 !focus:outline-none !focus:ring-2 !focus:ring-blue-500 !focus:ring-offset-2 !active:ring-2 !active:ring-blue-500 !active:ring-offset-2"
+              >
+                <RefreshIcon color="#2563eb" size={14} />
+              </Button>
+            </div>
           )}
-        </div>
-        <h2 className="mt-6 text-xl font-bold text-gray-800">{patient.name}</h2>
-        {caseTitle && (
-          <p className="mt-2 text-base text-gray-500">{caseTitle}</p>
-        )}
-        {interviewId && (
-          <p className="mt-1 text-sm text-gray-400">{t('patientProfile.interviewId')}: {interviewId}</p>
-        )}
-      </section>
-      {Object.values(patient.basicInfo).some(value => value && value !== '' && value !== 0) && (
-        <section className="pt-5 pb-4 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base font-bold text-gray-600 text-left">{t('patientProfile.basicInformation')}</h3>
-          <dl>
+      </div>
+      <section className="border-b border-solid border-gray-100 px-4 pt-5">
+        <h3 className="mb-4 text-left text-sm font-medium text-slate-600">
+          {t('patientProfile.basicInformation')}
+        </h3>
+        <dl className="space-y-2 pb-5 text-sm leading-[1.25]">
+          {caseTitle && (
+            <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+              <dt className="text-left font-normal text-gray-500">{t('patientProfile.case')}:</dt>
+              <dd className="min-w-0 break-words text-right font-normal text-gray-800">{caseTitle}</dd>
+            </div>
+          )}
+          {patient.name && (
+            <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+              <dt className="text-left font-normal text-gray-500">{t('patientProfile.name')}:</dt>
+              <dd className="min-w-0 break-words text-right font-normal text-gray-800">{patient.name}</dd>
+            </div>
+          )}
             {Object.entries(patient.basicInfo)
               .filter(([, value]) => value && value !== '' && value !== 0)
               .map(([key, value]) => (
-                <div key={key} className="flex justify-between mb-2">
-                  <dt className="text-gray-500">{getFieldLabel(key)}:</dt>
-                  <dd className="text-gray-800">{getFieldValue(key, value)}</dd>
+                <div key={key} className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+                  <dt className="text-left font-normal text-gray-500">{getFieldLabel(key)}:</dt>
+                  <dd className="min-w-0 break-words text-right font-normal text-gray-800">{getFieldValue(key, value)}</dd>
                 </div>
               ))}
-          </dl>
-        </section>
-      )}
-      {personality && (
-        <section className="pt-5 pb-4 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base font-bold text-gray-600 text-left">{t('patientProfile.personality')}</h3>
-          <div className="p-3 bg-blue-50 rounded-lg">
-            <p className="text-sm text-blue-800 font-medium">{personality.name}</p>
-          </div>
-        </section>
-      )}
+          {personality && (
+            <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+              <dt className="text-left font-normal text-gray-500">{t('patientProfile.personality')}:</dt>
+              <dd className="min-w-0 break-words text-right font-normal text-gray-800">{personality.name}</dd>
+            </div>
+          )}
+        </dl>
+      </section>
       {patient.symptoms && patient.symptoms.length > 0 && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.currentSymptoms')}</h3>
-          <TagGroup tags={patient.symptoms} />
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.currentSymptoms')}</h3>
+          <TagGroup tags={patient.symptoms} tone="warning" />
         </section>
       )}
       {patient.allergies && patient.allergies.length > 0 && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.allergies')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.allergies')}</h3>
           <TagGroup tags={patient.allergies} />
         </section>
       )}
       {patient.diet && patient.diet.trim() !== '' && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.diet')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.diet')}</h3>
           <p className="text-sm leading-relaxed text-gray-700 bg-gray-50 p-3 rounded-lg text-left">
             {patient.diet}
           </p>
@@ -128,18 +118,14 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
       )}
       {patient.illnesses && patient.illnesses.length > 0 && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.currentIllnesses')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.currentIllnesses')}</h3>
           <div className="space-y-2">
             {patient.illnesses.map((illness, index) => (
               <div key={index} className="p-3 bg-gray-50 rounded-lg">
                 <div className="flex justify-between items-start mb-2">
                   <h4 className="text-sm font-semibold text-gray-800">{illness.illness}</h4>
                   {illness.status && (
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${
-                      illness.status === 'Controlled' ? 'bg-green-100 text-green-800' : 
-                      illness.status === 'Active' ? 'bg-red-100 text-red-800' : 
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-normal text-slate-700">
                       {illness.status}
                     </span>
                   )}
@@ -177,7 +163,7 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
       )}
       {patient.medications && patient.medications.length > 0 && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.medications')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.medications')}</h3>
           <div className="space-y-2">
             {patient.medications.map((medication, index) => (
               <div key={index} className="p-3 bg-gray-50 rounded-lg">
@@ -217,7 +203,7 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
       )}
       {patient.familyHistory && patient.familyHistory.length > 0 && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.familyHistory')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.familyHistory')}</h3>
           <div className="space-y-2">
             {patient.familyHistory.map((familyMember, index) => (
               <div key={index} className="p-3 bg-gray-50 rounded-lg">
@@ -243,7 +229,7 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
       )}
       {patient.habits && patient.habits.length > 0 && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.habits')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.habits')}</h3>
           <div className="space-y-2">
             {patient.habits.map((habit, index) => (
               <div key={index} className="p-3 bg-gray-50 rounded-lg">
@@ -271,7 +257,7 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
       )}
       {patient.workInformation && patient.workInformation.trim() !== '' && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.workInformation')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.workInformation')}</h3>
           <p className="text-sm leading-relaxed text-gray-700 bg-gray-50 p-3 rounded-lg text-left">
             {patient.workInformation}
           </p>
@@ -279,7 +265,7 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
       )}
       {patient.medicalHistory && patient.medicalHistory.length > 0 && (
         <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.medicalHistory')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.medicalHistory')}</h3>
           <div className="space-y-2">
             {patient.medicalHistory.map((history, index) => (
               <div key={index} className="p-3 bg-gray-50 rounded-lg">
@@ -313,12 +299,12 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
       )}
       {patient.summary && (
         <section className="pt-5 pb-6 text-left">
-          <h3 className="mb-4 text-base text-gray-600 text-left font-bold">{t('patientProfile.summary')}</h3>
+          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.summary')}</h3>
           <p className="text-sm leading-relaxed text-gray-700 bg-gray-50 p-3 rounded-lg">
             {patient.summary}
           </p>
         </section>
       )}
-    </aside>
+    </div>
   );
 };

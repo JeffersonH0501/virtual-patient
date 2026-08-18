@@ -15,12 +15,18 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     libssl-dev \
     libffi-dev \
+    zlib1g-dev \
+    libjpeg-dev \
+    ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.11.0+cpu torchvision==0.26.0+cpu && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir --no-deps openface-test==0.1.26
 
 # Production stage
 FROM python:3.12-slim AS production
@@ -29,6 +35,8 @@ FROM python:3.12-slim AS production
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app \
+    HOME=/tmp \
+    MPLCONFIGDIR=/tmp/matplotlib \
     ENV=production
 
 # Install runtime dependencies only
@@ -38,6 +46,9 @@ RUN apt-get update && apt-get install -y \
     # Basic system libraries
     libssl3 \
     libffi8 \
+    zlib1g \
+    libjpeg62-turbo \
+    ffmpeg \
     # Additional dependencies
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \

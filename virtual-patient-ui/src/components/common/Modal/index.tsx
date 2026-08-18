@@ -5,7 +5,7 @@ import {useOnOutsideClick} from '../../../hooks/useOnOutsideClick';
 import {FC, PropsWithChildren, useState} from 'react';
 
 export type Size = 'extraSmall' | 'small' | 'medium' | 'large' | 'extraLarge';
-export type ModalSize = Extract<Size, 'small' | 'medium' | 'large'> | 'fullScreen';
+export type ModalSize = Extract<Size, 'small' | 'medium' | 'large' | 'extraLarge'> | 'fullScreen';
 
 export type ModalProps = {
   open: boolean;
@@ -25,6 +25,7 @@ const MODAL_SIZES = {
   small: {width: '448px', height: 'auto'},
   medium: {width: '480px', height: 'auto'},
   large: {width: '880px', height: '480px'},
+  extraLarge: {width: 'min(96vw, 1760px)', height: 'auto'},
   fullScreen: {width: '100%', height: '100vh'},
 };
 
@@ -50,7 +51,7 @@ export const Modal: FC<PropsWithChildren<ModalProps>> = ({
       keepAfter={keepAfter}
     >
       <div
-        className="fixed inset-0 w-screen h-screen z-10 flex items-center justify-center p-4"
+        className="fixed inset-0 z-[100] flex h-screen w-screen items-center justify-center p-4"
         style={{backgroundColor: `rgba(0, 0, 0, ${overlayOpacity})`}}
       >
         <RemoveScroll>
@@ -62,7 +63,7 @@ export const Modal: FC<PropsWithChildren<ModalProps>> = ({
             style={{
               width: MODAL_SIZES[size!].width,
               height: MODAL_SIZES[size!].height,
-              maxHeight: size === 'fullScreen' ? '100vh' : '90vh',
+              maxHeight: size === 'fullScreen' ? '100vh' : size === 'extraLarge' ? 'calc(100dvh - 64px)' : '90vh',
             }}
           >
             {children}

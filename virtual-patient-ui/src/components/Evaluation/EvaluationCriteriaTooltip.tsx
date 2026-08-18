@@ -1,4 +1,4 @@
-import { FC, useRef, useEffect, useState } from 'react';
+import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { EvaluationResult } from '../../types/evaluation';
 import { useEvaluationAspects } from '../../contexts/EvaluationAspectsContext';
@@ -20,8 +20,6 @@ export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
 }) => {
   const { t } = useTranslation();
   const { aspects, error } = useEvaluationAspects();
-  const tooltipRef = useRef<HTMLDivElement>(null);
-  const [position, setPosition] = useState<'top' | 'bottom'>('top');
 
   // Convert snake_case aspect to camelCase for API response
   const getAspectKey = (aspect: EvaluationResult['aspect']) => {
@@ -43,75 +41,6 @@ export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
     }
   };
 
-  const calculatePosition = () => {
-    const buttonElement = document.querySelector(`[data-aspect="${aspect}"] button`);
-    if (buttonElement && tooltipRef.current) {
-      const buttonRect = buttonElement.getBoundingClientRect();
-      const tooltipHeight = 600; // Estimated tooltip height
-      const viewportHeight = window.innerHeight;
-      const modalHeader = document.querySelector('[data-modal-header]');
-      
-      // Check if we can position above the modal header
-      let preferredPosition = 'top';
-      
-      if (modalHeader) {
-        const headerRect = modalHeader.getBoundingClientRect();
-        const spaceAboveHeader = headerRect.top;
-        
-        // If there's enough space above the modal header, position there
-        if (spaceAboveHeader > tooltipHeight + 20) {
-          preferredPosition = 'top';
-        } else {
-          // Check space below the button
-          const spaceBelow = viewportHeight - buttonRect.bottom;
-          const spaceAbove = buttonRect.top;
-          
-          if (spaceBelow >= tooltipHeight) {
-            preferredPosition = 'bottom';
-          } else if (spaceAbove >= tooltipHeight) {
-            preferredPosition = 'top';
-          } else {
-            // Not enough space in either direction, default to bottom
-            preferredPosition = 'bottom';
-          }
-        }
-      } else {
-        // Fallback to normal positioning logic
-        const spaceBelow = viewportHeight - buttonRect.bottom;
-        const spaceAbove = buttonRect.top;
-        
-        if (spaceBelow >= tooltipHeight) {
-          preferredPosition = 'bottom';
-        } else if (spaceAbove >= tooltipHeight) {
-          preferredPosition = 'top';
-        } else {
-          preferredPosition = 'bottom';
-        }
-      }
-      
-      setPosition(preferredPosition as 'top' | 'bottom');
-    }
-  };
-
-  useEffect(() => {
-    if (isVisible) {
-      const timeoutId = setTimeout(calculatePosition, 0);
-      
-      const handleResize = () => {
-        if (isVisible) {
-          calculatePosition();
-        }
-      };
-      
-      window.addEventListener('resize', handleResize);
-      
-      return () => {
-        clearTimeout(timeoutId);
-        window.removeEventListener('resize', handleResize);
-      };
-    }
-  }, [isVisible, aspect]);
-
   return (
     <div 
       className="relative"
@@ -125,11 +54,8 @@ export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
         <QuestionMarkIcon size={16} />
       </button>
       {isVisible && (
-        <div 
-          ref={tooltipRef}
-          className={`absolute left-1/2 transform -translate-x-1/2 z-[9999] w-[600px] bg-white border border-gray-200 rounded-lg shadow-lg p-6 ${
-            position === 'top' ? 'bottom-full mb-2' : 'top-full mt-2'
-          }`}
+        <div
+          className="fixed left-1/2 top-4 z-[110] max-h-[calc(100dvh-2rem)] w-[min(600px,calc(100vw-2rem))] -translate-x-1/2 overflow-y-auto rounded-lg border border-gray-200 bg-white p-6 text-left shadow-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         >
           <h5 className="font-semibold text-gray-800 mb-3">
             {t('evaluation.evaluationCriteria')}

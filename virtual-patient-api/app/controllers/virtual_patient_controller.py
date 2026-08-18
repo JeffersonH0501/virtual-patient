@@ -3,6 +3,7 @@ Virtual Patient Service
 Handles integration with the virtual patient workflow agent
 """
 
+import logging
 import time
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
@@ -20,6 +21,10 @@ from app.utils.language import (
     resolve_patient_response_language,
 )
 
+from app.core.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 # Initialize Azure OpenAI v1 embeddings for semantic search.
 embeddings = create_embeddings()
@@ -162,7 +167,7 @@ class VirtualPatientController:
                 - formatted_messages: All messages formatted for display
                 - processing_time: Total processing time in seconds
         """
-        start_time = time.time()
+        start_time = time.perf_counter()
         
         print(f"\n{'='*60}")
         print(f"🔄 Processing user message for interview {interview_id}")
@@ -178,11 +183,13 @@ class VirtualPatientController:
         interview, clinical_case = interview_controller.validate_interview_access_with_case(
             interview_id, current_user
         )
+        validation_elapsed = time.perf_counter() - start_time
         print(f"✅ Interview validated: {interview.id}")
         print(f"📋 Clinical case: {clinical_case.title}")
         
         # 2. Get all interview messages for context
         interview_messages = message_controller.get_interview_messages(interview_id)
+        history_elapsed = time.perf_counter() - start_time
         print(f"📨 Retrieved {len(interview_messages)} existing messages")
         
         # 3. Create user message object (not saved to database yet)
@@ -199,6 +206,7 @@ class VirtualPatientController:
         
         # 5. Format messages for the virtual patient workflow
         formatted_messages = self.format_messages_for_workflow(interview_messages)
+        preparation_elapsed = time.perf_counter() - start_time
         print(f"📋 Formatted {len(formatted_messages)} messages for workflow")
         
         # 6. Resolve the patient language stored with this interview.
@@ -216,7 +224,7 @@ class VirtualPatientController:
         thread_id = f"interview-{interview_id}"
         print(f"🧵 Thread ID: {thread_id}")
         
-        workflow_start = time.time()
+        workflow_start = time.perf_counter()
         workflow_result = await self.process_interview_message(
             interview_id=interview_id,
             messages=formatted_messages,
@@ -227,7 +235,7 @@ class VirtualPatientController:
             patient_name=interview.patient_name,
             personality=interview.personality.namespace_key if interview.personality else None
         )
-        workflow_time = time.time() - workflow_start
+        workflow_time = time.perf_counter() - workflow_start
         print(f"⏱️  Workflow processing time: {workflow_time:.3f}s")
         
         # 8. Extract the agent response
@@ -252,7 +260,20 @@ class VirtualPatientController:
         # 10. Add agent response to messages for return
         interview_messages.append(agent_message_object)
         
-        total_time = time.time() - start_time
+        total_time = time.perf_counter() - start_time
+        if settings.patient_response_timing_logging:
+            logger.info(
+                "patient_response_timing interview_id=%s stage=controller "
+                "validate_ms=%.1f history_ms=%.1f preparation_ms=%.1f "
+                "workflow_ms=%.1f postprocess_ms=%.1f total_ms=%.1f",
+                interview_id,
+                validation_elapsed * 1000,
+                (history_elapsed - validation_elapsed) * 1000,
+                (preparation_elapsed - history_elapsed) * 1000,
+                workflow_time * 1000,
+                (total_time - preparation_elapsed - workflow_time) * 1000,
+                total_time * 1000,
+            )
         print(f"\n{'='*60}")
         print(f"✅ Message processing completed")
         print(f"⏱️  Total processing time: {total_time:.3f}s")

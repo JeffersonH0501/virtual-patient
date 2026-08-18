@@ -1,107 +1,164 @@
-import {FC, useEffect, useState} from 'react';
+import {FC, useCallback, useEffect, useRef, useState} from 'react';
+import {createPortal} from 'react-dom';
 import {useTranslation} from 'react-i18next';
+import {useOutletContext, useParams} from 'react-router-dom';
 import {PatientProfile} from './PatientProfile';
 import {NotesSection} from './NotesSection';
-import {Modal, ChatInput} from '../common';
+import {Modal} from '../common';
 import {EndInterviewConfirmation} from './EndInterviewConfirmation';
-import {ChatInterface} from '../Chats/ChatDetail/ChatInterface';
-import {Message} from '../../types/message';
 import {ClinicalHypotheses} from './ClinicalHypotheses';
 import {WelcomeModal} from './WelcomeModal';
 import {TeacherFeedbackSection} from './TeacherFeedbackSection';
-import {sendMessage, createSummary} from '../../services/interviews';
-import {useParams} from 'react-router-dom';
-import {CompleteInterviewResponse} from '../../types/interview';
+import {CallStage} from './CallStage';
+import {CallToolbar} from './CallToolbar';
+import {ConversationTranscript} from './ConversationTranscript';
+import {InterviewRecap} from './InterviewRecap';
+import {CallComposer} from './CallComposer';
+import {ActiveSimulationLayout, SimulationResultsLayout} from './InterviewLayouts';
+import {completeInterview, createSummary, sendMessage} from '../../services/interviews';
 import {getInterview} from '../../services/interviews/getInterview';
-import {Patient} from '../../types/patient';
-import {InterviewEvaluationResponse} from '../../types/evaluation';
-import {EvaluationResultsModal} from '../Evaluation';
 import {getSessionNote, updateSessionNote} from '../../services/sessionNote';
+import {CompleteInterviewResponse} from '../../types/interview';
+import {Patient} from '../../types/patient';
+import {Message} from '../../types/message';
+import {InterviewEvaluationResponse} from '../../types/evaluation';
+import {EvaluationResultsPanel} from '../Evaluation';
 import {getPatientImage, processMessagesWithAvatars, processSummaryData} from './helpers';
+import {useHandsFreeSpeech} from '../../hooks/useHandsFreeSpeech';
+import {useLocalCamera} from '../../hooks/useLocalCamera';
+import {useInterviewRecording} from '../../hooks/useInterviewRecording';
+import {useUser} from '../../hooks/useUser';
+import {SpeechTiming} from '../../types/recording';
 import doctorImage from '../../assets/doctor.png';
 import patientImageM from '../../assets/patient_m.png';
+import {AppContainerOutletContext} from '../common/AppContainer';
+
+const EMPTY_PATIENT: Patient = {
+  name: '',
+  id: '',
+  avatar: patientImageM,
+  online: true,
+  basicInfo: {
+    age: 0,
+    gender: '',
+    bloodType: '',
+    weight: '',
+  },
+  symptoms: [],
+  allergies: [],
+  diet: '',
+  illnesses: [],
+  medications: [],
+  familyHistory: [],
+  habits: [],
+  workInformation: '',
+  medicalHistory: [],
+  summary: '',
+};
+
+const INTERVIEW_DURATION_LIMIT_SECONDS = 60 * 60;
 
 export const ClinicalChat: FC = () => {
   const {t, i18n} = useTranslation();
+  const {user} = useUser();
+  const {setClinicalSimulationActive} = useOutletContext<AppContainerOutletContext>();
+  const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
+  const interviewId = interviewIdParam ? Number.parseInt(interviewIdParam, 10) : null;
+  const interfaceLanguage: 'en' | 'es' = i18n.resolvedLanguage?.startsWith('es')
+    ? 'es'
+    : 'en';
+
   const [feedback, setFeedback] = useState('');
   const [ending, setEnding] = useState(false);
   const [openEndConfirmationModal, setOpenEndConfirmationModal] = useState(false);
-  const [openEvaluationModal, setOpenEvaluationModal] = useState(false);
+  const [openObservationDialog, setOpenObservationDialog] = useState(false);
   const [openWelcomeModal, setOpenWelcomeModal] = useState(false);
+  const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [evaluationData, setEvaluationData] = useState<InterviewEvaluationResponse | null>(null);
   const [audioAutoPlayEnabled, setAudioAutoPlayEnabled] = useState(true);
+  const [isPatientSpeaking, setIsPatientSpeaking] = useState(false);
   const [hypothesesSubmitted, setHypothesesSubmitted] = useState(false);
   const [submittedHypotheses, setSubmittedHypotheses] = useState<
-    {
-      id: number;
-      hypothesisText: string;
-      hypothesisOrder: number;
-    }[]
+    {id: number; hypothesisText: string; hypothesisOrder: number}[]
   >([]);
-
   const [messages, setMessages] = useState<Message[]>();
   const [isLoading, setIsLoading] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
-  const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
-  const interviewId = interviewIdParam ? parseInt(interviewIdParam, 10) : null;
   const [interview, setInterview] = useState<CompleteInterviewResponse>();
+  const [patient, setPatient] = useState<Patient>(EMPTY_PATIENT);
+  const [headerControlsTarget, setHeaderControlsTarget] = useState<HTMLElement | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [durationLimitExceeded, setDurationLimitExceeded] = useState(false);
+  const [durationLimitCompletionError, setDurationLimitCompletionError] = useState(false);
 
-  // Use isOwner field from API response
+  const interviewRequestRef = useRef(0);
+  const summaryRequestRef = useRef(0);
+  const welcomeShownRef = useRef(false);
+  const durationLimitHandledRef = useRef(false);
+  const recordingRef = useRef<{
+    pause: () => void;
+    resume: () => void;
+    finalize: () => Promise<boolean>;
+    resumeAudioGraph: () => Promise<void>;
+    recordStudentTurn: (messageId: number, sequence: number, transcript: string, timing?: SpeechTiming) => void;
+  } | null>(null);
+  const camera = useLocalCamera(false);
+
   const isOwner = interview?.isOwner ?? false;
-  // Calculate if the button should be disabled
-  const isEndInterviewDisabled = !isOwner || interview?.status === 'completed';
+  const isCompleted = interview?.status === 'completed';
+  const isSimulationActive = Boolean(interview) && !isCompleted;
+  const studentName = user?.fullName?.trim() || t('clinicalChat.call.student');
 
-  const [patient, setPatient] = useState<Patient>({
-    name: '',
-    id: '',
-    avatar: patientImageM, // Default to male image
-    online: true,
-    basicInfo: {
-      age: 0,
-      gender: '',
-      bloodType: '',
-      weight: '',
-    },
-    symptoms: [],
-    allergies: [],
-    diet: '',
-    illnesses: [],
-    medications: [],
-    summary: '',
-  });
+  useEffect(() => {
+    setClinicalSimulationActive(isSimulationActive);
+    return () => setClinicalSimulationActive(false);
+  }, [isSimulationActive, setClinicalSimulationActive]);
 
-  const fetchInterview = async () => {
+  useEffect(() => {
+    setHeaderControlsTarget(null);
+    if (!isSimulationActive) return undefined;
+
+    const findHeaderControlsTarget = () => {
+      setHeaderControlsTarget(
+        document.getElementById('clinical-call-header-controls'),
+      );
+    };
+    findHeaderControlsTarget();
+
+    const observer = new MutationObserver(findHeaderControlsTarget);
+    observer.observe(document.body, {childList: true, subtree: true});
+    return () => observer.disconnect();
+  }, [isSimulationActive]);
+
+  useEffect(() => {
+    if (isSimulationActive && isOwner) void camera.start();
+    else camera.stop();
+  }, [camera.start, camera.stop, isOwner, isSimulationActive]);
+
+  const fetchInterview = useCallback(async () => {
     if (!interviewId) return;
+    const requestId = ++interviewRequestRef.current;
+    const interviewData = await getInterview(interviewId.toString(), interfaceLanguage);
+    if (requestId !== interviewRequestRef.current) return;
 
-    const interviewData = await getInterview(interviewId.toString());
     setInterview(interviewData);
-
-    // Set messages from interview response with proper avatars
     setMessages(processMessagesWithAvatars(interviewData.messages, interviewData.patientGender));
-
-    // Initialize patient data from interview patient fields
-    setPatient((prevPatient) => ({
-      ...prevPatient,
-      name: interviewData.patientName || 'John Doe',
+    setPatient((current) => ({
+      ...current,
+      name: interviewData.patientName || t('clinicalChat.call.patient'),
       id: interviewData.clinicalCase?.id.toString() || 'unknown',
       avatar:
         interviewData.patientPhoto || getPatientImage(interviewData.patientGender || undefined),
       basicInfo: {
         age: interviewData.clinicalCase?.age || 0,
-        gender: interviewData.patientGender || 'Unknown',
-        bloodType: '', // Not available in clinical case data
+        gender: interviewData.patientGender || '',
+        bloodType: '',
         weight: interviewData.clinicalCase?.weightInKg
           ? `${interviewData.clinicalCase.weightInKg} kg`
-          : 'Not specified',
+          : t('patientProfile.weightNotSpecified'),
       },
     }));
 
-    // Process progress summary if it exists in the response
-    if (interviewData.progressSummary) {
-      setPatient(processSummaryData(interviewData.progressSummary));
-    }
-
-    // Set evaluation data if interview is completed and has evaluation
     if (interviewData.status === 'completed' && interviewData.interviewEvaluation) {
       setEvaluationData({
         interview: {
@@ -125,270 +182,481 @@ export const ClinicalChat: FC = () => {
       });
     }
 
-    // Set submitted hypotheses if they exist
-    if (interviewData.hypotheses && interviewData.hypotheses.length > 0) {
+    if (interviewData.hypotheses?.length) {
       setSubmittedHypotheses(interviewData.hypotheses);
       setHypothesesSubmitted(true);
     }
 
-    // Load session note
     try {
       const sessionNote = await getSessionNote(interviewId.toString());
-      if (sessionNote) {
+      if (sessionNote && requestId === interviewRequestRef.current) {
         setFeedback(sessionNote.notesContent);
       }
     } catch (error) {
       console.error('Failed to load session note:', error);
     }
 
-    if (interviewData.messages?.length === 0 && interviewData.isOwner) {
+    if (
+      interviewData.messages?.length === 0 &&
+      interviewData.isOwner &&
+      !welcomeShownRef.current
+    ) {
+      welcomeShownRef.current = true;
       setOpenWelcomeModal(true);
     }
-  };
+  }, [interfaceLanguage, interviewId, t]);
+
+  const fetchAndProcessSummary = useCallback(
+    async (context: string = 'summary') => {
+      if (!interviewId) return;
+      const requestId = ++summaryRequestRef.current;
+      try {
+        const response = await createSummary(interviewId.toString(), interfaceLanguage);
+        if (requestId !== summaryRequestRef.current) return;
+        if (response.summary_result) {
+          setPatient(processSummaryData(response.summary_result));
+          setEvaluationData((current) =>
+            current
+              ? {
+                  ...current,
+                  interview: {
+                    ...current.interview,
+                    progressSummary: response.summary_result!,
+                  },
+                }
+              : current,
+          );
+        }
+      } catch (error) {
+        console.error(`Failed to fetch ${context}:`, error);
+      }
+    },
+    [interfaceLanguage, interviewId],
+  );
 
   useEffect(() => {
-    fetchInterview();
-  }, [interviewId]);
+    void fetchInterview();
+    return () => {
+      interviewRequestRef.current += 1;
+    };
+  }, [fetchInterview]);
 
   useEffect(() => {
-    if (!interviewId || !interview || interview.status === 'completed') return;
+    if (!interviewId || !interview) return;
+    if (isCompleted) {
+      return () => {
+        summaryRequestRef.current += 1;
+      };
+    }
+    void fetchAndProcessSummary('localized summary');
+    const interval = window.setInterval(
+      () => void fetchAndProcessSummary('periodic summary'),
+      40000,
+    );
+    return () => {
+      summaryRequestRef.current += 1;
+      window.clearInterval(interval);
+    };
+  }, [fetchAndProcessSummary, interview, interviewId, isCompleted]);
 
-    const fetchSummary = () => fetchAndProcessSummary('periodic summary');
-    fetchSummary();
-
-    // Set up interval to fetch summary every 40 seconds
-    const interval = setInterval(fetchSummary, 40000);
-
-    return () => clearInterval(interval);
-  }, [interviewId, interview?.status]);
-
-  // Save session note when user clicks out of the text box
   const handleFeedbackBlur = async () => {
     if (!interviewId || !feedback.trim()) return;
-
     try {
-      await updateSessionNote(interviewId.toString(), {
-        notesContent: feedback,
-      });
+      await updateSessionNote(interviewId.toString(), {notesContent: feedback});
     } catch (error) {
       console.error('Failed to save session note:', error);
     }
   };
 
-  const fetchAndProcessSummary = async (context: string = 'summary') => {
-    if (!interviewId) return;
-
-    try {
-      const summaryResponse = await createSummary(interviewId.toString());
-      if (summaryResponse.summary_result) {
-        setPatient(processSummaryData(summaryResponse.summary_result));
-      } else {
-        console.warn(`${context}: Summary not available yet`);
-      }
-    } catch (error) {
-      console.error(`Failed to fetch ${context}:`, error);
-    }
-  };
-
-  const handleSendMessage = async (content: string) => {
-    if (!interviewId || isLoading) return;
-
-    // Create the user message immediately
-    const userMessage: Message = {
-      id: Date.now(),
-      content,
-      createdAt: new Date().toISOString(),
-      senderType: 'user',
-      interviewId: interviewId,
-      senderAvatar: doctorImage,
-    };
-
-    // Add user message to the conversation immediately
-    setMessages((prev) => (prev ? [...prev, userMessage] : [userMessage]));
-
-    setMessageError(null);
-    setIsLoading(true);
-    try {
-      const response = await sendMessage(interviewId.toString(), content);
-      // Set messages from the response with proper avatars
-      const processedMessages = processMessagesWithAvatars(
-        response.messages,
-        interview?.patientGender,
-      );
-      setMessages(processedMessages);
-      // add new message flag to the new messages
-      processedMessages.forEach((message) => {
-        if (response.newMessageIds.includes(message.id)) {
-          message.messageMetadata = {
-            isNew: true,
-          };
+  const handleSendMessage = useCallback(
+    async (content: string, timing?: SpeechTiming) => {
+      if (!interviewId || isLoading || !content.trim()) return;
+      await recordingRef.current?.resumeAudioGraph();
+      const optimisticMessage: Message = {
+        id: Date.now(),
+        content,
+        createdAt: new Date().toISOString(),
+        senderType: 'user',
+        interviewId,
+        senderAvatar: doctorImage,
+      };
+      setMessages((current) => [...(current || []), optimisticMessage]);
+      setMessageError(null);
+      setIsLoading(true);
+      try {
+        const response = await sendMessage(interviewId.toString(), content);
+        const processedMessages = processMessagesWithAvatars(
+          response.messages,
+          interview?.patientGender,
+        ).map((message) =>
+          response.newMessageIds.includes(message.id)
+            ? {
+                ...message,
+                messageMetadata: {...message.messageMetadata, isNew: true},
+              }
+            : message,
+        );
+        setMessages(processedMessages);
+        const studentMessage = processedMessages.find(
+          (message) => response.newMessageIds.includes(message.id) && message.senderType === 'user',
+        );
+        if (studentMessage) {
+          recordingRef.current?.recordStudentTurn(
+            studentMessage.id,
+            Math.max(processedMessages.findIndex((message) => message.id === studentMessage.id), 0),
+            studentMessage.content,
+            timing,
+          );
         }
-      });
-      setMessages(processedMessages);
-    } catch (error) {
-      console.error('Failed to send message:', error);
-      setMessageError(t('clinicalChat.messageSendError'));
-    } finally {
-      setIsLoading(false);
+      } catch (error) {
+        console.error('Failed to send message:', error);
+        setMessageError(t('clinicalChat.messageSendError'));
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [interview?.patientGender, interviewId, isLoading, t],
+  );
+
+  const speechLanguage =
+    interview?.interviewMetadata?.patientResponseLanguage === 'es' ? 'es-ES' : 'en-US';
+  const speech = useHandsFreeSpeech({
+    language: speechLanguage,
+    paused: isLoading || isPatientSpeaking,
+    disabled: !isOwner || isCompleted || ending,
+    autoStart: Boolean(isSimulationActive && isOwner),
+    onUtterance: handleSendMessage,
+  });
+
+  const recording = useInterviewRecording({
+    interviewId: interviewId ?? undefined,
+    enabled: Boolean(isSimulationActive && isOwner),
+    cameraStream: camera.stream,
+    cameraEnabled: camera.isEnabled,
+    microphoneEnabled: speech.isEnabled,
+    patientAudioEnabled: audioAutoPlayEnabled,
+    patientAvatar: patient.avatar,
+    patientName: patient.name,
+  });
+  recordingRef.current = recording;
+
+  useEffect(() => {
+    if (!isSimulationActive) {
+      setElapsedSeconds(0);
+      return undefined;
     }
-  };
+    const updateElapsedTime = () => {
+      const interviewStartedAt = interview?.startTime
+        ? new Date(interview.startTime).getTime()
+        : Number.NaN;
+      const elapsed = Number.isFinite(interviewStartedAt)
+        ? Math.floor((Date.now() - interviewStartedAt) / 1000)
+        : Math.floor(recording.elapsedAt() / 1000);
+      setElapsedSeconds(Math.max(0, elapsed));
+    };
+    updateElapsedTime();
+    const timer = window.setInterval(updateElapsedTime, 1000);
+    return () => window.clearInterval(timer);
+  }, [interview?.startTime, isSimulationActive, recording.elapsedAt]);
+  const isEndInterviewDisabled =
+    !isOwner
+    || isCompleted
+    || ending
+    || isLoading
+    || isPatientSpeaking
+    || recording.status === 'idle'
+    || recording.status === 'finalizing';
 
-  const close = () => {
-    setOpenEndConfirmationModal(false);
-  };
-
+  const closeEndConfirmation = () => setOpenEndConfirmationModal(false);
   const handleEndInterview = () => {
-    // Only allow ending interview if user is the owner
-    if (!isOwner) {
-      console.warn('Cannot end interview: User is not the owner');
-      return;
-    }
-    setOpenEndConfirmationModal(true);
+    if (isOwner) setOpenEndConfirmationModal(true);
   };
-
-  const confirmEnding = async () => {
+  const confirmEnding = () => {
     setOpenEndConfirmationModal(false);
-
-    // Set ending state immediately so the hypothesis form shows up right away
+    recording.pause();
     setEnding(true);
-
-    // Call createSummary in the background without blocking the UI
-    fetchAndProcessSummary('final summary').catch((error) => {
-      console.error('Failed to fetch final summary:', error);
-    });
+    void fetchAndProcessSummary('final summary');
   };
-
-  const handleHypothesesSubmitted = async () => {
-    // Refresh the interview data to get the updated evaluation
-    await fetchInterview();
+  const cancelHypotheses = () => {
+    recording.resume();
+    setEnding(false);
+  };
+  const handleHypothesesSubmitted = async (
+    nextEvaluationData: InterviewEvaluationResponse,
+  ) => {
+    setEvaluationData(nextEvaluationData);
+    setEnding(false);
     setHypothesesSubmitted(true);
-    setOpenEvaluationModal(true);
+    await fetchInterview();
   };
 
-  const handleRefreshSummary = async () => {
-    if (!interviewId || !interview || interview.status === 'completed') return;
+  useEffect(() => {
+    if (
+      elapsedSeconds < INTERVIEW_DURATION_LIMIT_SECONDS
+      || !isSimulationActive
+      || !isOwner
+      || durationLimitHandledRef.current
+    ) return;
 
+    durationLimitHandledRef.current = true;
+    setDurationLimitExceeded(true);
+    setDurationLimitCompletionError(false);
+    setOpenEndConfirmationModal(false);
+    setOpenObservationDialog(false);
+    setEnding(true);
+    recording.pause();
+    camera.stop();
+    setIsPatientSpeaking(false);
+
+    void (async () => {
+      try {
+        await fetchAndProcessSummary('duration limit summary');
+        await recording.finalize();
+        const nextEvaluationData = await completeInterview(
+          String(interviewId),
+          'duration_limit_exceeded',
+        );
+        await handleHypothesesSubmitted(nextEvaluationData);
+      } catch (error) {
+        console.error('Failed to complete interview after duration limit:', error);
+        setDurationLimitCompletionError(true);
+      }
+    })();
+  }, [
+    camera.stop,
+    elapsedSeconds,
+    fetchAndProcessSummary,
+    interviewId,
+    isOwner,
+    isSimulationActive,
+    recording,
+  ]);
+  const handleRefreshSummary = async () => {
+    if (!interviewId || !interview || isCompleted) return;
     await fetchAndProcessSummary('manual refresh');
   };
 
-  // Map i18n language to speech recognition language code
-  const getSpeechLanguage = () => {
-    const patientResponseLanguage = interview?.interviewMetadata?.patientResponseLanguage;
-    if (patientResponseLanguage === 'es') return 'es-ES';
-    if (patientResponseLanguage === 'en') return 'en-US';
+  if (!interviewId || !interview) return null;
 
-    // Legacy interviews follow the interface language.
-    const lang = i18n.language;
-    if (lang.startsWith('es')) return 'es-ES';
-    return 'en-US';
-  };
-
-  if (!interviewId) return null;
-  if (!interview) return null;
+  const InterviewLayout = isSimulationActive
+    ? ActiveSimulationLayout
+    : SimulationResultsLayout;
 
   return (
-    <main className="flex gap-8 p-4 min-h-screen bg-gray-100 max-md:flex-col max-sm:p-4 justify-center w-full">
-      <PatientProfile
-        patient={patient}
-        caseTitle={interview?.clinicalCase?.title}
-        onRefreshSummary={interview?.status !== 'completed' ? handleRefreshSummary : undefined}
-        isLoading={isLoading}
-        interviewStatus={interview?.status}
-        personality={interview?.personality}
-        interviewId={interview.id}
-      />
-      <section className="flex flex-col flex-1 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white max-h-[calc(100vh-150px)]">
-        <ChatInterface
-          onEndInterview={interview?.status === 'completed' ? undefined : handleEndInterview}
-          onShowEvaluation={
-            interview?.status === 'completed' ? () => setOpenEvaluationModal(true) : undefined
-          }
-          durationInSeconds={
-            interview?.status === 'completed' ? interview.totalDuration || 0 : undefined
-          }
-          messages={messages}
-          isLoading={isLoading}
-          showBottomSpace={interview?.status === 'completed'}
-          disabled={isEndInterviewDisabled}
-          audioAutoPlayEnabled={audioAutoPlayEnabled}
-          onToggleAudioAutoPlay={() => setAudioAutoPlayEnabled((prev) => !prev)}
+    <InterviewLayout>
+      {isSimulationActive && headerControlsTarget && createPortal(
+        <CallToolbar
+          cameraEnabled={camera.isEnabled || camera.isStarting}
+          elapsedSeconds={elapsedSeconds}
+          microphoneEnabled={speech.isEnabled}
+          microphoneListening={speech.isListening}
+          microphoneSupported={speech.isSupported}
+          audioEnabled={audioAutoPlayEnabled}
+          endDisabled={isEndInterviewDisabled}
+          completed={false}
+          onToggleCamera={camera.toggle}
+          onToggleMicrophone={() => {
+            void recording.resumeAudioGraph();
+            speech.toggle();
+          }}
+          onToggleAudio={() => {
+            void recording.resumeAudioGraph();
+            setAudioAutoPlayEnabled((current) => !current);
+          }}
+          onReportObservation={() => setOpenObservationDialog(true)}
+          onEndInterview={handleEndInterview}
+          onOpenContext={() => setContextPanelOpen(true)}
+        />,
+        headerControlsTarget,
+      )}
+      {!isSimulationActive && evaluationData && (
+        <EvaluationResultsPanel
+          evaluationData={evaluationData}
+          className="xl:col-start-3 xl:row-start-1"
         />
-        {ending && !hypothesesSubmitted ? (
-          <ClinicalHypotheses onHypothesesSubmitted={handleHypothesesSubmitted} />
-        ) : interview?.status === 'completed' ? null : isOwner ? ( // Show nothing when interview is completed - just the chat history
+      )}
+      {isSimulationActive && (
+        <CallStage
+          className="xl:col-start-2 xl:row-start-1"
+          patientAvatar={patient.avatar}
+          patientName={patient.name}
+          studentName={studentName}
+          patientSpeaking={isPatientSpeaking}
+          cameraStream={camera.stream}
+          cameraEnabled={camera.isEnabled}
+          cameraStarting={camera.isStarting}
+          cameraErrorCode={camera.errorCode}
+          onRetryCamera={() => void camera.start()}
+        />
+      )}
+
+      <section className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.06)] xl:row-start-1 ${
+        isSimulationActive ? 'xl:col-start-3' : 'xl:col-start-2'
+      }`}>
+        {isCompleted ? (
+          <InterviewRecap interviewId={interviewId} messages={messages} />
+        ) : (
           <>
-            {messageError && (
-              <div className="mx-6 mt-4 rounded-lg bg-red-50 p-3 text-sm text-red-700" role="alert">
-                {messageError}
+            <ConversationTranscript
+              interviewId={interviewId}
+              messages={messages}
+              interimTranscript={speech.interimTranscript}
+              isLoading={isLoading}
+              audioAutoPlayEnabled={audioAutoPlayEnabled}
+              playbackReady={recording.status !== 'idle'}
+              onPatientSpeakingChange={setIsPatientSpeaking}
+              captureEnabled={recording.isCapturing}
+              routePatientAudio={recording.routePatientAudio}
+              onPatientTurnStart={recording.beginPatientTurn}
+              onPatientTurnEnd={recording.endPatientTurn}
+            />
+            {(speech.errorCode || messageError) && (
+              <div className="mx-3 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800" role="alert">
+                {messageError || t(`clinicalChat.call.speechErrors.${speech.errorCode}`)}
               </div>
             )}
-            <ChatInput
-              onSend={handleSendMessage}
-              disabled={isLoading}
-              language={getSpeechLanguage()}
-            />
+            {recording.errorCode && (
+              <div className="mx-3 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800" role="alert">
+                {t(`clinicalChat.recording.errors.${recording.errorCode}`)}
+              </div>
+            )}
+            {recording.status === 'finalizing' && (
+              <div className="mx-3 mb-2 rounded-lg bg-blue-50 px-3 py-2 text-left text-xs text-blue-800" role="status">
+                {t('clinicalChat.recording.uploading', {progress: Math.round(recording.uploadProgress * 100)})}
+              </div>
+            )}
+            {isOwner ? (
+              <CallComposer
+                disabled={isLoading || ending || recording.status === 'idle'}
+                onSend={handleSendMessage}
+              />
+            ) : (
+              <div className="border-t border-slate-200 p-3 text-center text-sm text-slate-500">
+                {t('clinicalChat.readOnlyMode')}
+              </div>
+            )}
           </>
-        ) : (
-          // Show read-only message for non-owners
-          <div className="p-4 bg-gray-100 text-center text-gray-600">
-            {t('clinicalChat.readOnlyMode')}
-          </div>
         )}
       </section>
-      <aside className="flex flex-col gap-8 w-80 max-md:w-full">
+
+      {contextPanelOpen && (
+        <button
+          type="button"
+          className="fixed inset-0 z-40 cursor-default border-0 bg-black/35 p-0 xl:hidden"
+          onClick={() => setContextPanelOpen(false)}
+          aria-label={t('clinicalChat.call.closeInformation')}
+        />
+      )}
+      <aside
+        className={`fixed inset-y-0 right-0 z-50 flex w-[min(92vw,340px)] min-h-0 min-w-0 flex-col gap-2 overflow-y-auto bg-slate-100 p-2 shadow-xl transition-transform duration-200 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden xl:static xl:z-auto xl:col-start-1 xl:row-start-1 xl:w-full xl:translate-x-0 xl:bg-transparent xl:p-0 xl:shadow-none ${
+          contextPanelOpen ? 'translate-x-0' : 'translate-x-full'
+        }`}
+        aria-label={t('clinicalChat.call.contextPanel')}
+      >
+        <div className="flex justify-end xl:hidden">
+          <button
+            type="button"
+            onClick={() => setContextPanelOpen(false)}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-white text-slate-600 shadow-sm"
+            aria-label={t('clinicalChat.call.closeInformation')}
+          >
+            ×
+          </button>
+        </div>
+        <PatientProfile
+          patient={patient}
+          caseTitle={interview.clinicalCase?.title}
+          onRefreshSummary={!isCompleted ? handleRefreshSummary : undefined}
+          isLoading={isLoading}
+          personality={interview.personality}
+        />
         {hypothesesSubmitted && submittedHypotheses.length > 0 && (
-          <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
-            <h3 className="mb-4 text-base text-gray-600 font-bold text-left">
+          <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+            <h3 className="flex min-h-12 items-center border-b border-slate-200 px-4 text-left text-sm font-medium text-slate-600">
               {t('clinicalChat.submittedHypotheses')}
             </h3>
-            <div className="space-y-3">
-              {submittedHypotheses
-                .sort((a, b) => a.hypothesisOrder - b.hypothesisOrder)
+            <div className="space-y-2 p-4">
+              {[...submittedHypotheses]
+                .sort((left, right) => left.hypothesisOrder - right.hypothesisOrder)
                 .map((hypothesis) => (
-                  <div
-                    key={hypothesis.id}
-                    className="p-3 max-w-full text-sm text-black rounded-xl bg-gray-50"
-                  >
-                    <div className="flex items-start gap-2">
-                      <span className="text-sm font-medium text-blue-600 bg-blue-100 px-2 py-1 rounded-full">
-                        {hypothesis.hypothesisOrder}
-                      </span>
-                      <p className="text-sm text-gray-700 flex-1 text-left">
-                        {hypothesis.hypothesisText}
-                      </p>
-                    </div>
+                  <div key={hypothesis.id} className="flex items-start gap-2 rounded-lg bg-slate-50 p-2 text-left text-xs leading-4 text-slate-700">
+                    <span className="rounded-full bg-blue-100 px-2 py-0.5 text-blue-700">
+                      {hypothesis.hypothesisOrder}
+                    </span>
+                    <span>{hypothesis.hypothesisText}</span>
                   </div>
                 ))}
             </div>
           </section>
         )}
-        {interview?.status === 'completed' && <TeacherFeedbackSection interviewId={interview.id} />}
-        <NotesSection
-          title={t('clinicalChat.feedback')}
-          placeholder={
-            isOwner ? t('clinicalChat.addFeedbackHere') : t('clinicalChat.readOnlyFeedback')
-          }
-          value={feedback}
-          onChange={setFeedback}
-          onBlur={handleFeedbackBlur}
-          disabled={!isOwner}
-          description={t('clinicalChat.feedbackDescription')}
-        />
+        {isCompleted && <TeacherFeedbackSection interviewId={interview.id} />}
       </aside>
-      <Modal size="medium" open={openEndConfirmationModal} closeAction={close} closeOnOutsideClick>
-        <EndInterviewConfirmation onCancel={close} onConfirm={confirmEnding} />
+
+      <Modal size="medium" open={openEndConfirmationModal} closeAction={closeEndConfirmation} closeOnOutsideClick>
+        <EndInterviewConfirmation onCancel={closeEndConfirmation} onConfirm={confirmEnding} />
       </Modal>
-
-      {evaluationData && (
-        <EvaluationResultsModal
-          isOpen={openEvaluationModal}
-          onClose={() => setOpenEvaluationModal(false)}
-          evaluationData={evaluationData}
-        />
-      )}
-
-      {/* Welcome Modal - shown only on first visit */}
-      <WelcomeModal isOpen={openWelcomeModal} onClose={() => setOpenWelcomeModal(false)} />
-    </main>
+      <Modal
+        size="large"
+        open={ending && !hypothesesSubmitted}
+        closeAction={durationLimitExceeded ? () => undefined : cancelHypotheses}
+        closeOnOutsideClick={false}
+      >
+        {durationLimitExceeded ? (
+          <div className="flex h-full flex-col justify-center p-6 text-left sm:p-8">
+            <h2 className="text-xl font-semibold text-slate-900">
+              {t('clinicalChat.durationLimit.title')}
+            </h2>
+            <p className="mt-3 text-sm leading-6 text-slate-600">
+              {t('clinicalChat.durationLimit.hypothesesUnavailable')}
+            </p>
+            <p className={`mt-4 rounded-lg px-4 py-3 text-sm ${
+              durationLimitCompletionError
+                ? 'bg-red-50 text-red-700'
+                : 'bg-blue-50 text-blue-700'
+            }`} role={durationLimitCompletionError ? 'alert' : 'status'}>
+              {durationLimitCompletionError
+                ? t('clinicalChat.durationLimit.completionFailed')
+                : t('clinicalChat.durationLimit.finalizing')}
+            </p>
+          </div>
+        ) : (
+          <ClinicalHypotheses
+            onCancel={cancelHypotheses}
+            beforeComplete={async () => {
+              await recording.finalize();
+            }}
+            onHypothesesSubmitted={handleHypothesesSubmitted}
+          />
+        )}
+      </Modal>
+      <Modal
+        size="medium"
+        open={openObservationDialog}
+        closeAction={async () => {
+          await handleFeedbackBlur();
+          setOpenObservationDialog(false);
+        }}
+        closeOnOutsideClick
+      >
+        <div className="p-2">
+          <NotesSection
+            title={t('clinicalChat.reportObservation')}
+            placeholder={isOwner ? t('clinicalChat.observationPlaceholder') : t('clinicalChat.readOnlyFeedback')}
+            value={feedback}
+            onChange={setFeedback}
+            onBlur={handleFeedbackBlur}
+            disabled={!isOwner}
+            description={t('clinicalChat.observationDescription')}
+          />
+        </div>
+      </Modal>
+      <WelcomeModal
+        isOpen={openWelcomeModal}
+        onClose={() => {
+          void recording.resumeAudioGraph();
+          setOpenWelcomeModal(false);
+        }}
+      />
+    </InterviewLayout>
   );
 };

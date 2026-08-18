@@ -4,6 +4,7 @@ Uses StateGraph with summary node and thread extractor from langmem
 Reuses existing VirtualPatientAgent
 """
 
+import logging
 import time
 from typing import Optional, Dict, Any, List, TypedDict, Annotated
 from operator import add
@@ -14,10 +15,14 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from app.agents.virtual_patient_agent import VirtualPatientAgent
 from app.agents.translator_agent import TranslatorAgent
+from app.core.config import settings
 
 from app.agents.schemas.progress_summary import ProgressSummarySchema
 
 from app.models.clinical_case import ClinicalCaseDB
+
+
+logger = logging.getLogger(__name__)
 
 # State definition for the workflow
 class State(TypedDict):
@@ -83,6 +88,7 @@ class VirtualPatientWorkflow:
         
         # Process the message using the existing agent with state messages
         # The agent will use the checkpointer to maintain conversation history
+        agent_started_at = time.perf_counter()
         result = await self.agent.process_medical_interview_message(
             messages=messages,
             clinical_case=clinical_case,
@@ -91,6 +97,14 @@ class VirtualPatientWorkflow:
         
         # Return only the fields we're updating
         end_time = time.time()
+        if settings.patient_response_timing_logging:
+            logger.info(
+                "patient_response_timing interview_id=%s stage=workflow_interview_node "
+                "agent_ms=%.1f total_ms=%.1f",
+                self.interview_id,
+                (time.perf_counter() - agent_started_at) * 1000,
+                (end_time - start_time) * 1000,
+            )
         print(f"⏱️  CREATE_INTERVIEW_NODE: {end_time - start_time:.3f} seconds")
         return {"interview_result": result}
 

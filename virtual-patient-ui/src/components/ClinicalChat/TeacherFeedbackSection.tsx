@@ -73,11 +73,11 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   if (loading) {
     return (
-      <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
-        <h3 className="mb-4 text-base text-gray-600 font-bold text-left">
+      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <h3 className="flex min-h-12 items-center border-b border-slate-200 px-4 text-left text-sm font-medium text-slate-600">
           {t('clinicalChat.teacherFeedback')}
         </h3>
-        <p className="text-sm text-gray-500 text-center py-4">
+        <p className="p-4 text-center text-sm text-gray-500">
           Loading...
         </p>
       </section>
@@ -86,11 +86,11 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   if (error) {
     return (
-      <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
-        <h3 className="mb-4 text-base text-gray-600 font-bold text-left">
+      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <h3 className="flex min-h-12 items-center border-b border-slate-200 px-4 text-left text-sm font-medium text-slate-600">
           {t('clinicalChat.teacherFeedback')}
         </h3>
-        <p className="text-sm text-red-500 text-center py-4">
+        <p className="p-4 text-center text-sm text-red-500">
           {error}
         </p>
       </section>
@@ -99,9 +99,9 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   if (feedbacks.length === 0) {
     return (
-      <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base text-gray-600 font-bold text-left">
+      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
+          <h3 className="text-left text-sm font-medium text-slate-600">
             {t('clinicalChat.teacherFeedback')}
           </h3>
           {(user?.role === 'teacher' || user?.role === 'superuser') && (
@@ -114,7 +114,7 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
             </Button>
           )}
         </div>
-        <p className="text-sm text-gray-500 text-center py-4">
+        <p className="p-4 text-center text-sm text-gray-500">
           {t('clinicalChat.noFeedbackYet')}
         </p>
         <AddTeacherFeedbackModal
@@ -130,9 +130,9 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   return (
     <>
-      <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-base text-gray-600 font-bold text-left">
+      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+        <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
+          <h3 className="text-left text-sm font-medium text-slate-600">
             {t('clinicalChat.teacherFeedback')}
           </h3>
           {(user?.role === 'teacher' || user?.role === 'superuser') && (
@@ -145,7 +145,7 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
             </Button>
           )}
         </div>
-        <div className="space-y-3">
+        <div className="space-y-3 p-4">
           {feedbacks.map((feedback) => (
             <div
               key={feedback.id}
@@ -270,4 +270,3 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
     </>
   );
 };
-

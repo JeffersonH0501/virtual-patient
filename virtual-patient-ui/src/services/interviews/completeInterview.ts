@@ -3,10 +3,16 @@ import { getAuthHeaders } from '../auth/authHeaders';
 import { transformToCamelCase } from '../../utils/apiTransform';
 import { InterviewEvaluationResponse } from '../../types/evaluation';
 
-export const completeInterview = async (interviewId: string): Promise<InterviewEvaluationResponse> => {
+export type InterviewCompletionReason = 'user_completed' | 'duration_limit_exceeded';
+
+export const completeInterview = async (
+  interviewId: string,
+  completionReason: InterviewCompletionReason = 'user_completed',
+): Promise<InterviewEvaluationResponse> => {
   const authHeaders = getAuthHeaders();
   const response = await fetch(`${API_URL}/medical-interviews/${interviewId}/complete`, {
     method: 'POST',
+    body: JSON.stringify({completion_reason: completionReason}),
     headers: {
       'Content-Type': 'application/json',
       accept: 'application/json',
