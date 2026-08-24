@@ -12,6 +12,7 @@ from typing import Annotated, Dict, Optional
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Cookie,
     Depends,
     File,
@@ -28,7 +29,7 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user_from_token
 from app.core.config import settings
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.media import LocalMediaStorage, get_media_storage
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
@@ -211,6 +212,7 @@ def upsert_turn(
 @router.post("/{interview_id}/recording/finalize", response_model=RecordingStateResponse)
 async def finalize_recording(
     interview_id: int,
+    background_tasks: BackgroundTasks,
     duration_ms: Annotated[int, Form(ge=0)],
     source_durations: Annotated[str, Form()],
     capture_config: Annotated[str, Form()] = "{}",
@@ -316,28 +318,6 @@ async def finalize_recording(
                 content_type,
             )
 
-        # The session intentionally disables autoflush. Persist the new asset
-        # rows before looking up the student-audio asset for analysis.
-        db.flush()
-        await _attach_student_paraverbal_observations(
-            db=db,
-            storage=storage,
-            interview_id=interview_id,
-            recording=recording,
-        )
-        await _attach_student_nonverbal_observations(
-            db=db,
-            storage=storage,
-            interview_id=interview_id,
-            recording=recording,
-        )
-        await _attach_student_pyfeat_benchmark_observations(
-            db=db,
-            storage=storage,
-            interview_id=interview_id,
-            recording=recording,
-        )
-
         available_count = sum(1 for upload in uploads.values() if upload is not None)
         recording.duration_ms = duration_ms
         recording.ended_at = datetime.now(timezone.utc)
@@ -348,6 +328,7 @@ async def finalize_recording(
             recording.failure_code = "no-media-files"
         db.commit()
         db.refresh(recording)
+        response = _recording_response(recording)
         logger.info(
             "recording_storage_event interview_id=%s recording_id=%s event=finalized "
             "status=%s asset_count=%s duration_ms=%s",
@@ -357,7 +338,12 @@ async def finalize_recording(
             available_count,
             duration_ms,
         )
-        return _recording_response(recording)
+        background_tasks.add_task(
+            _process_recording_observations,
+            interview_id,
+            recording.id,
+        )
+        return response
     except HTTPException as error:
         logger.warning(
             "recording_storage_event interview_id=%s recording_id=%s event=validation_failed "
@@ -812,6 +798,66 @@ async def _attach_student_pyfeat_benchmark_observations(
         len(turn_windows),
         len(observations),
     )
+
+
+async def _process_recording_observations(
+    interview_id: int,
+    recording_id: str,
+) -> None:
+    """Extract derived observations after durable media storage has responded."""
+    db = SessionLocal()
+    try:
+        recording = db.query(InterviewRecordingDB).filter(
+            InterviewRecordingDB.id == recording_id,
+            InterviewRecordingDB.medical_interview_id == interview_id,
+        ).first()
+        if recording is None:
+            logger.warning(
+                "recording_processing_event interview_id=%s recording_id=%s "
+                "event=skipped reason=recording_unavailable",
+                interview_id,
+                recording_id,
+            )
+            return
+        logger.info(
+            "recording_processing_event interview_id=%s recording_id=%s event=started",
+            interview_id,
+            recording_id,
+        )
+        storage = get_media_storage()
+        await _attach_student_paraverbal_observations(
+            db=db,
+            storage=storage,
+            interview_id=interview_id,
+            recording=recording,
+        )
+        await _attach_student_nonverbal_observations(
+            db=db,
+            storage=storage,
+            interview_id=interview_id,
+            recording=recording,
+        )
+        await _attach_student_pyfeat_benchmark_observations(
+            db=db,
+            storage=storage,
+            interview_id=interview_id,
+            recording=recording,
+        )
+        db.commit()
+        logger.info(
+            "recording_processing_event interview_id=%s recording_id=%s event=completed",
+            interview_id,
+            recording_id,
+        )
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "recording_processing_event interview_id=%s recording_id=%s event=failed",
+            interview_id,
+            recording_id,
+        )
+    finally:
+        db.close()
 
 
 def _recap_turns(db: Session, interview: MedicalInterviewDB) -> list[RecapTurn]:
