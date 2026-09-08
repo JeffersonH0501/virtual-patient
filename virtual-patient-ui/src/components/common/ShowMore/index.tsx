@@ -1,5 +1,5 @@
 import {FC} from 'react';
-import {ArrowBottom, ArrowUp} from '../../../icons';
+import {CaretDown, CaretUp} from '../../../icons';
 
 type ShowMoreProps = {
   onClick: () => void;
@@ -9,18 +9,18 @@ type ShowMoreProps = {
 export const ShowMore: FC<ShowMoreProps> = ({onClick, expanded}) => {
   return (
     <button
-      className="flex gap-1.5 items-center mt-4 text-sm font-semibold text-blue-600 cursor-pointer border-none"
+      className="mt-4 flex cursor-pointer items-center gap-1.5 border-none text-sm font-semibold text-blue-600 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0"
       onClick={onClick}
     >
       {expanded ? (
         <>
           <span>Show Less</span>
-          <ArrowUp />
+          <CaretUp />
         </>
       ) : (
         <>
           <span>Show More</span>
-          <ArrowBottom />
+          <CaretDown />
         </>
       )}{' '}
     </button>

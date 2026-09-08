@@ -44,7 +44,8 @@ class TeacherFeedbackUpdate(BaseModel):
 class TeacherFeedback(TeacherFeedbackFull):
     id: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
-    teacher_username: Optional[str] = Field(None, description="Username of the teacher")
+    teacher_first_name: Optional[str] = None
+    teacher_last_name: Optional[str] = None
     reviewed_by_you: Optional[bool] = Field(None, description="Whether this feedback was created by the current user")
     
     class Config:

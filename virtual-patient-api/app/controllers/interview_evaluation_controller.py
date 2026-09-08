@@ -61,10 +61,10 @@ class InterviewEvaluationController:
         self.db.commit()
         return True
     
-    def calculate_overall_score(self, evaluation_results: List[EvaluationResult]) -> int:
+    def calculate_overall_score(self, evaluation_results: List[EvaluationResult]) -> float:
         """Calculate overall score from individual evaluation results"""
         if not evaluation_results:
             return 0
         
         total_score = sum(result.score for result in evaluation_results)
-        return round(total_score / len(evaluation_results))
+        return round(total_score / len(evaluation_results), 1)

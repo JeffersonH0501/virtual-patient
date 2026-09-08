@@ -1,4 +1,5 @@
 import { EvaluationResult } from '../../../types/evaluation';
+import {getEvaluationScoreBand} from '../../../utils/evaluationScore';
 
 export const getAspectDisplayName = (aspect: EvaluationResult['aspect'], t: any): string => {
   switch (aspect) {
@@ -20,16 +21,16 @@ export const getAspectDisplayName = (aspect: EvaluationResult['aspect'], t: any)
 };
 
 export const getScoreColor = (score: number): string => {
-  if (score >= 9) return 'text-green-600 bg-green-50';
-  if (score >= 7) return 'text-blue-600 bg-blue-50';
-  if (score >= 5) return 'text-yellow-600 bg-yellow-50';
-  return 'text-red-600 bg-red-50';
+  const band = getEvaluationScoreBand(score);
+  if (band === 'high') return 'bg-success-50 text-success-700';
+  if (band === 'medium') return 'bg-warning-50 text-warning-700';
+  return 'bg-danger-50 text-danger-700';
 };
 
 export const getScoreLabel = (score: number, t: any): string => {
-  if (score >= 9) return t('evaluation.excellent');
-  if (score >= 7) return t('evaluation.good');
-  if (score >= 5) return t('evaluation.fair');
+  const band = getEvaluationScoreBand(score);
+  if (band === 'high') return t('evaluation.excellent');
+  if (band === 'medium') return t('evaluation.fair');
   return t('evaluation.needsImprovement');
 };
 

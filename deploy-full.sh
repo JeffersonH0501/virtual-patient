@@ -24,6 +24,7 @@ validate_configuration() {
   local key value
   local required=(
     POSTGRES_PASSWORD SECRET_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT
+    SUPERUSER_EMAIL SUPERUSER_FIRST_NAME SUPERUSER_LAST_NAME SUPERUSER_PASSWORD
     AZURE_OPENAI_LLM_DEPLOYMENT_NAME AZURE_OPENAI_LLM_MINI_DEPLOYMENT_NAME
     AZURE_OPENAI_STT_DEPLOYMENT_NAME AZURE_OPENAI_TTS_DEPLOYMENT_NAME
     AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
@@ -89,7 +90,7 @@ case "$action" in
     ;;
   restart)
     validate_configuration
-    compose restart postgres api ui
+    compose up -d --build --force-recreate api ui
     verify
     ;;
   status)

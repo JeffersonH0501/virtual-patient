@@ -9,7 +9,7 @@ export const NotesCard = () => {
   };
 
   return (
-    <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
+    <section className="p-8 rounded-xl shadow-panel-subtle bg-white">
       <h2 className="mb-4 text-lg font-semibold text-gray-800">Doctor's Notes</h2>
       <div
         className={`px-4 py-5 bg-gray-50 rounded-lg ${expanded ? 'max-h-none' : 'max-h-52 overflow-hidden'}`}

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { StatCard } from '../Chats/StatCard';
 import { getStudentsMetrics, StudentsMetrics } from '../../services/students/getStudentsMetrics';
-import { CheckIcon, ClockIcon, StarIcon } from '../../icons';
+import {EvaluationScore} from '../common';
 
 export const StudentsMetricsCards = () => {
   const { t } = useTranslation();
@@ -75,19 +75,16 @@ export const StudentsMetricsCards = () => {
       <StatCard
         title={t('students.activeStudents')}
         value={metrics.activeStudentsCount.toString()}
-        icon={<ClockIcon />}
         change={t('students.currentlyActive')}
       />
       <StatCard
         title={t('students.completedStudents')}
         value={metrics.completedStudentsCount.toString()}
-        icon={<CheckIcon />}
         change={t('students.finishedCases')}
       />
       <StatCard
         title={t('students.averageScore')}
-        value={metrics.hasData ? `${metrics.averageScore.toFixed(1)}/10` : 'N/A'}
-        icon={<StarIcon />}
+        value={metrics.hasData ? <EvaluationScore score={metrics.averageScore} size="large" /> : 'N/A'}
         change={metrics.hasData ? `${metrics.totalEvaluations} ${t('students.evaluations')}` : t('students.noData')}
       />
     </div>

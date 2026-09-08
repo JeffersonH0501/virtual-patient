@@ -3,18 +3,19 @@ import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { TranslatedClinicalCase } from '../../types/clinicalCase';
 import { ProgressSummary } from '../../types/progress';
+import {ClipboardText, FileText, X} from '../../icons';
 
 type ClinicalCaseComparisonModalProps = {
   isOpen: boolean;
   onClose: () => void;
   clinicalCase: TranslatedClinicalCase;
   progressSummary: ProgressSummary;
-  hypotheses?: Array<{
+  hypotheses?: {
     id: number;
     interviewId: number;
     hypothesisText: string;
     hypothesisOrder: number;
-  }>;
+  }[];
 };
 
 export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> = ({
@@ -22,7 +23,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
   onClose,
   clinicalCase,
   progressSummary,
-  hypotheses
+  hypotheses,
 }) => {
   const { t } = useTranslation();
 
@@ -32,12 +33,12 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
       event.preventDefault();
       event.stopImmediatePropagation();
     }
-    
+
     onClose();
   };
 
   return (
-    <Modal open={isOpen} closeAction={handleClose} size="fullScreen" containerId='clinical-case-comparison-modal'>
+    <Modal open={isOpen} closeAction={handleClose} size="large" containerId='clinical-case-comparison-modal'>
       <div className="h-full flex flex-col">
         <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
           <h2 className="text-2xl font-bold text-gray-800">
@@ -45,14 +46,14 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
+            className="dialog-close-button"
+            aria-label={t('common.close')}
+            title={t('common.close')}
           >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
+            <span className="block h-6 w-6 [&_svg]:h-full [&_svg]:w-full"><X color="currentColor" /></span>
           </button>
         </div>
-        
+
         <div className="flex-1 overflow-y-auto p-6">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -60,15 +61,13 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
               <div className="bg-blue-50 rounded-lg p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                    </svg>
+                    <span className="block h-4 w-4 [&_svg]:h-full [&_svg]:w-full"><FileText color="currentColor" /></span>
                   </div>
                   <h3 className="text-xl font-semibold text-blue-800">
                     {t('evaluation.originalClinicalCase')}
                   </h3>
                 </div>
-                
+
                 <div className="space-y-4">
                   {/* Case Title */}
                   <div>
@@ -136,9 +135,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
               <div className="bg-green-50 rounded-lg p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-8 h-8 bg-green-600 rounded-full flex items-center justify-center">
-                    <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                    </svg>
+                    <span className="block h-4 w-4 [&_svg]:h-full [&_svg]:w-full"><ClipboardText color="currentColor" /></span>
                   </div>
                   <h3 className="text-xl font-semibold text-green-800">
                     {t('evaluation.studentSummary')}

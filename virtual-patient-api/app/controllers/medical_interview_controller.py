@@ -461,7 +461,8 @@ class MedicalInterviewController:
                 "teacher_feedback": teacher_feedback,
                 "organization_id": organization_id,  # Keep in response for compatibility
                 "clinical_case_title": interview.clinical_case.title if interview.clinical_case else None,
-                "user_username": interview.user.username if interview.user else None
+                "user_first_name": interview.user.first_name if interview.user else None,
+                "user_last_name": interview.user.last_name if interview.user else None
             }
             result.append(interview_with_score)
         

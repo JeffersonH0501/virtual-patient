@@ -9,13 +9,19 @@ from app.core.database import Base
 from app.models.clinical_case import (ClinicalCaseSimplified)
 from app.models.personality import PersonalitySimplified
 from .enums import InterviewStatus
-import uuid
+import secrets
+
+
+def generate_public_interview_id() -> str:
+    """Return an opaque 11-character URL-safe interview identifier."""
+    return secrets.token_urlsafe(8)
 
 # SQLAlchemy Model
 class MedicalInterviewDB(Base):
     __tablename__ = "medical_interviews"
 
     id = Column(Integer, primary_key=True, index=True)
+    public_id = Column(String(11), unique=True, nullable=False, index=True, default=generate_public_interview_id)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     clinical_case_id = Column(Integer, ForeignKey("clinical_cases.id"), nullable=False, index=True)
     start_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -76,6 +82,7 @@ class MedicalInterviewUpdate(BaseModel):
 
 class MedicalInterview(MedicalInterviewBase):
     id: int
+    public_id: str
     user_id: int
     start_time: datetime
     end_time: Optional[datetime] = None
@@ -89,4 +96,4 @@ class MedicalInterview(MedicalInterviewBase):
         populate_by_name = True
 
 class MedicalInterviewWithScore(MedicalInterview):
-    evaluation_score: Optional[int] = Field(None, ge=1, le=10, description="Overall evaluation score from 1 to 10")
+    evaluation_score: Optional[float] = Field(None, ge=0, le=5, description="Overall evaluation score from 0 to 5")

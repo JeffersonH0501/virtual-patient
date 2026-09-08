@@ -267,14 +267,14 @@ export const MedicalConsultationForm: FC<MedicalConsultationFormProps> = ({mode 
 
   if (isFetching) {
     return (
-      <div className="min-h-[calc(100vh_-_70px)] w-full flex items-center justify-center">
+      <div className="min-h-case-form w-full flex items-center justify-center">
         <div className="text-lg text-gray-600">{t('common.loading')}</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-[calc(100vh_-_70px)] w-full">
+    <div className="min-h-case-form w-full">
       <form
         onSubmit={handleSubmit}
         className="p-8 mx-auto my-0 max-w-6xl bg-white rounded-xl shadow-sm"
@@ -481,14 +481,14 @@ export const MedicalConsultationForm: FC<MedicalConsultationFormProps> = ({mode 
           <div className="flex justify-end mt-10 gap-8">
             <button
               type="button"
-              className="px-8 py-4 text-base text-blue-600 rounded-xl border border-indigo-500 border-solid cursor-pointer min-w-[114px] max-sm:w-full hover:bg-blue-50 transition-colors"
+              className="px-8 py-4 text-base text-blue-600 rounded-xl border border-indigo-500 border-solid cursor-pointer min-w-form-action max-sm:w-full hover:bg-blue-50 transition-colors"
               onClick={() => window.history.back()}
             >
               {t('createCase.goBack')}
             </button>
             <button
               type="submit"
-              className="px-8 py-4 text-base text-white bg-blue-600 rounded-lg cursor-pointer border-[none] min-w-[114px] max-sm:w-full hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-8 py-4 text-base text-white bg-blue-600 rounded-lg cursor-pointer border-none min-w-form-action max-sm:w-full hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               disabled={isLoading || !isFormValid()}
             >
               {isLoading 

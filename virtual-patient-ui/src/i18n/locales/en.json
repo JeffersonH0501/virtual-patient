@@ -26,18 +26,37 @@
     "noFeedback": "No feedback",
     "teacher": "Teacher",
     "student": "Student",
-    "superuser": "Superuser"
+    "superuser": "Superuser",
+    "language": "Language"
   },
   "pagination": {
-    "showing": "Showing {{from}} to {{to}}"
+    "showing": "Showing {{from}}-{{to}} of {{total}} interviews",
+    "perPage": "{{count}} per page",
+    "rowsPerPage": "Interviews per page",
+    "page": "Page {{page}}"
   },
   "auth": {
+    "firstName": "First name",
+    "lastName": "Last name",
+    "accountAccess": "Your learning space",
+    "practiceLabel": "Learn through conversation",
+    "showPassword": "Show password",
+    "hidePassword": "Hide password",
+    "show": "Show",
+    "hide": "Hide",
+    "signingIn": "Signing in...",
+    "verificationUnavailable": "Verification is unavailable. Please try again later.",
+    "resetTitle": "Reset your password",
+    "resetDescription": "Get back into your account using your email address.",
+    "resetUnavailable": "Password recovery will be available soon.",
+    "resetAction": "Send recovery link",
+    "backToSignIn": "Back to sign in",
+    "emailPlaceholder": "name@example.com",
     "login": "Login",
     "signup": "Sign Up",
     "logout": "Logout",
     "signOut": "Sign out",
     "email": "Email",
-    "userName": "User Name",
     "password": "Password",
     "confirmPassword": "Confirm Password",
     "forgotPassword": "Forgot Password?",
@@ -50,7 +69,6 @@
     "appDescription": "Advanced virtual patient interactions for medical education",
     "noAccount": "Don't have an account?",
     "createAccount": "Create Account",
-    "fullName": "Full Name",
     "role": "Role",
     "student": "Student",
     "teacher": "Teacher/Instructor",
@@ -61,8 +79,9 @@
   "navigation": {
     "home": "Home",
     "clinicalCases": "Clinical Cases",
-    "conversations": "My Conversations",
+    "conversations": "Interviews",
     "students": "Students",
+    "help": "Info",
     "profile": "Profile",
     "settings": "Settings"
   },
@@ -165,7 +184,6 @@
     "confirm": "Confirm",
     "submitting": "Submitting...",
     "summary": "Summary",
-    "refreshSummary": "Refresh Summary",
     "messageSendError": "The message could not be sent. Please try again.",
     "feedbackDescription": "Provide feedback about the clinical case, interview process, or any other observations about the session.",
     "reportObservation": "Report observation",
@@ -193,16 +211,13 @@
       },
       "retryCamera": "Try again",
       "privatePreview": "Local camera preview · not recorded",
-      "turnCameraOff": "Turn camera off",
-      "turnCameraOn": "Turn camera on",
       "elapsedTime": "Elapsed interview time",
-      "muteMicrophone": "Turn microphone off",
-      "enableMicrophone": "Enable hands-free microphone",
       "openInformation": "Open patient information",
       "closeInformation": "Close patient information",
       "contextPanel": "Patient information and feedback",
       "transcript": "Interview transcript",
       "listeningNow": "Listening now",
+      "sendAudio": "Send audio",
       "patientThinking": "The patient is preparing a response...",
       "audioUnavailable": "Patient audio is unavailable. The written response remains available.",
       "playPatient": "Play patient response",
@@ -218,6 +233,8 @@
         "offline": "There is no network connection for browser speech recognition. It will retry when connectivity returns.",
         "no-speech": "No speech was detected.",
         "start-failed": "The microphone could not be started.",
+        "unsupported-codec": "This browser cannot produce a supported audio format.",
+        "transcription-failed": "Server speech transcription failed. You can keep using text.",
         "send-failed": "The recognized message could not be sent."
       }
     },
@@ -258,15 +275,16 @@
       "pyfeatBenchmark": "Nonverbal information (Py-Feat)",
       "turnId": "Turn ID",
       "messageId": "Message ID",
-      "notAvailable": "Not available"
+      "notAvailable": "Not available",
+      "processingObservations": "Processing features from this recording..."
     },
     "welcome": {
       "title": "Welcome to Clinical Interview",
-      "description1": "In the following conversation with the Virtual Patient, you will assume the role of a doctor and must perform the anamnesis process with the selected virtual patient.",
-      "description2": "The objective of this tool is to train medical students in clinical communication skills and accurate collection of medical information.",
-      "description3": "At the end of the session, you will receive an automatic self-evaluation from the tool about your performance during the interview.",
+      "description": "In the following conversation with the Virtual Patient, you will assume the role of a doctor and conduct the anamnesis process with the selected patient. At the end of the session, you will receive an automated evaluation of your performance during the interview.",
       "description4": "Currently the virtual patient does not support sending paraclinical tests or physical examination",
-      "start": "Start Interview"
+      "start": "Start Interview",
+      "accept": "Accept",
+      "cancel": "Cancel"
     },
     "teacherFeedback": "Teacher Feedback",
     "noTeacherFeedback": "No teacher feedback available",
@@ -286,15 +304,15 @@
     "errorLoadingFeedback": "Error loading feedback"
   },
   "conversations": {
-    "title": "Conversations",
+    "title": "Interviews",
     "clinicalCase": "Clinical Case",
     "personality": "Personality",
     "duration": "Duration",
     "status": "Status",
     "createdAt": "Created At",
-    "noConversations": "No conversations found",
+    "noConversations": "No interviews found",
     "min": "min",
-    "myConversationHistory": "My Conversation History",
+    "myConversationHistory": "History",
     "searchCases": "Search cases...",
     "filter": "Filter",
     "date": "Date",
@@ -356,7 +374,6 @@
     "introductoryInformation": "Introductory Information",
     "caseTitle": "Case Title",
     "caseDescription": "Case Description",
-    "fullName": "Full Name",
     "femaleName": "Female Name",
     "maleName": "Male Name",
     "age": "Age",
@@ -431,7 +448,6 @@
     "submitting": "Submitting..."
   },
   "patientProfile": {
-    "basicInformation": "Basic information",
     "interviewSummary": "Patient summary",
     "basicInfo": "Basic information",
     "case": "Case",
@@ -560,14 +576,14 @@
     "goToLogin": "Go to Login"
   },
   "help": {
-    "title": "Help & information",
+    "title": "Information",
     "purpose": {
       "title": "Purpose",
       "description": "This Virtual Patient is an interactive educational tool designed to train medical students in clinical interviewing and communication skills."
     },
     "objective": {
       "title": "Objective",
-      "description": "Through simulated conversations with virtual patients, users can practice taking anamnesis and receive automated feedback on their performance. The app aims to strengthen clinical training through safe, realistic, and patient-centered learning experiences."
+      "description": "Through simulated conversations with virtual patients, users can practice taking anamnesis and receive automated feedback on their performance. The experience strengthens clinical communication skills and the rigorous collection of medical information in a safe, realistic, and patient-centered environment."
     },
     "howItWorks": {
       "title": "How It Works",
@@ -585,7 +601,6 @@
       "feature4": "Comprehensive evaluation and feedback system"
     },
     "additionalInfo": {
-      "title": "Additional information",
       "description": "This platform is developed by Universidad de los Andes, Colombia, as part of a research project in the Department of Systems and Computer Engineering. It utilizes AI technology to create realistic patient interactions and provide comprehensive educational feedback."
     }
   }

@@ -29,8 +29,20 @@ class Settings:
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480")
     )
 
+    superuser_email: str = os.getenv("SUPERUSER_EMAIL", "").strip().lower()
+    superuser_first_name: str = os.getenv("SUPERUSER_FIRST_NAME", "").strip()
+    superuser_last_name: str = os.getenv("SUPERUSER_LAST_NAME", "").strip()
+    superuser_password: str = os.getenv("SUPERUSER_PASSWORD", "")
+    superuser_preferred_language: str = os.getenv(
+        "SUPERUSER_PREFERRED_LANGUAGE", "es"
+    ).strip().lower()
+
     azure_openai_api_key: str | None = os.getenv("AZURE_OPENAI_API_KEY")
     azure_openai_endpoint: str | None = os.getenv("AZURE_OPENAI_ENDPOINT")
+    azure_openai_api_version: str = os.getenv(
+        "AZURE_OPENAI_API_VERSION",
+        "2025-03-01-preview",
+    )
     azure_openai_llm_deployment_name: str | None = os.getenv(
         "AZURE_OPENAI_LLM_DEPLOYMENT_NAME"
     )
@@ -115,6 +127,9 @@ class Settings:
         "PYFEAT_ANALYSIS_ENABLED", "false",
     ).strip().lower() in {"1", "true", "yes", "on"}
     pyfeat_device: str = os.getenv("PYFEAT_DEVICE", "cpu").strip().lower()
+    pyfeat_weights_root: Path = Path(
+        os.getenv("PYFEAT_WEIGHTS_ROOT", "/app/pyfeat/weights")
+    )
     pyfeat_sample_fps: float = float(os.getenv("PYFEAT_SAMPLE_FPS", "2"))
     pyfeat_gaze_alignment_max_radians: float | None = (
         float(os.environ["PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS"])

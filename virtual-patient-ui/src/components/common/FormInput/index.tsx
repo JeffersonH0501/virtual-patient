@@ -1,4 +1,5 @@
 import React, {ChangeEvent, forwardRef, KeyboardEvent} from 'react';
+import {CaretDown} from '../../../icons';
 
 type FormInputProps = {
   label: string;
@@ -52,7 +53,7 @@ export const FormInput = forwardRef<
           </label>
         )}
         <div
-          className={`p-3 ${margin ? 'mt-2 mb-4' : ''} max-w-full text-sm text-black rounded-xl border ${
+          className={`relative p-3 ${margin ? 'mt-2 mb-4' : ''} max-w-full text-sm text-black rounded-xl border ${
             error
               ? 'border-red-500 border-solid'
               : 'border-gray-400 border-solid'
@@ -82,35 +83,33 @@ export const FormInput = forwardRef<
               aria-label={label}
             />
           ) : type === 'select' ? (
-            <select
-              ref={ref as React.Ref<HTMLSelectElement>}
-              id={id}
-              autoFocus={autoFocus}
-              value={value}
-              onChange={onChange}
-              onKeyDown={onKeyDown}
-              onBlur={onBlur}
-              disabled={disabled}
-              className="w-full bg-transparent outline-none disabled:cursor-not-allowed appearance-none cursor-pointer pr-8 text-gray-900"
-              style={{
-                backgroundImage:
-                  'url(\'data:image/svg+xml,%3csvg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 20 20"%3e%3cpath stroke="%236b7280" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="m6 8 4 4 4-4"/%3e%3c/svg%3e\')',
-                backgroundPosition: 'right 0.5rem center',
-                backgroundRepeat: 'no-repeat',
-                backgroundSize: '1.5em 1.5em',
-              }}
-              aria-label={label}
-            >
-              {options?.map((option, index) => (
-                <option
-                  key={index}
-                  value={option}
-                  className="py-2 px-3 text-gray-900 bg-white hover:bg-gray-100"
-                >
-                  {option}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                ref={ref as React.Ref<HTMLSelectElement>}
+                id={id}
+                autoFocus={autoFocus}
+                value={value}
+                onChange={onChange}
+                onKeyDown={onKeyDown}
+                onBlur={onBlur}
+                disabled={disabled}
+                className="w-full appearance-none cursor-pointer bg-transparent pr-8 text-gray-900 outline-none disabled:cursor-not-allowed"
+                aria-label={label}
+              >
+                {options?.map((option, index) => (
+                  <option
+                    key={index}
+                    value={option}
+                    className="py-2 px-3 text-gray-900 bg-white hover:bg-gray-100"
+                  >
+                    {option}
+                  </option>
+                ))}
+              </select>
+              <span className="pointer-events-none absolute inset-y-0 right-3 flex items-center text-gray-500 [&_svg]:h-5 [&_svg]:w-5">
+                <CaretDown color="currentColor" />
+              </span>
+            </>
           ) : (
             <input
               ref={ref as React.Ref<HTMLInputElement>}

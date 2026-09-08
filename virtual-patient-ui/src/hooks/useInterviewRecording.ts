@@ -1,3 +1,4 @@
+import {readDesignToken, readDesignNumber} from '../utils/designTokens';
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {
   finalizeInterviewRecording,
@@ -73,9 +74,12 @@ export const useInterviewRecording = ({
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [patientAudioLevel, setPatientAudioLevel] = useState(0);
   const recordersRef = useRef<RecorderRuntime[]>([]);
   const cameraStreamRef = useRef(cameraStream);
   const cameraEnabledRef = useRef(cameraEnabled);
+  const microphoneEnabledRef = useRef(microphoneEnabled);
+  const patientAudioEnabledRef = useRef(patientAudioEnabled);
   const patientAvatarRef = useRef(patientAvatar);
   const patientNameRef = useRef(patientName);
   const patientSpeakingRef = useRef(false);
@@ -83,6 +87,8 @@ export const useInterviewRecording = ({
   const patientMonitorGainRef = useRef<GainNode | null>(null);
   const patientDestinationRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const patientAnalyserRef = useRef<AnalyserNode | null>(null);
+  const patientLevelTimerRef = useRef<number | null>(null);
   const microphoneStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const originRef = useRef<number | null>(null);
@@ -91,8 +97,12 @@ export const useInterviewRecording = ({
   const patientTurnsRef = useRef(new Map<number, PatientTurn>());
   const startingRef = useRef(false);
   const finalizedRef = useRef(false);
+  const captureGenerationRef = useRef(0);
   const captureFailureRef = useRef<string | null>(null);
   const turnWritesRef = useRef(Promise.resolve());
+
+  microphoneEnabledRef.current = microphoneEnabled;
+  patientAudioEnabledRef.current = patientAudioEnabled;
 
   useEffect(() => {
     cameraStreamRef.current = cameraStream;
@@ -169,14 +179,25 @@ export const useInterviewRecording = ({
   const releaseResources = useCallback(async (discardBuffers: boolean) => {
     if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
     animationFrameRef.current = null;
+    if (patientLevelTimerRef.current !== null) window.clearInterval(patientLevelTimerRef.current);
+    patientLevelTimerRef.current = null;
+    patientAnalyserRef.current = null;
+    setPatientAudioLevel(0);
     microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
     microphoneStreamRef.current = null;
-    if (discardBuffers) {
-      await Promise.all(recordersRef.current.map((runtime) => runtime.buffer.discard()));
-    }
+    const runtimes = recordersRef.current;
     recordersRef.current = [];
-    await audioContextRef.current?.close().catch(() => undefined);
+    runtimes.forEach(({recorder}) => {
+      if (recorder.state !== 'inactive') recorder.stop();
+      recorder.stream.getTracks().forEach((track) => track.stop());
+    });
+    const audioContext = audioContextRef.current;
     audioContextRef.current = null;
+    const closing = audioContext?.close().catch(() => undefined);
+    if (discardBuffers) {
+      await Promise.all(runtimes.map((runtime) => runtime.buffer.discard()));
+    }
+    await closing;
     microphoneGainRef.current = null;
     patientMonitorGainRef.current = null;
     patientDestinationRef.current = null;
@@ -185,6 +206,7 @@ export const useInterviewRecording = ({
   const start = useCallback(async () => {
     if (!enabled || !interviewId || startingRef.current || recordersRef.current.length > 0) return;
     startingRef.current = true;
+    const generation = captureGenerationRef.current;
     finalizedRef.current = false;
     captureFailureRef.current = null;
     setErrorCode(null);
@@ -228,18 +250,23 @@ export const useInterviewRecording = ({
           video: false,
           audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
         });
+        if (generation !== captureGenerationRef.current) {
+          microphoneStream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         microphoneStreamRef.current = microphoneStream;
         const microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
         const microphoneGain = audioContext.createGain();
-        microphoneGain.gain.value = microphoneEnabled ? 1 : 0;
+        microphoneGain.gain.value = microphoneEnabledRef.current ? 1 : 0;
         microphoneSource.connect(microphoneGain).connect(studentDestination);
         microphoneGainRef.current = microphoneGain;
       } catch {
         setErrorCode('microphone-unavailable');
       }
 
+      if (generation !== captureGenerationRef.current) return;
       const monitorGain = audioContext.createGain();
-      monitorGain.gain.value = patientAudioEnabled ? 1 : 0;
+      monitorGain.gain.value = patientAudioEnabledRef.current ? 1 : 0;
       monitorGain.connect(audioContext.destination);
       patientMonitorGainRef.current = monitorGain;
 
@@ -257,40 +284,55 @@ export const useInterviewRecording = ({
       const avatar = new Image();
       avatar.src = patientAvatarRef.current;
 
+      const recordingTheme = {
+        studentBackground: readDesignToken('--recording-student-background'),
+        patientBackground: readDesignToken('--recording-patient-background'),
+        mutedText: readDesignToken('--recording-muted-text'),
+        text: readDesignToken('--recording-text'),
+        speaking: readDesignToken('--recording-speaking'),
+        idle: readDesignToken('--recording-idle'),
+        noticeFont: readDesignToken('--recording-notice-font'),
+        nameFont: readDesignToken('--recording-name-font'),
+        avatarRadius: readDesignNumber('--recording-avatar-radius'),
+        ringOffset: readDesignNumber('--recording-ring-offset'),
+        speakingWidth: readDesignNumber('--recording-speaking-width'),
+        idleWidth: readDesignNumber('--recording-idle-width'),
+        nameBottom: readDesignNumber('--recording-name-bottom'),
+      };
       const draw = () => {
         if (cameraStreamRef.current !== attachedCameraStream) {
           attachedCameraStream = cameraStreamRef.current;
           cameraVideo.srcObject = attachedCameraStream;
           if (attachedCameraStream) void cameraVideo.play().catch(() => undefined);
         }
-        studentContext.fillStyle = '#0f172a';
+        studentContext.fillStyle = recordingTheme.studentBackground;
         studentContext.fillRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
         if (cameraEnabledRef.current && attachedCameraStream) drawContainedVideo(studentContext, cameraVideo);
         else {
-          studentContext.fillStyle = '#94a3b8';
-          studentContext.font = '32px sans-serif';
+          studentContext.fillStyle = recordingTheme.mutedText;
+          studentContext.font = recordingTheme.noticeFont;
           studentContext.textAlign = 'center';
           studentContext.fillText('Camera unavailable', VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2);
         }
 
-        patientContext.fillStyle = '#101b31';
+        patientContext.fillStyle = recordingTheme.patientBackground;
         patientContext.fillRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
-        const radius = 110;
+        const radius = recordingTheme.avatarRadius;
         patientContext.save();
         patientContext.beginPath();
         patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius, 0, Math.PI * 2);
         patientContext.clip();
         if (avatar.complete) patientContext.drawImage(avatar, VIDEO_WIDTH / 2 - radius, VIDEO_HEIGHT / 2 - radius, radius * 2, radius * 2);
         patientContext.restore();
-        patientContext.strokeStyle = patientSpeakingRef.current ? '#34d399' : '#64748b';
-        patientContext.lineWidth = patientSpeakingRef.current ? 12 : 6;
+        patientContext.strokeStyle = patientSpeakingRef.current ? recordingTheme.speaking : recordingTheme.idle;
+        patientContext.lineWidth = patientSpeakingRef.current ? recordingTheme.speakingWidth : recordingTheme.idleWidth;
         patientContext.beginPath();
-        patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius + 8, 0, Math.PI * 2);
+        patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius + recordingTheme.ringOffset, 0, Math.PI * 2);
         patientContext.stroke();
-        patientContext.fillStyle = '#ffffff';
-        patientContext.font = '28px sans-serif';
+        patientContext.fillStyle = recordingTheme.text;
+        patientContext.font = recordingTheme.nameFont;
         patientContext.textAlign = 'center';
-        patientContext.fillText(patientNameRef.current, VIDEO_WIDTH / 2, VIDEO_HEIGHT - 44);
+        patientContext.fillText(patientNameRef.current, VIDEO_WIDTH / 2, VIDEO_HEIGHT - recordingTheme.nameBottom);
         animationFrameRef.current = requestAnimationFrame(draw);
       };
       draw();
@@ -327,6 +369,13 @@ export const useInterviewRecording = ({
         });
         return {kind, recorder, buffer, mimeType: mimeTypes[kind]};
       }));
+      if (generation !== captureGenerationRef.current) {
+        await Promise.all(runtimes.map(async ({recorder, buffer}) => {
+          recorder.stream.getTracks().forEach((track) => track.stop());
+          await buffer.discard();
+        }));
+        return;
+      }
       recordersRef.current = runtimes;
       originRef.current = performance.now();
       pausedDurationRef.current = 0;
@@ -338,8 +387,10 @@ export const useInterviewRecording = ({
         videoMime,
         clock: 'performance.now',
       });
+      if (generation !== captureGenerationRef.current) return;
       setStatus('recording');
     } catch {
+      if (generation !== captureGenerationRef.current) return;
       setStatus('failed');
       setErrorCode('capture-start-failed');
       await releaseResources(true);
@@ -347,7 +398,7 @@ export const useInterviewRecording = ({
     } finally {
       startingRef.current = false;
     }
-  }, [enabled, interviewId, microphoneEnabled, patientAudioEnabled, releaseResources]);
+  }, [enabled, interviewId, releaseResources]);
 
   useEffect(() => {
     if (enabled) void start();
@@ -379,8 +430,21 @@ export const useInterviewRecording = ({
     if (!context || !destination || !monitor) return false;
     try {
       const source = context.createMediaElementSource(audio);
-      source.connect(destination);
-      source.connect(monitor);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      patientAnalyserRef.current = analyser;
+      source.connect(analyser);
+      analyser.connect(destination);
+      analyser.connect(monitor);
+      if (patientLevelTimerRef.current !== null) window.clearInterval(patientLevelTimerRef.current);
+      patientLevelTimerRef.current = window.setInterval(() => {
+        const samples = new Float32Array(analyser.fftSize);
+        analyser.getFloatTimeDomainData(samples);
+        const rms = Math.sqrt(
+          samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length,
+        );
+        setPatientAudioLevel(Math.min(1, rms / 0.16));
+      }, 60);
       void context.resume();
       return true;
     } catch {
@@ -400,6 +464,10 @@ export const useInterviewRecording = ({
 
   const endPatientTurn = useCallback((messageId: number) => {
     patientSpeakingRef.current = false;
+    if (patientLevelTimerRef.current !== null) window.clearInterval(patientLevelTimerRef.current);
+    patientLevelTimerRef.current = null;
+    patientAnalyserRef.current = null;
+    setPatientAudioLevel(0);
     const turn = patientTurnsRef.current.get(messageId);
     if (!turn || !interviewId) return;
     patientTurnsRef.current.delete(messageId);
@@ -432,8 +500,8 @@ export const useInterviewRecording = ({
         startMs: elapsedAt(timing?.startedAt ?? now),
         endMs: elapsedAt(timing?.endedAt ?? now),
         transcript,
-        inputSource: timing ? 'browser_speech' : 'text_input',
-        timingSource: timing ? 'browser_speech_events' : 'text_input',
+        inputSource: timing?.inputSource ?? (timing ? 'browser_speech' : 'text_input'),
+        timingSource: timing?.timingSource ?? (timing ? 'browser_speech_events' : 'text_input'),
         timingQuality: timing ? 'provisional' : 'estimated',
       }))
       .catch(() => setErrorCode('turn-storage-failed'));
@@ -470,6 +538,7 @@ export const useInterviewRecording = ({
   }, [elapsedAt, interviewId, releaseResources, status, stopRuntime]);
 
   useEffect(() => () => {
+    captureGenerationRef.current += 1;
     recordersRef.current.forEach(({recorder}) => {
       if (recorder.state !== 'inactive') recorder.stop();
     });
@@ -480,6 +549,7 @@ export const useInterviewRecording = ({
     status,
     errorCode,
     uploadProgress,
+    patientAudioLevel,
     isCapturing: status === 'recording' || status === 'paused',
     pause,
     resume,

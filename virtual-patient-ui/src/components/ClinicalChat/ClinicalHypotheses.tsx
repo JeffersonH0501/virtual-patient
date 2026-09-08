@@ -1,6 +1,5 @@
 import {FC, FormEvent, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {FormInput} from '../common/';
 import {useParams} from 'react-router-dom';
 import {createHypothesis} from '../../services/hypotheses';
 import {completeInterview} from '../../services/interviews';
@@ -94,54 +93,63 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
 
   const hasHypothesis = Object.values(hypotheses).some((value) => value.trim());
 
+  const hypothesisFields = [
+    {key: 'hypothesis1', label: t('clinicalChat.hypothesis1'), placeholder: t('clinicalChat.enterHypothesis1')},
+    {key: 'hypothesis2', label: t('clinicalChat.hypothesis2'), placeholder: t('clinicalChat.enterHypothesis2')},
+    {key: 'hypothesis3', label: t('clinicalChat.hypothesis3'), placeholder: t('clinicalChat.enterHypothesis3')},
+  ] as const;
+
   return (
-    <form onSubmit={handleSubmit} className="flex w-full flex-col gap-4 p-5 sm:p-6">
-      <header className="border-b border-slate-200 pb-3 text-left">
+    <form onSubmit={handleSubmit} className="flex max-h-dialog min-h-0 w-full flex-col overflow-hidden rounded-panel bg-surface text-left">
+      <header className="shrink-0 border-b border-border bg-surface px-5 py-3.5">
         <h2 className="text-lg font-semibold text-slate-800">
           {t('clinicalChat.clinicalHypotheses')}
         </h2>
       </header>
-        <FormInput
-          label={t('clinicalChat.hypothesis1')}
-          value={hypotheses.hypothesis1}
-          onChange={(e) => handleHypothesisChange('hypothesis1', e.target.value)}
-          type="text"
-          id="hypothesis1"
-          placeholder={t('clinicalChat.enterHypothesis1')}
-        />
-        <FormInput
-          label={t('clinicalChat.hypothesis2')}
-          value={hypotheses.hypothesis2}
-          onChange={(e) => handleHypothesisChange('hypothesis2', e.target.value)}
-          type="text"
-          id="hypothesis2"
-          placeholder={t('clinicalChat.enterHypothesis2')}
-        />
-        <FormInput
-          label={t('clinicalChat.hypothesis3')}
-          value={hypotheses.hypothesis3}
-          onChange={(e) => handleHypothesisChange('hypothesis3', e.target.value)}
-          type="text"
-          id="hypothesis3"
-          placeholder={t('clinicalChat.enterHypothesis3')}
-        />
-      <div className="mt-2 flex flex-col-reverse gap-2 border-t border-slate-200 pt-4 sm:flex-row sm:justify-end">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={isSubmitting}
-          className="rounded-lg px-5 py-2.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {t('common.cancel')}
-        </button>
-        <button
-          type="submit"
-          disabled={!hasHypothesis || isSubmitting}
-          className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-        >
-          {isSubmitting ? t('common.loading') : t('clinicalChat.submit')}
-        </button>
+
+      <div className="flex-1 overflow-y-auto bg-surface p-4 sm:p-5">
+        <div className="grid gap-3">
+          {hypothesisFields.map((field, index) => (
+            <section key={field.key} className="rounded-card border border-border bg-surface p-4 shadow-card">
+              <label htmlFor={field.key} className="component-subtitle flex items-center gap-2">
+                <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">
+                  {index + 1}
+                </span>
+                {field.label}
+              </label>
+              <textarea
+                id={field.key}
+                value={hypotheses[field.key]}
+                onChange={(event) => handleHypothesisChange(field.key, event.target.value)}
+                placeholder={field.placeholder}
+                rows={4}
+                disabled={isSubmitting}
+                className="mt-3 w-full resize-none rounded-control border border-border bg-surface px-3 py-2.5 text-sm leading-5 text-slate-700 placeholder:text-slate-400 hover:border-neutral-400 disabled:cursor-not-allowed disabled:bg-neutral-100"
+              />
+            </section>
+          ))}
+        </div>
       </div>
+
+      <footer className="flex shrink-0 justify-end bg-surface px-5 py-3.5">
+        <div className="dialog-actions">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={isSubmitting}
+            className="dialog-action dialog-action--secondary"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="submit"
+            disabled={!hasHypothesis || isSubmitting}
+            className="dialog-action dialog-action--primary"
+          >
+            {isSubmitting ? t('common.loading') : t('clinicalChat.submit')}
+          </button>
+        </div>
+      </footer>
     </form>
   );
 };

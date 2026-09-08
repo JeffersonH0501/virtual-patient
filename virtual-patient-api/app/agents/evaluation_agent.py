@@ -88,7 +88,7 @@ class EvaluationAgent:
             # Return a default evaluation result
             return EvaluationResult(
                 aspect=aspect,
-                score=5,
+                score=2.5,
                 feedback=f"Evaluation failed due to technical error: {str(e)}"
             )
     
@@ -166,7 +166,7 @@ class EvaluationAgent:
         if hypothesis_result is None:
             return progress_result if progress_result else EvaluationResult(
                 aspect="completeness",
-                score=5,
+                score=2.5,
                 feedback="Completeness evaluation failed"
             )
         
@@ -217,13 +217,13 @@ class EvaluationAgent:
         try:
             phase1_result = await self.structured_model.ainvoke(messages)
             phase1_result.aspect = "completeness"
-            print(f"✅ PHASE 1 Result: Score={phase1_result.score}/10")
+            print(f"✅ PHASE 1 Result: Score={phase1_result.score}/5")
             print(f"   Feedback: {phase1_result.feedback[:100]}...")
         except Exception as e:
             print(f"❌ Error in phase 1 evaluation: {e}")
             return EvaluationResult(
                 aspect="completeness",
-                score=5,
+                score=2.5,
                 feedback=f"Progress summary completeness evaluation failed due to technical error: {str(e)}"
             )
         
@@ -239,7 +239,7 @@ class EvaluationAgent:
             
             # Format initial evaluation for verification (format is described in the prompt)
             initial_evaluation_text = f"""[INITIAL EVALUATION]
-Score: {phase1_result.score}/10
+Score: {phase1_result.score}/5
 Feedback: {phase1_result.feedback}"""
             
             # Create messages for phase 2
@@ -255,7 +255,7 @@ Feedback: {phase1_result.feedback}"""
             try:
                 phase2_result = await self.structured_model.ainvoke(verification_messages)
                 phase2_result.aspect = "completeness"
-                print(f"✅ PHASE 2 Result: Score={phase2_result.score}/10 (adjusted from {phase1_result.score}/10)")
+                print(f"✅ PHASE 2 Result: Score={phase2_result.score}/5 (adjusted from {phase1_result.score}/5)")
                 print(f"   Feedback: {phase2_result.feedback[:100]}...")
                 return phase2_result
             except Exception as e:
@@ -304,7 +304,7 @@ Feedback: {phase1_result.feedback}"""
             # Return a default evaluation result
             return EvaluationResult(
                 aspect="completeness",
-                score=5,
+                score=2.5,
                 feedback=f"Hypothesis completeness evaluation failed due to technical error: {str(e)}"
             )
     
@@ -438,7 +438,7 @@ Feedback: {phase1_result.feedback}"""
                 # Add a fallback result for failed evaluations
                 valid_results.append(EvaluationResult(
                     aspect=conversation_aspects[i],
-                    score=5,
+                    score=2.5,
                     feedback=f"Evaluation failed: {str(result)}"
                 ))
             else:

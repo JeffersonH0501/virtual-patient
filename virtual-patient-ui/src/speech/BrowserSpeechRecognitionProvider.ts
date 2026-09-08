@@ -113,6 +113,11 @@ export class BrowserSpeechRecognitionProvider implements SpeechInputProvider {
     this.safeStart();
   }
 
+  submitUtterance(): void {
+    if (!this.active || this.paused) return;
+    this.callbacks.onUtteranceCaptured?.();
+  }
+
   stop(): void {
     if (!this.recognition) return;
     this.active = false;
@@ -161,9 +166,12 @@ export class BrowserSpeechRecognitionProvider implements SpeechInputProvider {
     this.callbacks.onInterimTranscript(interimTranscript.trim());
     if (finalSegments.length > 0) {
       const now = performance.now();
+      this.callbacks.onUtteranceCaptured?.();
       this.callbacks.onFinalTranscript(finalSegments.join(' '), {
         startedAt: this.speechStartedAt ?? now,
         endedAt: this.speechEndedAt ?? now,
+        inputSource: 'browser_speech',
+        timingSource: 'browser_speech_events',
       });
       this.speechStartedAt = null;
       this.speechEndedAt = null;

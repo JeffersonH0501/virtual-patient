@@ -13,7 +13,7 @@ type NotesSectionProps = {
 
 export const NotesSection: FC<NotesSectionProps> = ({title, placeholder, value, onChange, onBlur, disabled = false, description}) => {
   return (
-    <section className="rounded-xl bg-white p-5 shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+    <section className="rounded-xl bg-white p-5 shadow-panel-subtle">
       <h3 className="mb-3 text-left text-base font-bold text-gray-600">{title}</h3>
       {description && (
         <p className="mb-3 text-left text-sm text-gray-500">{description}</p>

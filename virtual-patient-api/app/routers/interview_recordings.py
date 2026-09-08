@@ -8,7 +8,7 @@ import mimetypes
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Annotated, Dict, Optional
+from typing import Annotated, Any, Dict, Optional
 
 from fastapi import (
     APIRouter,
@@ -321,7 +321,10 @@ async def finalize_recording(
         available_count = sum(1 for upload in uploads.values() if upload is not None)
         recording.duration_ms = duration_ms
         recording.ended_at = datetime.now(timezone.utc)
-        recording.capture_config = parsed_capture_config
+        recording.capture_config = {
+            **parsed_capture_config,
+            "observation_processing": {"status": "queued", "stage": "waiting"},
+        }
         recording.failure_code = None
         recording.status = _status_for_asset_count(available_count).value
         if available_count == 0:
@@ -448,6 +451,7 @@ def get_recap(
         return InterviewRecapResponse(
             interview_id=interview_id,
             recording_status=RecordingStatus.UNAVAILABLE,
+            observation_processing={"status": "unavailable"},
             turns=turns,
         )
     assets = {}
@@ -474,6 +478,9 @@ def get_recap(
         interview_id=interview_id,
         recording_status=recording_status,
         duration_ms=recording.duration_ms,
+        observation_processing=(recording.capture_config or {}).get(
+            "observation_processing", {"status": "unavailable"}
+        ),
         turns=turns,
         **sources,
     )
@@ -603,9 +610,9 @@ def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
         input_source=turn.input_source,
         timing_source=turn.timing_source,
         timing_quality=turn.timing_quality,
-        paraverbal=turn.paraverbal,
-        nonverbal_features=turn.nonverbal_features,
-        pyfeat_nonverbal_features=turn.pyfeat_nonverbal_features,
+        paraverbal=_without_none(turn.paraverbal),
+        nonverbal_features=_without_none(turn.nonverbal_features),
+        pyfeat_nonverbal_features=_without_none(turn.pyfeat_nonverbal_features),
     )
 
 
@@ -824,6 +831,8 @@ async def _process_recording_observations(
             interview_id,
             recording_id,
         )
+        _set_observation_processing(recording, "processing", "paraverbal")
+        db.commit()
         storage = get_media_storage()
         await _attach_student_paraverbal_observations(
             db=db,
@@ -831,17 +840,45 @@ async def _process_recording_observations(
             interview_id=interview_id,
             recording=recording,
         )
+        db.commit()
+        _set_observation_processing(recording, "processing", "openface")
+        db.commit()
         await _attach_student_nonverbal_observations(
             db=db,
             storage=storage,
             interview_id=interview_id,
             recording=recording,
         )
+        db.commit()
+        _set_observation_processing(recording, "processing", "pyfeat")
+        db.commit()
         await _attach_student_pyfeat_benchmark_observations(
             db=db,
             storage=storage,
             interview_id=interview_id,
             recording=recording,
+        )
+        db.commit()
+        turns = db.query(InterviewTurnDB).filter(
+            InterviewTurnDB.medical_interview_id == interview_id,
+        ).all()
+        student_turns = [turn for turn in turns if turn.speaker == "student"]
+        expected = (
+            (len(student_turns) if settings.paraverbal_analysis_enabled else 0)
+            + (len(turns) if settings.nonverbal_analysis_enabled else 0)
+            + (len(turns) if settings.pyfeat_analysis_enabled else 0)
+        )
+        available = (
+            sum(turn.paraverbal is not None for turn in student_turns)
+            + sum(turn.nonverbal_features is not None for turn in turns)
+            + sum(turn.pyfeat_nonverbal_features is not None for turn in turns)
+        )
+        _set_observation_processing(
+            recording,
+            "complete" if available == expected else "partial",
+            "finished",
+            expected=expected,
+            available=available,
         )
         db.commit()
         logger.info(
@@ -851,6 +888,12 @@ async def _process_recording_observations(
         )
     except Exception:
         db.rollback()
+        recording = db.query(InterviewRecordingDB).filter(
+            InterviewRecordingDB.id == recording_id,
+        ).first()
+        if recording is not None:
+            _set_observation_processing(recording, "failed", "finished")
+            db.commit()
         logger.exception(
             "recording_processing_event interview_id=%s recording_id=%s event=failed",
             interview_id,
@@ -858,6 +901,30 @@ async def _process_recording_observations(
         )
     finally:
         db.close()
+
+
+def _set_observation_processing(
+    recording: InterviewRecordingDB,
+    status: str,
+    stage: str,
+    **details: Any,
+) -> None:
+    capture_config = dict(recording.capture_config or {})
+    capture_config["observation_processing"] = {
+        "status": status,
+        "stage": stage,
+        **details,
+    }
+    recording.capture_config = capture_config
+
+
+def _without_none(value: Any) -> Any:
+    """Remove unavailable optional measurements from API observation payloads."""
+    if isinstance(value, dict):
+        return {key: _without_none(item) for key, item in value.items() if item is not None}
+    if isinstance(value, list):
+        return [_without_none(item) for item in value if item is not None]
+    return value
 
 
 def _recap_turns(db: Session, interview: MedicalInterviewDB) -> list[RecapTurn]:

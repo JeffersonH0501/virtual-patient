@@ -24,9 +24,11 @@ The UI is available at `http://127.0.0.1:5173`, and the API documentation is at
 testing application flows that do not invoke AI. Real conversations,
 evaluation, embeddings, and TTS require valid Azure configuration.
 
-The integration derives `/openai/v1/` from `AZURE_OPENAI_ENDPOINT`. In addition
-to the key and endpoint, it defines five deployments: normal LLM, mini LLM,
-STT, TTS, and embeddings. Production requires all five. The local environment
+The integration derives `/openai/v1/` from `AZURE_OPENAI_ENDPOINT` for chat,
+embeddings, and TTS. STT uses Azure's deployment-based audio endpoint with the
+explicit `AZURE_OPENAI_API_VERSION`. In addition to the key and endpoint, it
+defines five deployments: normal LLM, mini LLM, STT, TTS, and embeddings.
+Production requires all five. The local environment
 uses placeholders so services that do not invoke AI can still start. The
 application initially uses the mini LLM, while both chat deployments remain
 configured for explicit selection and validation.
@@ -35,16 +37,16 @@ Speech provider switches are separate from deployment names:
 
 ```bash
 SPEECH_TTS_PROVIDER=azure_openai
-SPEECH_STT_PROVIDER=disabled
-VITE_SPEECH_INPUT_PROVIDER=browser
+SPEECH_STT_PROVIDER=azure_openai
+VITE_SPEECH_INPUT_PROVIDER=server
 ```
 
-The browser provider is the active provisional student STT path. The server
-also exposes an authenticated provider-neutral transcription endpoint, but it
-returns `503` while `SPEECH_STT_PROVIDER=disabled`. Set it to `azure_openai`
-only when the configured deployment is ready to receive application audio.
-Browser speech recognition may use an external service operated by the browser
-vendor and must not be treated as local or private speech processing.
+The active provider records provisional utterance segments in the browser and
+uploads each segment to the authenticated provider-neutral endpoint. The API
+forwards the in-memory payload to Azure OpenAI. Browser speech recognition
+remains an optional fallback and may use an external browser-vendor service.
+Client-side audio activity only delimits STT requests; its boundaries remain
+provisional interaction timing rather than validated VAD or evaluation evidence.
 Patient TTS can be streamed through the authenticated message speech endpoint,
 so local playback does not require GCS. When GCS is configured, generated URLs
 remain supported as optional durable audio artifacts.
@@ -101,8 +103,7 @@ docker compose --env-file .env.local -f docker-compose.local.yml exec api \
 
 The script reports normal chat, mini chat, embeddings, TTS, and STT separately.
 It passes the TTS audio to STT in memory. If TTS fails, it reports STT as
-blocked. This check does not change the UI: interviews continue to use browser
-Web Speech Recognition.
+blocked. This check does not change the UI provider selected at build time.
 
 `down` preserves the database. To prepare the schema again without restarting
 the UI and API:
@@ -161,5 +162,43 @@ Both modes call `virtual-patient-api/scripts/setup_db.py`. The process:
 - stops when it finds existing tables without Alembic history instead of
   guessing a version or overwriting them.
 
+Database setup also provisions exactly one `superuser` from
+`SUPERUSER_EMAIL`, `SUPERUSER_FIRST_NAME`, `SUPERUSER_LAST_NAME`,
+`SUPERUSER_PASSWORD`, and `SUPERUSER_PREFERRED_LANGUAGE`. Production setup
+rejects missing placeholder values. Re-running setup synchronizes that sole
+account with the configured identity and password; if multiple superusers or a
+email collision exists, setup stops for manual resolution. Public
+registration only accepts `student` and `teacher`, and self-service profile
+updates cannot change roles or organization membership.
+
+The API repeats the same idempotent synchronization on every process startup,
+so changes to the configured superuser identity, password, or preferred
+language take effect after restarting the API. The preferred language defaults
+to Spanish (`es`). Use `bash deploy-local.sh restart` or
+`bash deploy-full.sh restart` after changing the environment file; these
+commands recreate the application containers because a plain Docker restart
+does not reload environment variables.
+
 The PostgreSQL container creates the database named by `POSTGRES_DB`.
 `setup_db.py` prepares its schema and does not manage server-level databases.
+
+
+### Email identity migration
+
+The API now accepts `email` and `password` at `POST /auth/token`. Registration
+requires `first_name` and `last_name`. Apply migration `021_email_identity`
+before serving the new API/UI together (the normal setup flow upgrades to head).
+Existing sessions must sign in again because JWT subjects now use account IDs.
+
+Existing account IDs, password hashes, and relationships are preserved. Legacy
+names are retained intact in `first_name` with an empty `last_name` pending an
+explicit profile correction; compound names are not guessed. Invalid or duplicate
+case-insensitive emails stop the migration before schema changes. Retired values
+are stored only in `user_identity_migration_archive` for downgrade and are not
+exposed by the API. That archive contains personal data and follows the same
+access and retention controls as the user table.
+
+Replace the former superuser name settings with `SUPERUSER_FIRST_NAME` and
+`SUPERUSER_LAST_NAME` in deployment environment files. Existing local superusers
+retain their stored names when these are unset; creating a superuser requires
+both names. The deployment-managed email and password remain unchanged.

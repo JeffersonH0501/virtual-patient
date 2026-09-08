@@ -50,6 +50,9 @@ case "$action" in
   up)
     compose up -d api ui
     ;;
+  ui)
+    compose up -d --build --force-recreate --no-deps ui
+    ;;
   database)
     compose up -d postgres
     compose --profile tools run --rm setup
@@ -58,7 +61,7 @@ case "$action" in
     verify
     ;;
   restart)
-    compose restart api ui
+    compose up -d --build --force-recreate api ui
     verify
     ;;
   status)
@@ -71,7 +74,7 @@ case "$action" in
     compose down
     ;;
   *)
-    echo "Usage: bash deploy-local.sh {setup|up|database|verify|restart|status|logs|down}" >&2
+    echo "Usage: bash deploy-local.sh {setup|up|ui|database|verify|restart|status|logs|down}" >&2
     exit 2
     ;;
 esac

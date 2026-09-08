@@ -4,6 +4,7 @@ export * from './ChatInput';
 export * from './ChatMessage';
 export * from './ConfirmationModal';
 export * from './CustomSelect';
+export * from './EvaluationScore';
 export * from './Footer';
 export * from './FormInput';
 export * from './Header';

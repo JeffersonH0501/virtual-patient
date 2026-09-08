@@ -211,6 +211,7 @@ class InterviewRecapResponse(BaseModel):
     interview_id: int
     recording_status: RecordingStatus
     duration_ms: Optional[int] = None
+    observation_processing: Dict[str, Any] = Field(default_factory=dict)
     student_audio_source: Optional[str] = None
     student_video_source: Optional[str] = None
     patient_audio_source: Optional[str] = None

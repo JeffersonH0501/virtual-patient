@@ -171,7 +171,7 @@ class VirtualPatientController:
         
         print(f"\n{'='*60}")
         print(f"🔄 Processing user message for interview {interview_id}")
-        print(f"👤 User: {current_user.username}")
+        print(f"👤 User: {current_user.id}")
         print(f"💬 Message: {user_message_content[:100]}...")
         print(f"{'='*60}\n")
         

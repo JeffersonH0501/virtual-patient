@@ -2,7 +2,7 @@ import {ProgressBar} from './ProgressBar';
 
 export const AnalysisCard = () => {
   return (
-    <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
+    <section className="p-8 rounded-xl shadow-panel-subtle bg-white">
       <h2 className="mb-4 text-lg font-semibold text-gray-800">Conversation Analysis</h2>
 
       <div className="mb-6">

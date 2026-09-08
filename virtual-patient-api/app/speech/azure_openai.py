@@ -2,7 +2,7 @@
 
 from openai import OpenAI, OpenAIError
 
-from app.core.azure_openai import create_openai_client
+from app.core.azure_openai import create_azure_openai_client, create_openai_client
 from app.core.config import Settings, settings
 from app.speech.contracts import (
     DeliveryTone,
@@ -158,7 +158,7 @@ class AzureOpenAISpeechToTextProvider:
                 "AZURE_OPENAI_STT_DEPLOYMENT_NAME is required"
             )
 
-        client = self.client or create_openai_client()
+        client = self.client or create_azure_openai_client()
         arguments = {
             "model": self.deployment_name,
             "file": (

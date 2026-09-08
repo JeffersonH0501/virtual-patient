@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react';
-import {Outlet, useLocation} from 'react-router-dom';
+import {Outlet, useLocation, matchPath} from 'react-router-dom';
 import {Header} from '../Header';
 import {Footer} from '../Footer';
 import {TokenExpiredScreen} from '../../TokenExpiredScreen';
@@ -13,7 +13,7 @@ export type AppContainerOutletContext = {
 export const AppContainer = () => {
   const { isTokenExpired } = useAuthError();
   const {pathname} = useLocation();
-  const isClinicalChat = pathname.startsWith(`${ROUTES.clinicalChat}/`);
+  const isClinicalChat = Boolean(matchPath(ROUTES.interviewSession, pathname) || matchPath(ROUTES.interviewReview, pathname));
   const [clinicalSimulationActive, setClinicalSimulationActive] = useState(false);
 
   useEffect(() => {

@@ -14,6 +14,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.database import Base, SessionLocal, engine  # noqa: E402
 from app.core.langgraph_schema import ensure_langgraph_schema  # noqa: E402
+from app.core.superuser import synchronize_superuser  # noqa: E402
 import app.models  # noqa: E402,F401 - register all model metadata
 from app.models.clinical_case import CaseType, ClinicalCaseDB  # noqa: E402
 from app.models.organization import OrganizationDB  # noqa: E402
@@ -82,6 +83,12 @@ def ensure_default_organization() -> None:
         print("Created the default active organization")
 
 
+def ensure_single_superuser() -> None:
+    """Provision the sole superuser from deployment configuration."""
+    with SessionLocal() as session:
+        print(synchronize_superuser(session))
+
+
 def seed_empty_reference_tables() -> None:
     with SessionLocal() as session:
         default_case_count = len(
@@ -121,6 +128,7 @@ def main() -> None:
     print(ensure_schema())
     print(ensure_langgraph_schema())
     ensure_default_organization()
+    ensure_single_superuser()
     if not args.skip_seed:
         seed_empty_reference_tables()
     print(f"Clinical cases: {count_rows(ClinicalCaseDB)}")

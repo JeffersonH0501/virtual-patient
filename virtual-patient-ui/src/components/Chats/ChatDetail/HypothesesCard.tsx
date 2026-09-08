@@ -6,7 +6,7 @@ type HypothesesCardProps = {
 
 export const HypothesesCard: FC<HypothesesCardProps> = ({hypotheses}) => {
   return (
-    <section className="p-8 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white">
+    <section className="p-8 rounded-xl shadow-panel-subtle bg-white">
       <h2 className="mb-4 text-lg font-semibold text-gray-800">Clinical Hypotheses</h2>
       {hypotheses.map((hypothesis, index) => (
         <p

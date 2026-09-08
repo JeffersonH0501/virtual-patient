@@ -4,6 +4,7 @@ import {getUser, updateUser as updateUserService} from '../services/users';
 import i18n from '../i18n';
 import {getStoredLanguage, setStoredLanguage, clearStoredLanguage} from '../utils/languageStorage';
 import {ROUTES} from '../utils/routes';
+import Cookies from 'js-cookie';
 
 // The API returns language codes directly (en, es) which match i18n codes
 
@@ -52,10 +53,10 @@ export const UserProvider: React.FC<UserProviderProps> = ({children}) => {
     const loadUser = async () => {
       // Check if we're on an auth page (login or signup)
       const currentPath = window.location.pathname;
-      const isOnAuthPage = currentPath === ROUTES.home || currentPath === ROUTES.signUp;
+      const isOnAuthPage = [ROUTES.signIn, ROUTES.signUp, ROUTES.resetPassword].includes(currentPath);
       
       // Don't try to fetch user on auth pages
-      if (isOnAuthPage) {
+      if (isOnAuthPage || !Cookies.get('access_token')) {
         setUserState(null);
         
         // Initialize with stored language or default to English

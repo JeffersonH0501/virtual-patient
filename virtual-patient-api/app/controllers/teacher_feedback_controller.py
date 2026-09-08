@@ -58,7 +58,8 @@ class TeacherFeedbackController:
             "created_at": feedback.created_at,
             "medical_interview_id": feedback.medical_interview_id,
             "teacher_id": feedback.teacher_id,
-            "teacher_username": feedback.teacher.username if feedback.teacher else None,
+            "teacher_first_name": feedback.teacher.first_name if feedback.teacher else None,
+            "teacher_last_name": feedback.teacher.last_name if feedback.teacher else None,
             "reviewed_by_you": feedback.teacher_id == current_user_id
         }
 

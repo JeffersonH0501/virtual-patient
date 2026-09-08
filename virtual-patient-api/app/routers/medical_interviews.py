@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.auth import get_current_active_user
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.models.medical_interview import (
     MedicalInterviewDB, MedicalInterview, MedicalInterviewCreate, MedicalInterviewUpdate,
     MedicalInterviewComplete, MedicalInterviewWithScore
@@ -90,6 +90,12 @@ async def create_interview(
     Note: If patient_gender is provided but patient_name is not, the system will automatically
     select the appropriate name (female_name or male_name) and photo from the clinical case.
     """
+    if current_user.role == UserRole.SUPERUSER:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Superusers cannot start medical interview simulations",
+        )
+
     service = MedicalInterviewController(db)
     interview_metadata = with_patient_response_language(
         interview_data.interview_metadata,
@@ -242,7 +248,7 @@ async def get_interviews_by_organization(
     Returns a list of student interviews with evaluation scores and additional context including:
     - organization_id: The organization ID (for compatibility)
     - clinical_case_title: Title of the clinical case
-    - user_username: Username of the student who conducted the interview
+    - user_first_name / user_last_name: Name of the student who conducted the interview
     - evaluation_score: Overall evaluation score (null if no evaluation exists)
     - teacher_feedback: List of teacher feedback for the interview
     """

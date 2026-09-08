@@ -1,7 +1,7 @@
 import {API_URL} from '../../utils/request';
 
 export type SignInPayload = {
-  username: string;
+  email: string;
   password: string;
 };
 

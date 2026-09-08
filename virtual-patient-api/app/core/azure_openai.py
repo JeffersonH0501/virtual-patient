@@ -4,7 +4,7 @@ from enum import Enum
 from typing import Any
 
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
-from openai import OpenAI
+from openai import AzureOpenAI, OpenAI
 
 from app.core.config import settings
 
@@ -86,3 +86,21 @@ def create_embeddings() -> OpenAIEmbeddings:
 def create_openai_client() -> OpenAI:
     """Create the standard SDK client for Azure OpenAI v1 audio operations."""
     return OpenAI(**_client_arguments())
+
+
+def create_azure_openai_client() -> AzureOpenAI:
+    """Create the deployment-based Azure client used by versioned endpoints."""
+    return AzureOpenAI(
+        api_key=_required(
+            settings.azure_openai_api_key,
+            "AZURE_OPENAI_API_KEY",
+        ),
+        azure_endpoint=_required(
+            settings.azure_openai_endpoint,
+            "AZURE_OPENAI_ENDPOINT",
+        ),
+        api_version=_required(
+            settings.azure_openai_api_version,
+            "AZURE_OPENAI_API_VERSION",
+        ),
+    )

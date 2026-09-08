@@ -26,18 +26,37 @@
     "noFeedback": "Sin retroalimentación",
     "teacher": "Profesor",
     "student": "Estudiante",
-    "superuser": "Superusuario"
+    "superuser": "Superusuario",
+    "language": "Idioma"
   },
   "pagination": {
-    "showing": "Mostrando {{from}} a {{to}}"
+    "showing": "Mostrando {{from}}-{{to}} de {{total}} entrevistas",
+    "perPage": "{{count}} por página",
+    "rowsPerPage": "Entrevistas por página",
+    "page": "Página {{page}}"
   },
   "auth": {
+    "firstName": "Nombre",
+    "lastName": "Apellido",
+    "accountAccess": "Tu espacio de aprendizaje",
+    "practiceLabel": "Aprende conversando",
+    "showPassword": "Mostrar contraseña",
+    "hidePassword": "Ocultar contraseña",
+    "show": "Mostrar",
+    "hide": "Ocultar",
+    "signingIn": "Iniciando sesión...",
+    "verificationUnavailable": "La verificación no está disponible. Inténtalo de nuevo más tarde.",
+    "resetTitle": "Recupera tu contraseña",
+    "resetDescription": "Vuelve a acceder a tu cuenta con tu correo electrónico.",
+    "resetUnavailable": "La recuperación de contraseña estará disponible próximamente.",
+    "resetAction": "Enviar enlace de recuperación",
+    "backToSignIn": "Volver a iniciar sesión",
+    "emailPlaceholder": "nombre@ejemplo.com",
     "login": "Iniciar Sesión",
     "signup": "Registrarse",
     "logout": "Cerrar Sesión",
     "signOut": "Cerrar sesión",
     "email": "Correo electrónico",
-    "userName": "Nombre de Usuario",
     "password": "Contraseña",
     "confirmPassword": "Confirmar Contraseña",
     "forgotPassword": "¿Olvidaste tu contraseña?",
@@ -50,7 +69,6 @@
     "appDescription": "Interacciones avanzadas con pacientes virtuales para educación médica",
     "noAccount": "¿No tienes una cuenta?",
     "createAccount": "Crear Cuenta",
-    "fullName": "Nombre Completo",
     "role": "Rol",
     "student": "Estudiante",
     "teacher": "Profesor/Instructor",
@@ -60,9 +78,10 @@
   },
   "navigation": {
     "home": "Inicio",
-    "clinicalCases": "Casos Clínicos",
-    "conversations": "Mis Conversaciones",
+    "clinicalCases": "Casos clínicos",
+    "conversations": "Entrevistas",
     "students": "Estudiantes",
+    "help": "Info",
     "profile": "Perfil",
     "settings": "Configuración"
   },
@@ -165,7 +184,6 @@
     "confirm": "Confirmar",
     "submitting": "Enviando...",
     "summary": "Resumen",
-    "refreshSummary": "Actualizar Resumen",
     "messageSendError": "No se pudo enviar el mensaje. Por favor, inténtalo de nuevo.",
     "feedbackDescription": "Proporciona retroalimentación sobre el caso clínico, el proceso de entrevista, o cualquier otra observación sobre la sesión.",
     "reportObservation": "Reportar observación",
@@ -193,16 +211,13 @@
       },
       "retryCamera": "Intentar de nuevo",
       "privatePreview": "Vista local · no se graba",
-      "turnCameraOff": "Apagar cámara",
-      "turnCameraOn": "Encender cámara",
       "elapsedTime": "Tiempo transcurrido de la entrevista",
-      "muteMicrophone": "Apagar micrófono",
-      "enableMicrophone": "Activar micrófono manos libres",
       "openInformation": "Abrir información del paciente",
       "closeInformation": "Cerrar información del paciente",
       "contextPanel": "Información del paciente y retroalimentación",
       "transcript": "Transcripción de la entrevista",
       "listeningNow": "Escuchando ahora",
+      "sendAudio": "Enviar audio",
       "patientThinking": "El paciente está preparando una respuesta...",
       "audioUnavailable": "El audio del paciente no está disponible. La respuesta escrita continúa visible.",
       "playPatient": "Reproducir respuesta del paciente",
@@ -218,6 +233,8 @@
         "offline": "No hay conexión de red para el reconocimiento de voz del navegador. Se reintentará al recuperar la conexión.",
         "no-speech": "No se detectó voz.",
         "start-failed": "No se pudo iniciar el micrófono.",
+        "unsupported-codec": "Este navegador no puede producir un formato de audio compatible.",
+        "transcription-failed": "Falló la transcripción de voz del servidor. Puedes continuar escribiendo.",
         "send-failed": "No se pudo enviar el mensaje reconocido."
       }
     },
@@ -258,15 +275,16 @@
       "pyfeatBenchmark": "Información no verbal (Py-Feat)",
       "turnId": "ID del turno",
       "messageId": "ID del mensaje",
-      "notAvailable": "No disponible"
+      "notAvailable": "No disponible",
+      "processingObservations": "Procesando características de esta grabación..."
     },
     "welcome": {
       "title": "Instrucciones",
-      "description1": "En la siguiente conversación con el Paciente Virtual, usted asumirá el rol de doctor y deberá realizar el proceso de anamnesis con el paciente virtual seleccionado.",
-      "description2": "El objetivo de esta herramienta es entrenar a los estudiantes de medicina en habilidades de comunicación clínica y la recolección precisa de información médica.",
-      "description3": "Al finalizar la sesión, recibirá una autoevaluación automática de la herramienta sobre su desempeño durante la entrevista.",
+      "description": "En la siguiente conversación con el Paciente Virtual, usted asumirá el rol de doctor y realizará el proceso de anamnesis con el paciente seleccionado. Al finalizar la sesión, recibirá una evaluación automática sobre su desempeño durante la entrevista.",
       "description4": "Actualmente el paciente virtual no soporta el envío de paraclínicos ni examen físico",
-      "start": "Comenzar Entrevista"
+      "start": "Comenzar Entrevista",
+      "accept": "Aceptar",
+      "cancel": "Cancelar"
     },
     "teacherFeedback": "Comentarios del profesor",
     "noTeacherFeedback": "No hay comentarios del profesor disponibles",
@@ -286,15 +304,15 @@
     "errorLoadingFeedback": "Error al cargar comentarios"
   },
   "conversations": {
-    "title": "Conversaciones",
+    "title": "Entrevistas",
     "clinicalCase": "Caso Clínico",
     "personality": "Personalidad",
     "duration": "Duración",
     "status": "Estado",
     "createdAt": "Fecha de Creación",
-    "noConversations": "No se encontraron conversaciones",
+    "noConversations": "No se encontraron entrevistas",
     "min": "min",
-    "myConversationHistory": "Mi Historial de Conversaciones",
+    "myConversationHistory": "Historial",
     "searchCases": "Buscar casos...",
     "filter": "Filtrar",
     "date": "Fecha",
@@ -317,7 +335,7 @@
     "noData": "No hay datos disponibles"
   },
   "clinicalCases": {
-    "title": "Casos Clínicos",
+    "title": "Casos clínicos",
     "description": "Descripción",
     "caseType": "Tipo de Caso",
     "difficulty": "Dificultad",
@@ -356,7 +374,6 @@
     "introductoryInformation": "Información Introductoria",
     "caseTitle": "Título del Caso",
     "caseDescription": "Descripción del Caso",
-    "fullName": "Nombre Completo",
     "femaleName": "Nombre Femenino",
     "maleName": "Nombre Masculino",
     "age": "Edad",
@@ -431,7 +448,6 @@
     "failedToLoad": "Error al cargar los datos del caso"
   },
   "patientProfile": {
-    "basicInformation": "Información básica",
     "interviewSummary": "Resumen del paciente",
     "basicInfo": "Información básica",
     "case": "Caso",
@@ -560,14 +576,14 @@
     "goToLogin": "Ir al Login"
   },
   "help": {
-    "title": "Ayuda e información",
+    "title": "Información",
     "purpose": {
       "title": "Propósito",
       "description": "Este Paciente Virtual es una herramienta educativa interactiva diseñada para entrenar a estudiantes de medicina en entrevistas clínicas y habilidades de comunicación médica."
     },
     "objective": {
       "title": "Objetivo",
-      "description": "A través de conversaciones simuladas con pacientes virtuales, los usuarios pueden practicar la anamnesis y recibir retroalimentación automatizada sobre su desempeño. Esta aplicación busca fortalecer la formación clínica mediante experiencias seguras, realistas y centradas en el paciente."
+      "description": "A través de conversaciones simuladas con pacientes virtuales, los usuarios pueden practicar la anamnesis y recibir retroalimentación automatizada sobre su desempeño. La experiencia fortalece las habilidades de comunicación clínica y la recopilación rigurosa de información médica en un entorno seguro, realista y centrado en el paciente."
     },
     "howItWorks": {
       "title": "Cómo Funciona",
@@ -585,7 +601,6 @@
       "feature4": "Sistema integral de evaluación y retroalimentación"
     },
     "additionalInfo": {
-      "title": "Información adicional",
       "description": "Esta plataforma es desarrollada por la Universidad de los Andes, Colombia, como parte de un proyecto de investigación en el Departamento de Ingeniería de Sistemas y Computación. Utiliza tecnología de IA para crear interacciones realistas con pacientes y proporcionar retroalimentación educativa integral."
     }
   }

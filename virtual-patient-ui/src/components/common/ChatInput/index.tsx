@@ -1,6 +1,6 @@
 import {FC, useState, KeyboardEvent, useEffect} from 'react';
 import {useTranslation} from 'react-i18next';
-import {MicrophoneIcon, PlusIcon} from '../../../icons';
+import {Microphone, PlusIcon} from '../../../icons';
 import {FormInput} from '../FormInput';
 import {Tooltip} from '../Tooltip';
 import {useSpeechRecognition} from '../../../hooks/useSpeechRecognition';
@@ -87,7 +87,7 @@ export const ChatInput: FC<ChatInputProps> = ({onSend, disabled = false, languag
     if (isMobile) {
       return;
     }
-    
+
     if (isListening) {
       stopListening();
     } else if (isSupported) {
@@ -133,11 +133,11 @@ export const ChatInput: FC<ChatInputProps> = ({onSend, disabled = false, languag
         </div>
         <div className="relative">
           <button
-            className={`flex justify-center items-center rounded-xl cursor-pointer border-none h-[46px] w-[46px] transition-all duration-300 transform ${
+            className={`flex justify-center items-center rounded-xl cursor-pointer border-none h-chat-control w-chat-control transition-all duration-300 transform ${
               isListening
                 ? 'bg-red-600 text-white animate-pulse scale-110 shadow-lg shadow-red-600/50 ring-4 ring-red-300'
                 : disabled || !isSupported || isMobile
-                  ? 'bg-gray-400 cursor-not-allowed'
+                  ? 'bg-gray-400 text-gray-200 cursor-not-allowed'
                   : 'bg-blue-600 text-white hover:bg-blue-700 shadow-md'
             }`}
             onMouseEnter={() => !disabled && !isListening && !isMobile && setShowTooltip(true)}
@@ -153,7 +153,7 @@ export const ChatInput: FC<ChatInputProps> = ({onSend, disabled = false, languag
                   : ''
             }
           >
-            <MicrophoneIcon color={disabled || !isSupported || isMobile ? '#999999' : '#FFFFFF'} />
+            <span className="[&_svg]:h-input-icon [&_svg]:w-input-icon"><Microphone color="currentColor" /></span>
           </button>
           {isListening && (
             <div className="absolute top-0 left-0 right-0 bottom-0 rounded-xl border-2 border-red-500 animate-ping pointer-events-none" />
@@ -172,7 +172,7 @@ export const ChatInput: FC<ChatInputProps> = ({onSend, disabled = false, languag
           />
         </div>
         <button
-          className={`flex justify-center items-center rounded-xl cursor-pointer border-none h-[46px] w-[46px] ${
+          className={`flex justify-center items-center rounded-xl cursor-pointer border-none h-chat-control w-chat-control [&_svg]:h-6 [&_svg]:w-6 ${
             disabled || !message.trim()
               ? 'bg-gray-400 cursor-not-allowed'
               : 'bg-blue-600 text-white'

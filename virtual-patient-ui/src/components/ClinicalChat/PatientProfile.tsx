@@ -2,19 +2,15 @@ import {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Patient} from '../../types';
 import {TagGroup} from './TagGroup';
-import {Button} from '../common';
-import {RefreshIcon} from '../../icons';
 import {Personality} from '../../types/personality';
 
 type PatientProfileProps = {
   patient: Patient;
   caseTitle?: string;
-  onRefreshSummary?: () => void;
-  isLoading?: boolean;
   personality?: Personality | null;
 };
 
-export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onRefreshSummary, isLoading, personality}) => {
+export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, personality}) => {
   const {t} = useTranslation();
 
   const getFieldLabel = (key: string): string => {
@@ -44,38 +40,22 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
   };
 
   return (
-    <div className="max-h-[70dvh] w-full min-w-0 overflow-x-hidden overflow-y-auto rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>section:not(:first-child)]:mx-4">
-      <div className="sticky top-0 z-10 flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 bg-white px-4">
-        <h2 className="py-3 text-left text-sm font-semibold text-slate-800">
+    <div className="max-h-patient-profile w-full min-w-0 overflow-x-hidden overflow-y-auto rounded-xl bg-white shadow-panel-subtle scrollbar-hidden [&>section:not(:first-child)]:mx-4">
+      <div className="sticky top-0 z-10 flex min-h-12 items-center border-b border-slate-200 bg-white px-4">
+        <h2 className="component-title py-3 text-left">
           {t('patientProfile.interviewSummary')}
         </h2>
-          {onRefreshSummary && (
-            <div title={t('clinicalChat.refreshSummary')}>
-              <Button
-                onClick={onRefreshSummary}
-                variant="ghost"
-                size="sm"
-                disabled={isLoading}
-                className="flex items-center gap-1 p-1 !bg-blue-100 hover:!bg-blue-200 !text-blue-700 !focus:outline-none !focus:ring-2 !focus:ring-blue-500 !focus:ring-offset-2 !active:ring-2 !active:ring-blue-500 !active:ring-offset-2"
-              >
-                <RefreshIcon color="#2563eb" size={14} />
-              </Button>
-            </div>
-          )}
       </div>
-      <section className="border-b border-solid border-gray-100 px-4 pt-5">
-        <h3 className="mb-4 text-left text-sm font-medium text-slate-600">
-          {t('patientProfile.basicInformation')}
-        </h3>
-        <dl className="space-y-2 pb-5 text-sm leading-[1.25]">
+      <section className="border-b border-solid border-gray-100 px-4 pt-4">
+        <dl className="space-y-2 pb-5 text-sm leading-profile">
           {caseTitle && (
-            <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+            <div className="grid grid-cols-patient-details items-start gap-3">
               <dt className="text-left font-normal text-gray-500">{t('patientProfile.case')}:</dt>
               <dd className="min-w-0 break-words text-right font-normal text-gray-800">{caseTitle}</dd>
             </div>
           )}
           {patient.name && (
-            <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+            <div className="grid grid-cols-patient-details items-start gap-3">
               <dt className="text-left font-normal text-gray-500">{t('patientProfile.name')}:</dt>
               <dd className="min-w-0 break-words text-right font-normal text-gray-800">{patient.name}</dd>
             </div>
@@ -83,13 +63,13 @@ export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, onR
             {Object.entries(patient.basicInfo)
               .filter(([, value]) => value && value !== '' && value !== 0)
               .map(([key, value]) => (
-                <div key={key} className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+                <div key={key} className="grid grid-cols-patient-details items-start gap-3">
                   <dt className="text-left font-normal text-gray-500">{getFieldLabel(key)}:</dt>
                   <dd className="min-w-0 break-words text-right font-normal text-gray-800">{getFieldValue(key, value)}</dd>
                 </div>
               ))}
           {personality && (
-            <div className="grid grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] items-start gap-3">
+            <div className="grid grid-cols-patient-details items-start gap-3">
               <dt className="text-left font-normal text-gray-500">{t('patientProfile.personality')}:</dt>
               <dd className="min-w-0 break-words text-right font-normal text-gray-800">{personality.name}</dd>
             </div>

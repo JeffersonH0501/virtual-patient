@@ -193,7 +193,196 @@ def _summarize_wav(
             "issues": issues,
         },
     }
+    observation["interpretability"] = _temporal_interpretability(
+        observation,
+        turn_duration_ms=turn_duration_ms,
+    )
     return _TurnFeatures(observation=observation, loudness_median=loudness_median)
+
+
+def _temporal_interpretability(
+    observation: dict[str, Any],
+    *,
+    turn_duration_ms: float | None = None,
+) -> dict[str, Any]:
+    """Build a traceable temporal interpretation using provisional thresholds."""
+    raw_keys = (
+        "speaking_rate_wpm",
+        "articulation_rate_wpm",
+        "pause_count",
+        "pause_total_ms",
+        "pause_median_ms",
+        "pause_ratio",
+    )
+    raw = {key: observation[key] for key in raw_keys if observation.get(key) is not None}
+    speaking_rate = observation.get("speaking_rate_wpm")
+    articulation_rate = observation.get("articulation_rate_wpm")
+    pause_count = observation.get("pause_count")
+    pause_median = observation.get("pause_median_ms")
+    pause_ratio = observation.get("pause_ratio")
+    derived: dict[str, float] = {}
+    if speaking_rate is not None and articulation_rate is not None:
+        derived["rate_gap_wpm"] = _round(articulation_rate - speaking_rate)
+        if articulation_rate > 0:
+            derived["speaking_to_articulation_ratio"] = _round(
+                speaking_rate / articulation_rate
+            )
+    pause_frequency = None
+    if pause_count is not None and turn_duration_ms and turn_duration_ms > 0:
+        pause_frequency = _round(pause_count / (turn_duration_ms / 60_000))
+        derived["pause_frequency_per_min"] = pause_frequency
+
+    labels = {
+        key: value
+        for key, value in {
+            "global_rate": _three_band_label(
+                speaking_rate, 110, 170,
+                "ritmo_global_bajo", "ritmo_global_tipico", "ritmo_global_alto",
+            ),
+            "articulation": _three_band_label(
+                articulation_rate, 130, 190,
+                "articulacion_baja", "articulacion_tipica", "articulacion_alta",
+            ),
+            "pause_load": _three_band_label(
+                pause_ratio, 0.15, 0.30,
+                "carga_pausas_baja", "carga_pausas_tipica", "carga_pausas_alta",
+            ),
+            "pause_duration": _three_band_label(
+                pause_median, 500, 1000,
+                "pausas_predominantemente_breves",
+                "pausas_duracion_tipica",
+                "pausas_predominantemente_largas",
+            ),
+            "pause_frequency": _three_band_label(
+                pause_frequency, 6, 12,
+                "frecuencia_pausas_baja",
+                "frecuencia_pausas_tipica",
+                "frecuencia_pausas_alta",
+            ),
+        }.items()
+        if value is not None
+    }
+    labels["temporal_profile"] = _composite_temporal_label(labels)
+    return {
+        "acoustic_temporal": {
+            "raw": raw,
+            "derived": derived,
+            "roles": {
+                "speaking_rate_wpm": "principal_global_rate",
+                "articulation_rate_wpm": "principal_effective_production_rate",
+                "pause_ratio": "principal_relative_silence_load",
+                "pause_median_ms": "principal_typical_pause_duration",
+                "pause_count": "support_duration_dependent",
+                "pause_total_ms": "support_duration_dependent",
+            },
+            "labels": {
+                "status": "provisional",
+                "values": labels,
+            },
+            "calibration": {
+                "status": "initial_thresholds",
+                "strategy": "fixed_initial_reference_ranges",
+                "version": "temporal_initial_v1",
+                "thresholds": {
+                    "speaking_rate_wpm": {"low_below": 110, "high_above": 170},
+                    "articulation_rate_wpm": {"low_below": 130, "high_above": 190},
+                    "pause_ratio": {"low_below": 0.15, "high_above": 0.30},
+                    "pause_median_ms": {"low_below": 500, "high_above": 1000},
+                    "pause_frequency_per_min": {"low_below": 6, "high_above": 12},
+                },
+                "limitations": [
+                    "provisional_non_clinical_thresholds",
+                    "pending_reference_corpus_validation",
+                    "pause_frequency_is_normalized_by_turn_duration",
+                ],
+            },
+            "scope": {
+                "describes": "temporal_organization_of_speech",
+                "does_not_infer": [
+                    "empathy",
+                    "attention",
+                    "anxiety",
+                    "professionalism",
+                    "communication_quality",
+                ],
+            },
+        }
+    }
+
+
+def _three_band_label(
+    value: float | int | None,
+    lower: float,
+    upper: float,
+    low_label: str,
+    typical_label: str,
+    high_label: str,
+) -> str | None:
+    if value is None:
+        return None
+    if value < lower:
+        return low_label
+    if value > upper:
+        return high_label
+    return typical_label
+
+
+def _composite_temporal_label(labels: dict[str, str]) -> str:
+    """Apply the documented ordered taxonomy for one descriptive profile."""
+    global_rate = labels.get("global_rate")
+    articulation = labels.get("articulation")
+    pause_load = labels.get("pause_load")
+    pause_duration = labels.get("pause_duration")
+    pause_frequency = labels.get("pause_frequency")
+    low_or_typical_load = pause_load in {
+        "carga_pausas_baja",
+        "carga_pausas_tipica",
+    }
+
+    if (
+        global_rate == "ritmo_global_tipico"
+        and articulation == "articulacion_tipica"
+        and pause_load == "carga_pausas_tipica"
+    ):
+        return "patron_temporal_tipico"
+    if articulation == "articulacion_baja" and low_or_typical_load:
+        return "ritmo_lento_continuo"
+    if (
+        articulation == "articulacion_alta"
+        and global_rate == "ritmo_global_alto"
+        and low_or_typical_load
+    ):
+        return "ritmo_rapido_continuo"
+    if (
+        global_rate == "ritmo_global_bajo"
+        and articulation in {"articulacion_tipica", "articulacion_alta"}
+        and pause_load == "carga_pausas_alta"
+    ):
+        return "ritmo_reducido_por_pausas"
+    if (
+        articulation == "articulacion_alta"
+        and global_rate in {"ritmo_global_tipico", "ritmo_global_bajo"}
+        and pause_load == "carga_pausas_alta"
+    ):
+        return "rafagas_rapidas_con_pausas"
+    if (
+        pause_frequency == "frecuencia_pausas_alta"
+        and pause_duration == "pausas_predominantemente_breves"
+        and pause_load in {"carga_pausas_tipica", "carga_pausas_alta"}
+    ):
+        return "fragmentado_por_pausas_breves"
+    if (
+        pause_frequency in {
+            "frecuencia_pausas_baja",
+            "frecuencia_pausas_tipica",
+        }
+        and pause_duration == "pausas_predominantemente_largas"
+        and pause_load == "carga_pausas_alta"
+    ):
+        return "intermitente_por_pausas_largas"
+    if pause_load == "carga_pausas_alta":
+        return "alta_carga_de_pausas"
+    return "patron_mixto_no_clasificado"
 
 
 def _find_column(columns: Iterable[str], fragment: str) -> str | None:

@@ -47,7 +47,7 @@ export const ClinicalCases: FC = () => {
 
   if (isLoading) {
     return (
-      <div className="flex justify-center items-center min-h-[200px]">
+      <div className="flex justify-center items-center min-h-loading-state">
         <div className="text-lg text-gray-600">{t('clinicalCases.loadingCases')}</div>
       </div>
     );
@@ -55,7 +55,7 @@ export const ClinicalCases: FC = () => {
 
   if (error) {
     return (
-      <div className="flex justify-center items-center min-h-[200px]">
+      <div className="flex justify-center items-center min-h-loading-state">
         <div className="text-lg text-red-600">{error}</div>
       </div>
     );
@@ -64,10 +64,10 @@ export const ClinicalCases: FC = () => {
   const availableCaseCount = defaultCases.length + customCases.length;
 
   return (
-    <section className="mx-auto w-full max-w-[900px] overflow-x-clip text-left">
+    <section className="mx-auto w-full max-w-content overflow-x-clip text-left">
       <div className="flex flex-col items-start gap-3 border-b border-slate-200 pb-4 sm:mt-2 sm:flex-row sm:items-end sm:justify-between sm:gap-4">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+          <p className="text-xs font-semibold uppercase tracking-eyebrow text-slate-500">
             {t('clinicalCases.caseLibrary')}
           </p>
           <h2 className="mt-1 text-xl font-semibold leading-7 tracking-tight text-slate-900 md:text-2xl">

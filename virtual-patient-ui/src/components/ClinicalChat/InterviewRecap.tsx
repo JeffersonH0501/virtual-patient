@@ -3,6 +3,7 @@ import {useTranslation} from 'react-i18next';
 import {getInterviewRecap, resolveRecordingSource} from '../../services/recordings';
 import {InterviewRecap as InterviewRecapData, RecapTurn} from '../../types/recording';
 import {Message} from '../../types/message';
+import {Info, Pause, Play, Speaker, X} from '../../icons';
 import {Modal} from '../common/Modal';
 
 type Props = {
@@ -47,12 +48,18 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
 
   useEffect(() => {
     let active = true;
+    let retryTimer: number | null = null;
     setLoading(true);
-    getInterviewRecap(interviewId)
-      .then((nextRecap) => {
-        if (active) setRecap(nextRecap);
-      })
-      .catch(() => {
+    const loadRecap = async () => {
+      try {
+        const nextRecap = await getInterviewRecap(interviewId);
+        if (!active) return;
+        setRecap(nextRecap);
+        const processingStatus = nextRecap.observationProcessing?.status;
+        if (processingStatus === 'queued' || processingStatus === 'processing') {
+          retryTimer = window.setTimeout(loadRecap, 3000);
+        }
+      } catch {
         if (active) {
           setRecap({
             interviewId,
@@ -60,14 +67,22 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
             turns: legacyTurns(messages),
           });
         }
-      })
-      .finally(() => {
+      } finally {
         if (active) setLoading(false);
-      });
+      }
+    };
+    void loadRecap();
     return () => {
       active = false;
+      if (retryTimer !== null) window.clearTimeout(retryTimer);
     };
   }, [interviewId, messages]);
+
+  useEffect(() => {
+    if (!detailTurn || !recap?.turns) return;
+    const updatedTurn = recap.turns.find((turn) => turn.turnId === detailTurn.turnId);
+    if (updatedTurn) setDetailTurn(updatedTurn);
+  }, [detailTurn, recap?.turns]);
 
   const sources = useMemo(() => ({
     studentVideo: resolveRecordingSource(recap?.studentVideoSource),
@@ -211,10 +226,13 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     setCurrentTime(duration);
   };
 
+  const visibleParaverbal = detailTurn?.paraverbal?.interpretability
+    ?.acousticTemporal?.labels;
+
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label={t('clinicalChat.recap.title')}>
       <header className="flex min-h-12 shrink-0 items-center border-b border-slate-200 bg-white px-4 text-left sm:px-5">
-        <h2 className="text-sm font-medium text-slate-600">{t('clinicalChat.recap.title')}</h2>
+        <h2 className="component-title">{t('clinicalChat.recap.title')}</h2>
       </header>
       <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-hidden p-3 sm:p-4">
         {loading ? (
@@ -263,10 +281,10 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                   <button
                     type="button"
                     onClick={playing ? pause : () => void play()}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-sm hover:bg-blue-500"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white hover:bg-blue-500 [&_svg]:h-4 [&_svg]:w-4"
                     aria-label={playing ? t('clinicalChat.recap.pause') : t('clinicalChat.recap.play')}
                   >
-                    {playing ? 'Ⅱ' : '▶'}
+                    {playing ? <Pause color="currentColor" /> : <Play color="currentColor" />}
                   </button>
                   <span className="w-10 text-right text-xs tabular-nums">{formatElapsed(currentTime)}</span>
                   <input
@@ -281,9 +299,7 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                   />
                   <span className="w-10 text-xs tabular-nums">{formatElapsed(duration)}</span>
                   <label className="group flex shrink-0 items-center justify-end gap-1.5" title={t('clinicalChat.recap.volume')}>
-                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5 6 9H3v6h3l5 4V5Zm4.5 3.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" />
-                    </svg>
+                    <span className="block h-4 w-4 [&_svg]:h-full [&_svg]:w-full"><Speaker color="currentColor" /></span>
                     <input
                       type="range"
                       min={0}
@@ -291,7 +307,7 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                       step={0.05}
                       value={volume}
                       onChange={(event) => changeVolume(Number(event.target.value))}
-                      className="w-0 min-w-0 cursor-pointer overflow-hidden opacity-0 accent-blue-500 transition-[width,opacity] duration-150 group-hover:w-16 group-hover:opacity-100 group-focus-within:w-16 group-focus-within:opacity-100 sm:group-hover:w-20 sm:group-focus-within:w-20"
+                      className="w-0 min-w-0 cursor-pointer overflow-hidden opacity-0 accent-blue-500 transition-recap duration-150 group-hover:w-16 group-hover:opacity-100 group-focus-within:w-16 group-focus-within:opacity-100 sm:group-hover:w-20 sm:group-focus-within:w-20"
                       aria-label={t('clinicalChat.recap.volume')}
                     />
                   </label>
@@ -304,7 +320,7 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
             )}
 
             <div
-              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+              className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto pr-1 scrollbar-hidden"
               aria-live="polite"
             >
               <div className="flex flex-col gap-3 pb-1">
@@ -321,11 +337,11 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                     <button
                       type="button"
                       onClick={() => setDetailTurn(turn)}
-                      className="mt-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-sm text-slate-500 hover:bg-slate-100 hover:text-blue-700"
+                      className="mt-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-blue-700 [&_svg]:h-4 [&_svg]:w-4"
                       aria-label={t('clinicalChat.recap.turnInfo')}
                       title={t('clinicalChat.recap.turnInfo')}
                     >
-                      ⓘ
+                      <Info color="currentColor" />
                     </button>
                     <button
                       type="button"
@@ -338,7 +354,7 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                     >
                       <p className="whitespace-pre-wrap text-sm leading-5 text-slate-800">{turn.transcript}</p>
                       {typeof turn.startMs === 'number' && (
-                        <span className="mt-1 block text-right text-[10px] text-slate-400">{formatElapsed(turn.startMs / 1000)}</span>
+                        <span className="mt-1 block text-right text-timestamp text-slate-400">{formatElapsed(turn.startMs / 1000)}</span>
                       )}
                     </button>
                   </div>
@@ -352,21 +368,23 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
       <Modal
         open={Boolean(detailTurn)}
         closeAction={() => setDetailTurn(null)}
-        size="extraLarge"
+        size="large"
       >
         {detailTurn && (
-          <div className="flex max-h-[calc(100dvh-64px)] min-h-0 flex-col overflow-hidden">
+          <div className="flex max-h-dialog min-h-0 flex-col overflow-hidden">
             <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
               <h3 className="text-base font-semibold text-slate-800">{t('clinicalChat.recap.turnDetails')}</h3>
               <button
                 type="button"
                 onClick={() => setDetailTurn(null)}
-                className="rounded px-2 py-1 text-sm text-slate-500 hover:bg-slate-100"
+                className="dialog-close-button"
+                aria-label={t('common.close')}
+                title={t('common.close')}
               >
-                {t('common.close')}
+                <X color="currentColor" />
               </button>
             </header>
-            <div className="grid min-h-0 grid-cols-1 gap-3 overflow-y-auto px-5 py-4 text-sm text-slate-700 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid min-h-0 grid-cols-1 gap-3 overflow-y-auto px-5 py-4 text-sm text-slate-700 scrollbar-hidden md:grid-cols-2 xl:grid-cols-4">
               <section className="min-w-0 rounded-lg border border-slate-200 p-3">
                 <h4 className="mb-3 font-semibold text-slate-800">{t('clinicalChat.recap.generalInformation')}</h4>
                 <pre className="whitespace-pre-wrap break-words rounded bg-slate-50 p-3 text-xs text-slate-700">
@@ -384,7 +402,10 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                 </pre>
               </section>
               {([
-                ['clinicalChat.recap.paraverbal', detailTurn.paraverbal],
+                [
+                  'clinicalChat.recap.paraverbal',
+                  visibleParaverbal ? {labels: visibleParaverbal} : null,
+                ],
                 ['clinicalChat.recap.nonverbal', detailTurn.nonverbalFeatures],
                 ['clinicalChat.recap.pyfeatBenchmark', detailTurn.pyfeatNonverbalFeatures],
               ] as const).map(([title, observation]) => (
@@ -394,7 +415,12 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                     <pre className="whitespace-pre-wrap break-words rounded bg-slate-50 p-3 text-xs text-slate-700">
                       {JSON.stringify(observation, null, 2)}
                     </pre>
-                  ) : <p>{t('clinicalChat.recap.notAvailable')}</p>}
+                  ) : <p>{
+                    recap?.observationProcessing?.status === 'queued'
+                    || recap?.observationProcessing?.status === 'processing'
+                      ? t('clinicalChat.recap.processingObservations')
+                      : t('clinicalChat.recap.notAvailable')
+                  }</p>}
                 </section>
               ))}
             </div>

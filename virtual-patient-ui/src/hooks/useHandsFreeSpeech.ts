@@ -7,6 +7,8 @@ type UseHandsFreeSpeechOptions = {
   paused: boolean;
   disabled?: boolean;
   autoStart?: boolean;
+  onUtteranceCommitted?: () => void;
+  onUtteranceFailed?: () => void;
   onUtterance: (text: string, timing?: SpeechTiming) => void | Promise<void>;
 };
 
@@ -15,6 +17,8 @@ export const useHandsFreeSpeech = ({
   paused,
   disabled = false,
   autoStart = false,
+  onUtteranceCommitted,
+  onUtteranceFailed,
   onUtterance,
 }: UseHandsFreeSpeechOptions) => {
   const providerRef = useRef<SpeechInputProvider | null>(null);
@@ -24,11 +28,18 @@ export const useHandsFreeSpeech = ({
   const bufferTimingRef = useRef<SpeechTiming | null>(null);
   const queueRef = useRef(Promise.resolve());
   const autoStartAttemptedRef = useRef(false);
+  const acceptingInputRef = useRef(!paused && !disabled);
+  const awaitingCommittedTranscriptRef = useRef(false);
   const [isSupported, setIsSupported] = useState(true);
   const [isEnabled, setIsEnabled] = useState(false);
   const [state, setState] = useState<SpeechInputState>('idle');
   const [interimTranscript, setInterimTranscript] = useState('');
   const [errorCode, setErrorCode] = useState<string | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
+  const [hasPendingUtterance, setHasPendingUtterance] = useState(false);
+  const [isSubmittingUtterance, setIsSubmittingUtterance] = useState(false);
+
+  acceptingInputRef.current = !paused && !disabled;
 
   useEffect(() => {
     onUtteranceRef.current = onUtterance;
@@ -45,23 +56,36 @@ export const useHandsFreeSpeech = ({
     bufferTimingRef.current = null;
     if (!text) return;
     queueRef.current = queueRef.current
-      .then(() => onUtteranceRef.current(text, timing ?? undefined))
+      .then(() => {
+        const result = onUtteranceRef.current(text, timing ?? undefined);
+        setIsSubmittingUtterance(false);
+        return result;
+      })
       .catch(() => setErrorCode('send-failed'));
   }, []);
-
-  const scheduleFlush = useCallback(() => {
-    if (debounceTimerRef.current !== null) {
-      window.clearTimeout(debounceTimerRef.current);
-    }
-    debounceTimerRef.current = window.setTimeout(flushBuffer, 1200);
-  }, [flushBuffer]);
 
   useEffect(() => {
     let provider: SpeechInputProvider;
     try {
       provider = createSpeechInputProvider({
-        onInterimTranscript: setInterimTranscript,
+        onInterimTranscript: (text) => {
+          if (acceptingInputRef.current) {
+            setInterimTranscript(text);
+            if (text) setHasPendingUtterance(true);
+          }
+        },
+        onUtteranceCaptured: () => {
+          if (!acceptingInputRef.current) return;
+          acceptingInputRef.current = false;
+          awaitingCommittedTranscriptRef.current = true;
+          setIsSubmittingUtterance(true);
+          onUtteranceCommitted?.();
+        },
         onFinalTranscript: (text, timing) => {
+          if (!acceptingInputRef.current && !awaitingCommittedTranscriptRef.current) return;
+          acceptingInputRef.current = false;
+          awaitingCommittedTranscriptRef.current = false;
+          setHasPendingUtterance(false);
           bufferRef.current = `${bufferRef.current} ${text}`.trim();
           if (timing) {
             bufferTimingRef.current = bufferTimingRef.current
@@ -72,11 +96,18 @@ export const useHandsFreeSpeech = ({
               : timing;
           }
           setInterimTranscript('');
-          scheduleFlush();
+          flushBuffer();
         },
         onStateChange: setState,
+        onAudioLevel: setAudioLevel,
         onError: (nextErrorCode) => {
           setErrorCode(nextErrorCode);
+          if (nextErrorCode === 'transcription-failed') {
+            awaitingCommittedTranscriptRef.current = false;
+            setHasPendingUtterance(false);
+            setIsSubmittingUtterance(false);
+            onUtteranceFailed?.();
+          }
           if (
             nextErrorCode === 'not-allowed' ||
             nextErrorCode === 'service-not-allowed' ||
@@ -101,13 +132,16 @@ export const useHandsFreeSpeech = ({
       provider.dispose();
       providerRef.current = null;
     };
-  }, [disabled, isEnabled, language, scheduleFlush]);
+  }, [disabled, flushBuffer, isEnabled, language, onUtteranceCommitted, onUtteranceFailed]);
 
   useEffect(() => {
     const provider = providerRef.current;
     if (!provider || !isEnabled || disabled) return;
-    if (paused) provider.pause();
-    else provider.resume();
+    if (paused) {
+      setInterimTranscript('');
+      setAudioLevel(0);
+      provider.pause();
+    } else provider.resume();
   }, [disabled, isEnabled, paused]);
 
   useEffect(() => {
@@ -142,13 +176,32 @@ export const useHandsFreeSpeech = ({
     setIsEnabled(true);
   }, [disabled, flushBuffer, isEnabled, isSupported]);
 
+  const submitUtterance = useCallback(() => {
+    if (!hasPendingUtterance || paused || disabled) return;
+    providerRef.current?.submitUtterance();
+  }, [disabled, hasPendingUtterance, paused]);
+
+  const stop = useCallback(() => {
+    providerRef.current?.stop();
+    setIsEnabled(false);
+    setInterimTranscript('');
+    setAudioLevel(0);
+    setHasPendingUtterance(false);
+    setIsSubmittingUtterance(false);
+  }, []);
+
   return {
     isSupported,
     isEnabled,
     isListening: state === 'listening',
     isPaused: state === 'paused',
     interimTranscript,
+    audioLevel,
+    hasPendingUtterance,
+    isSubmittingUtterance,
     errorCode,
+    submitUtterance,
+    stop,
     toggle,
   };
 };

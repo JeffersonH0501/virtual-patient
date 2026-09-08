@@ -12,15 +12,17 @@ type Props = {
 
 export const ConfirmationModal: FC<Props> = ({title, description, onCancel, onConfirm, isLoading = false}) => {
   const {t} = useTranslation();
-  
+
   return (
-    <div className="fixed inset-0 bg-opacity-50 overflow-y-auto h-full w-full flex items-center justify-center">
-      <div className="flex flex-col rounded-2xl max-w-[796px] bg-white p-6">
-        <h2 id="modal-title" className="mb-5 text-xl font-bold text-gray-800">
-          {title}
-        </h2>
-        <p className="mb-6 text-base text-gray-600">{description}</p>
-        <div className="flex gap-5 justify-end max-sm:justify-center max-sm:w-full">
+    <div className="flex flex-col overflow-hidden rounded-panel bg-surface text-left">
+      <header className="border-b border-border px-5 py-3.5">
+        <h2 id="modal-title" className="text-lg font-semibold text-slate-800">{title}</h2>
+      </header>
+      <div className="px-5 py-4">
+        <p className="text-sm leading-6 text-slate-600">{description}</p>
+      </div>
+      <footer className="flex justify-end px-5 py-3.5">
+        <div className="dialog-actions">
           <ModalButton variant="secondary" onClick={onCancel}>
             {t('clinicalChat.cancel')}
           </ModalButton>
@@ -28,7 +30,7 @@ export const ConfirmationModal: FC<Props> = ({title, description, onCancel, onCo
             {isLoading ? t('clinicalChat.submitting') : t('clinicalChat.confirm')}
           </ModalButton>
         </div>
-      </div>
+      </footer>
     </div>
   );
 };

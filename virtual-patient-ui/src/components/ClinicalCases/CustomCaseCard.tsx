@@ -2,6 +2,7 @@ import {FC} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {ROUTES} from '../../utils/routes';
+import {CaretRight, PlusIcon} from '../../icons';
 
 export const CustomCaseCard: FC = () => {
   const {t} = useTranslation();
@@ -9,8 +10,8 @@ export const CustomCaseCard: FC = () => {
 
   return (
     <article className="group flex flex-col gap-4 rounded-2xl border border-dashed border-blue-300 bg-blue-50/50 p-4 text-left transition duration-200 hover:border-blue-400 hover:shadow-md sm:flex-row sm:items-center">
-      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-2xl font-light text-white">
-          +
+      <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-600 text-white [&_svg]:h-6 [&_svg]:w-6">
+        <PlusIcon color="currentColor" />
       </div>
       <div className="min-w-0 flex-1">
         <h3 className="text-base font-bold text-slate-950">
@@ -26,8 +27,8 @@ export const CustomCaseCard: FC = () => {
         onClick={() => navigate(ROUTES.createCase)}
       >
         <span>{t('clinicalCases.createNew')}</span>
-        <span aria-hidden="true" className="text-lg transition-transform group-hover:translate-x-1">
-          →
+        <span aria-hidden="true" className="block h-4 w-4 transition-transform group-hover:translate-x-1 [&_svg]:h-full [&_svg]:w-full">
+          <CaretRight color="currentColor" />
         </span>
       </button>
     </article>

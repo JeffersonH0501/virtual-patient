@@ -25,7 +25,7 @@ export const apiFetch = async (
     
     // Check if we're already on the login or signup page to avoid redirect loops
     const currentPath = window.location.pathname;
-    const isOnAuthPage = currentPath === ROUTES.home || currentPath === ROUTES.signUp;
+    const isOnAuthPage = [ROUTES.signIn, ROUTES.signUp, ROUTES.resetPassword].includes(currentPath);
     
     // Only redirect if we're not already on an auth page
     // This prevents infinite redirect loops when UserContext calls getUser() on the login page
@@ -33,7 +33,7 @@ export const apiFetch = async (
       isRedirecting = true;
       // Redirect to login page immediately
       // Using window.location.href to ensure navigation works outside React context
-      window.location.href = ROUTES.home;
+      window.location.href = ROUTES.signIn;
     }
     
     // Throw error with status to allow error handling if needed
@@ -47,4 +47,3 @@ export const apiFetch = async (
 
   return response;
 };
-

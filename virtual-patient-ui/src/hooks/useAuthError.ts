@@ -16,7 +16,7 @@ export const useAuthError = () => {
     
     // Redirect to login after showing the error
     setTimeout(() => {
-      navigate(ROUTES.home);
+      navigate(ROUTES.signIn);
       setIsTokenExpired(false);
     }, 2000);
   };

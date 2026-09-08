@@ -10,6 +10,7 @@ export type Status = 'active' | 'completed' | 'abandoned';
 
 export type CompleteInterviewResponse = {
   id: number;
+  publicId: string;
   userId: number;
   clinicalCaseId: number;
   status: Status;
@@ -41,6 +42,7 @@ export type CompleteInterviewResponse = {
 
 export type Interview = {
   id: string;
+  publicId: string;
   status: Status;
   createdAt: string;
   endTime: string;
@@ -67,7 +69,8 @@ export type OrganizationInterview = {
   evaluationScore: number;
   organizationId: number;
   clinicalCaseTitle: string;
-  userUsername: string;
+  userFirstName: string;
+  userLastName: string;
   startTime: string;
   endTime: string;
   teacherFeedback: TeacherFeedback[];

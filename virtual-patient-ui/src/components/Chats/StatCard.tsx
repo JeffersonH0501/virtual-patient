@@ -2,23 +2,25 @@ import {ReactNode} from 'react';
 
 type StatCardProps = {
   title: string;
-  value: string;
-  icon: ReactNode;
+  value: ReactNode;
+  icon?: ReactNode;
   change?: string;
   isNegative?: boolean;
 };
 
 export const StatCard = ({title, value, icon, change, isNegative}: StatCardProps) => {
   return (
-    <div className="flex-1 p-6 bg-white rounded-lg shadow">
-      <div className="flex justify-between items-center mb-4">
-        <div className="text-base text-gray-700">{title}</div>
-        <div>{icon}</div>
+    <article className="flex min-h-36 flex-1 flex-col overflow-hidden rounded-card bg-white shadow-card">
+      <header className="flex min-h-12 items-center justify-between border-b border-slate-200 px-4">
+        <h2 className="component-title text-left">{title}</h2>
+        {icon && <div className="[&_svg]:h-5 [&_svg]:w-5">{icon}</div>}
+      </header>
+      <div className="flex flex-1 flex-col justify-center px-4 py-3">
+        <div className="mb-1 text-3xl font-bold text-slate-800">{value}</div>
+        {change && (
+          <div className={`text-sm ${isNegative ? 'text-danger-600' : 'text-success-600'}`}>{change}</div>
+        )}
       </div>
-      <div className="mb-2 text-3xl font-bold text-gray-900">{value}</div>
-      {change && (
-        <div className={`text-sm ${isNegative ? 'text-red-500' : 'text-green-500'}`}>{change}</div>
-      )}
-    </div>
+    </article>
   );
 };

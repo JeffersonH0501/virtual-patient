@@ -54,7 +54,7 @@ async def create_clinical_case(
     # Convert to Pydantic model with created_by_user
     case_dict = {
         **{k: v for k, v in db_case.__dict__.items() if not k.startswith('_')},
-        'created_by_user': CreatedByUser(id=db_case.creator.id, username=db_case.creator.username) if db_case.creator else None
+        'created_by_user': CreatedByUser(id=db_case.creator.id, first_name=db_case.creator.first_name, last_name=db_case.creator.last_name) if db_case.creator else None
     }
     return ClinicalCase(**case_dict)
 
@@ -189,7 +189,7 @@ async def get_clinical_case(
     if db_case.creator:
         case_dict['created_by_user'] = CreatedByUser(
             id=db_case.creator.id,
-            username=db_case.creator.username
+            first_name=db_case.creator.first_name, last_name=db_case.creator.last_name
         )
     else:
         case_dict['created_by_user'] = None
@@ -267,7 +267,7 @@ async def update_clinical_case(
     # Convert to Pydantic model with created_by_user
     case_dict = {
         **{k: v for k, v in updated_case.__dict__.items() if not k.startswith('_')},
-        'created_by_user': CreatedByUser(id=updated_case.creator.id, username=updated_case.creator.username) if updated_case.creator else None
+        'created_by_user': CreatedByUser(id=updated_case.creator.id, first_name=updated_case.creator.first_name, last_name=updated_case.creator.last_name) if updated_case.creator else None
     }
     return ClinicalCase(**case_dict)
 

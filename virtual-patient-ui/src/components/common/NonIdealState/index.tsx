@@ -20,7 +20,7 @@ export const NonIdealState: FC<NonIdealStateProps> = ({
   className = ''
 }) => {
   return (
-    <div className={`flex flex-col items-center justify-center min-h-[400px] p-8 text-center ${className}`}>
+    <div className={`flex flex-col items-center justify-center min-h-empty-state p-8 text-center ${className}`}>
       {icon && (
         <div className="mb-6 text-gray-400">
           {icon}

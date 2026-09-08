@@ -44,6 +44,14 @@ export type ParaverbalObservation = {
   loudnessMedianRel?: number | null;
   loudnessIqr?: number | null;
   audioQuality?: {validRatio?: number | null; issues?: string[]};
+  interpretability?: {
+    acousticTemporal?: {
+      labels?: {
+        status?: string;
+        values?: Record<string, string>;
+      };
+    };
+  };
 };
 
 export type NonverbalObservation = {
@@ -62,6 +70,12 @@ export type InterviewRecap = {
   interviewId: number;
   recordingStatus: RecordingStatus;
   durationMs?: number | null;
+  observationProcessing?: {
+    status?: 'queued' | 'processing' | 'complete' | 'partial' | 'failed' | 'unavailable';
+    stage?: string;
+    expected?: number;
+    available?: number;
+  };
   studentAudioSource?: string | null;
   studentVideoSource?: string | null;
   patientAudioSource?: string | null;
@@ -79,4 +93,6 @@ export type CapturedMedia = {
 export type SpeechTiming = {
   startedAt: number;
   endedAt: number;
+  inputSource?: 'browser_speech' | 'azure_openai_stt';
+  timingSource?: 'browser_speech_events' | 'client_audio_activity';
 };

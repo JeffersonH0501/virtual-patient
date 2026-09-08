@@ -1,9 +1,9 @@
 import {API_URL} from '../../utils/request';
 
 export type CreateUserPayload = {
-  username: string;
   email: string;
-  full_name: string;
+  first_name: string;
+  last_name: string;
   password: string;
   role?: 'student' | 'teacher'; // Make optional until backend supports it
 };

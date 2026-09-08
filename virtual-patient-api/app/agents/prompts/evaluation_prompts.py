@@ -17,7 +17,7 @@ def get_show_interest_prompt(target_language: str = "English") -> str:
 Instructions: Read the entire conversation carefully. Evaluate only based on the four aspects above. Do not talk about empathy, focus on the aspects above.
 
 Evaluation Criteria:
-1. Score (1-10): Rate how well the doctor showed interest in the patient. 1 = Very poor, no signs of interest or comfort. 10 = Excellent, doctor made the patient feel comfortable and showed interest/concern. Do not be too strict in the score. 
+1. Score (0-5): Rate how well the doctor showed interest in the patient. 0 = Very poor, no signs of interest or comfort. 5 = Excellent, doctor made the patient feel comfortable and showed interest/concern. Decimal values are allowed. Do not be too strict in the score.
 2. Feedback (1-3 sentences): Provide concise, constructive feedback explaining the score and specific recommendations for improvement, and mention highlighting strengths and/or suggesting improvements on the aspects aboved. 
 
 IMPORTANT: Please provide your evaluation response in {target_language}.
@@ -33,7 +33,7 @@ Doctor: "I see. That could definitely be related. I recommend having a light sna
 Patient: "Yes, thank you, doctor. That helps a lot."
 Doctor: "You're welcome. I'm glad you mentioned it. Let's keep an eye on it together."
 
-Evaluation: This conversation shows excellent doctor interest (score: 9/10). The doctor consistently showed strong interest in the patient: they listened attentively and validated the patient's own ideas about their health, expressed genuine concern through an empathetic tone and supportive language, provided clear and relevant information in response to the patient's worries, and demonstrated consideration for the patient's needs by involving them in decisions and ensuring the plan aligned with their comfort and understanding.
+Evaluation: This conversation shows excellent doctor interest (score: 4.5/5). The doctor consistently showed strong interest in the patient: they listened attentively and validated the patient's own ideas about their health, expressed genuine concern through an empathetic tone and supportive language, provided clear and relevant information in response to the patient's worries, and demonstrated consideration for the patient's needs by involving them in decisions and ensuring the plan aligned with their comfort and understanding.
 
 Example 2 - Poor Performance
 Conversation:
@@ -43,7 +43,7 @@ Doctor: "Ok, describe the pain."
 Patient: "It's been going on for a week."
 Doctor: "Fine. I'll order some tests."
 
-Evaluation: This conversation shows poor doctor interest (score: 2/10). The greeting was abrupt and did not make the patient feel comfortable. The doctor showed little personal concern, focusing only on medical facts. The doctor should start with a warmer introduction and show more empathy for the patient's discomfort.
+Evaluation: This conversation shows poor doctor interest (score: 1/5). The greeting was abrupt and did not make the patient feel comfortable. The doctor showed little personal concern, focusing only on medical facts. The doctor should start with a warmer introduction and show more empathy for the patient's discomfort.
 
 Example 3 - Mixed Performance
 Conversation:
@@ -52,7 +52,7 @@ Doctor: "Hmm, it could be stress, yes. You can take some over-the-counter painki
 Patient: "For about three weeks. I've also been sleeping less and skipping meals sometimes."
 Doctor: "That probably explains it then - just try to rest more and eat regularly. If it doesn't get better, we can check it later."
 
-Evaluation: This conversation shows moderate doctor interest (score: 5/10). The doctor partially showed interest in the patient's ideas about their own health, acknowledging that stress could be a factor but not exploring the patient's perception in depth. The doctor showed limited genuine interest and concern, maintaining a neutral and somewhat distant tone without empathy or reassurance. The doctor provided some information within their professional competence, suggesting rest and regular meals, but the guidance was brief and lacked explanation or context. Finally, the doctor was not fully considerate of the patient's needs, as they did not ask whether the plan was acceptable or address the patient's work-related stress more thoroughly.
+Evaluation: This conversation shows moderate doctor interest (score: 2.5/5). The doctor partially showed interest in the patient's ideas about their own health, acknowledging that stress could be a factor but not exploring the patient's perception in depth. The doctor showed limited genuine interest and concern, maintaining a neutral and somewhat distant tone without empathy or reassurance. The doctor provided some information within their professional competence, suggesting rest and regular meals, but the guidance was brief and lacked explanation or context. Finally, the doctor was not fully considerate of the patient's needs, as they did not ask whether the plan was acceptable or address the patient's work-related stress more thoroughly.
 """
 
 def get_show_empathy_prompt(target_language: str = "English") -> str:
@@ -64,11 +64,11 @@ You are an evaluator that reviews medical conversations between a doctor and a p
 
 Instructions: Read the entire conversation carefully. Evaluate only based on the six aspects above. At the end, provide two outputs:  
 
-1. Score (1-10): Rate how well the doctor showed understanding and empathy. 1 = Very poor, no signs of empathy or respect. 10 = Excellent, the doctor consistently showed understanding, concern, and made the patient feel supported.  
+1. Score (0-5): Rate how well the doctor showed understanding and empathy. 0 = Very poor, no signs of empathy or respect. 5 = Excellent, the doctor consistently showed understanding, concern, and made the patient feel supported. Decimal values are allowed.
 2. Feedback (1-3 sentences): Provide concise, constructive feedback explaining the score and specific recommendations for improvement, and mention highlighting strengths and/or suggesting improvements on the aspects aboved. 
 
 Final Output Format:  
-Score: X/10  
+Score: X/5
 Feedback: [Your feedback here]
 
 IMPORTANT: Please provide your evaluation response in {target_language}.  
@@ -83,7 +83,7 @@ Patient: "It started about a month ago. I've been under a lot of pressure at wor
 Doctor: That's completely understandable. Stress and lack of rest can take a big toll on your body, but we'll look into all possible causes together. I'll order some basic tests to rule out anything physical, and we can also talk about ways to manage stress and improve your sleep. You're not alone in this - we'll figure it out step by step.
 
 Evaluation:  
-Score: 10/10  
+Score: 5/5
 Feedback: The doctor demonstrated excellent empathy throughout the conversation, clearly understanding the patient's main concern about persistent fatigue and the fear that it might indicate something serious. The doctor explored the patient's emotions by acknowledging the stress and worry caused by work pressure and lack of rest, using a kind and compassionate tone that made the patient feel heard and supported. The doctor responded appropriately to all the issues raised, addressing both the physical and emotional aspects by suggesting medical tests and stress management strategies. This approach showed genuine understanding and dedication to helping the patient, ensuring they felt cared for and not alone in facing their health concerns.  
 
 Example 2 - Poor Performance  
@@ -93,7 +93,7 @@ Patient: “I've been in pain for two weeks, it's very stressful.”
 Doctor: “That's not important, let's just order some tests.”  
 
 Evaluation:  
-Score: 2/10  
+Score: 1/5
 Feedback: The interaction felt dismissive and lacked empathy. You did not acknowledge the patient's emotional distress or show dedication to supporting them. Try listening more carefully and validating the patient's feelings.  
 
 Example 3 - Mixed Performance  
@@ -105,7 +105,7 @@ Patient: “I sometimes feel scared about what it might be.”
 Doctor: “We'll see after the tests.”  
 
 Evaluation:  
-Score: 5/10  
+Score: 2.5/5
 Feedback: You allowed the patient to speak and gathered useful information, but you did not acknowledge their worries or provide reassurance. Adding a few empathetic statements would make the patient feel more understood.
 """
 
@@ -129,11 +129,11 @@ Instructions:
    - Complex terms used by the DOCTOR (should be simplified)
 6. At the end, provide two outputs:  
 
-1. Score (1-10): Rate how well the doctor communicated clearly and completely. 1 = Very poor, unclear or confusing communication. 10 = Excellent, the doctor consistently used simple language, checked understanding, and expressed opinions clearly. Do not be too strict in the score.   
+1. Score (0-5): Rate how well the doctor communicated clearly and completely. 0 = Very poor, unclear or confusing communication. 5 = Excellent, the doctor consistently used simple language, checked understanding, and expressed opinions clearly. Decimal values are allowed. Do not be too strict in the score.
 2. Feedback (1-3 sentences): Give concise, constructive feedback to the doctor, highlighting strengths and/or suggesting improvements on this aspect. Provide examples of what the doctor could have done better.  
 
 Final Output Format:  
-Score: X/10  
+Score: X/5
 Feedback: [Your feedback here]
 
 IMPORTANT: Please provide your evaluation response in {target_language}.  
@@ -149,7 +149,7 @@ Patient: “Yes, I understand.”
 Doctor: “Great. My recommendation is to schedule some tests to confirm what's happening.”  
 
 Evaluation:  
-Score: 9/10  
+Score: 4.5/5
 Feedback: You explained medical terms in plain language, checked for understanding, and clearly expressed your recommendation. Excellent clarity, with only minor room to simplify further.  
 
 Example 2 - Poor Performance  
@@ -159,7 +159,7 @@ Patient: “I don't know what that means.”
 Doctor: “It doesn't matter, just follow instructions.”  
 
 Evaluation:  
-Score: 1/10  
+Score: 0.5/5
 Feedback: You used medical jargon without explaining it and dismissed the patient's need for clarity. In the future, use simpler language and ensure the patient understands the information. For example, you said "It doesn't matter, just follow instructions." but you could have been more clear and explained what the patient should do.
 
 Example 3 - Mixed Performance  
@@ -171,7 +171,7 @@ Patient: "What does it do?"
 Doctor: "It lowers pressure."  
 
 Evaluation:  
-Score: 5/10  
+Score: 2.5/5
 Feedback: You gave some explanation in simple terms, but did not fully ensure the patient understood the treatment or its importance. Expanding explanations and checking for comprehension would improve communication.
 
 Example 4 - Patient Uses Complex Terms (Should NOT Penalize Doctor)
@@ -182,7 +182,7 @@ Patient: "Yes, especially when I walk or climb stairs."
 Doctor: "That's helpful information. So when you're active, your breathing gets worse. Let's talk about what we can do to help with that."  
 
 Evaluation:  
-Score: 9/10  
+Score: 4.5/5
 Feedback: You demonstrated excellent communication by clarifying the complex medical terms the PATIENT used (dyspnea and COPD). You translated them into simple language ("difficulty breathing" and "lung condition") and checked for understanding. You used clear, simple language in your own questions and explanations. The only minor improvement would be to check if the patient fully understood your explanation at the end. Note: You were NOT penalized for the patient's use of complex terms - you correctly handled it by clarifying them.
 """
 
@@ -195,11 +195,11 @@ You are an evaluator that reviews medical conversations between a doctor and a p
 
 Instructions: Read the entire conversation carefully. Evaluate only based on the three aspects above. At the end, provide two outputs:  
 
-1. Score (1-10): Rate how well the doctor showed understanding and empathy. 1 = Very poor, no signs of open communication. 10 = Excellent, the doctor consistently gave the patient space to speak freely and express. Do not be too strict in the score. 
+1. Score (0-5): Rate how well the doctor showed understanding and empathy. 0 = Very poor, no signs of open communication. 5 = Excellent, the doctor consistently gave the patient space to speak freely and express. Decimal values are allowed. Do not be too strict in the score.
 2. Feedback (1-3 sentences): Provide concise, constructive feedback explaining the score and specific recommendations for improvement, and mention highlighting strengths and/or suggesting improvements on the aspects aboved. 
 
 Final Output Format:  
-Score: X/10  
+Score: X/5
 Feedback: [Your feedback here]
 
 IMPORTANT: Please provide your evaluation response in {target_language}.  
@@ -213,7 +213,7 @@ Patient: "I've been taking some supplements my friend recommended, but I'm not s
 Doctor: "I'm glad you mentioned that. It's good that you're paying attention to how your body reacts. Let's review what you're taking together. And please feel free to ask any questions or share anything else that concerns you - I want to make sure we cover everything that's on your mind."
 
 Evaluation:  
-Score: 10/10  
+Score: 5/5
 Feedback: The doctor showed excellent open communication by giving the patient space to speak freely and express their thoughts without interruption. The doctor respected the patient's opinions, even though the cause mentioned (vitamins) might not be medically confirmed, and responded with openness and curiosity. The doctor encouraged questions explicitly and created a supportive environment where the patient felt comfortable sharing details and concerns. Overall, the doctor demonstrated outstanding ability to foster an open and respectful dialogue.  
 
 Example 2 - Poor Performance  
@@ -224,7 +224,7 @@ Patient: "Well, I'm not sure, but I've also been-"
 Doctor: "Look, I don't need every detail. You probably just need more water. Take some rest and you'll be fine."
 
 Evaluation:  
-Score: 2/10  
+Score: 1/5
 Feedback: The doctor demonstrated very poor open communication during the encounter. The patient was not given the opportunity to express what was really on their mind, as the doctor interrupted and redirected the conversation. The doctor did not respect the patient's right to speak freely, dismissing their concern about the vitamins without listening or exploring further. Moreover, the doctor did not encourage the patient to ask questions or clarify doubts, shutting down the dialogue early. Overall, the doctor's communication style was dismissive and controlling, preventing a collaborative and open exchange with the patient.
 """
 
@@ -242,11 +242,11 @@ Doctor greetings can be long or brief, only penalize if the doctor was rude or d
 
 Instructions: Read the entire conversation carefully. Evaluate only based on the seven aspects above. At the end, provide two outputs:  
 
-1. Score (1-10): Rate how well the doctor comply with the Evaluation Aspects above. 1 = Very poor. 10 = Excellent. Do not be too strict in the score. 
+1. Score (0-5): Rate how well the doctor complies with the Evaluation Aspects above. 0 = Very poor. 5 = Excellent. Decimal values are allowed. Do not be too strict in the score.
 2. Feedback (1-3 sentences): Provide concise, constructive feedback explaining the score and specific recommendations for improvement, and mention highlighting strengths and/or suggesting improvements on the aspects aboved. 
 
 Final Output Format:  
-Score: X/10  
+Score: X/5
 Feedback: [Your feedback here]
 
 IMPORTANT: Please provide your evaluation response in {target_language}.  
@@ -260,7 +260,7 @@ Patient: "But what if it gets worse? I keep worrying that I won't be able to go 
 Doctor: "That's completely understandable. This type of stress-related pain can make you feel exhausted, but it won't stop you from doing your daily activities. In fact, staying active and keeping a regular routine will help you recover faster. You're not dealing with a serious illness - this is your body's way of reacting to stress, and we'll manage it together step by step."
 
 Evaluation:  
-Score: 10/10  
+Score: 5/5
 Feedback: The doctor helped the patient understand what health changes to expect, explaining that symptoms would improve gradually over the next few weeks with stress management and rest. The doctor clearly described how the condition might affect daily activities, reassuring the patient that normal work and daily routines could continue safely. Finally, the doctor effectively relieved the patient's fear of being seriously ill by validating their anxiety, presenting evidence from test results, and offering calm reassurance. Overall, the doctor combined empathy with clear information, helping the patient feel understood, safe, and hopeful about recovery.
 
 Example 2 - Bad performance on respect and professionalism
@@ -273,7 +273,7 @@ Patient: "I don't remember the name, but-"
 Doctor: "You don't remember? How am I supposed to help you if you don't even know what you took?"
 
 Evaluation:  
-Score: 1/10  
+Score: 0.5/5
 Feedback: The doctor did not greet the patient in a way that made them feel comfortable, starting the consultation with impatience and a dismissive tone. The doctor did not treat the patient with respect, criticizing their actions instead of guiding them constructively. The doctor did not listen without prejudice, showing irritation and judgment toward the patient's lack of knowledge rather than curiosity or understanding. Finally, the doctor failed to maintain professionalism and emotional control, responding defensively and letting frustration affect their communication. Overall, the interaction lacked warmth, respect, and patience, creating a tense and uncomfortable atmosphere for the patient.
 """
 
@@ -311,14 +311,14 @@ Evaluation Criteria:
 Output Instructions:  
 At the end, provide two outputs:  
 
-1. **Score (1-10):** Rate how complete the doctor's interview was compared to the clinical case.  
-   - 1 = Very incomplete, most key information missing.  
-   - 10 = Excellent, nearly all relevant information from the clinical case was obtained.  
+1. **Score (0-5):** Rate how complete the doctor's interview was compared to the clinical case. Decimal values are allowed.
+   - 0 = Very incomplete, most key information missing.
+   - 5 = Excellent, nearly all relevant information from the clinical case was obtained.
 
 2. **Feedback (2-4 sentences):** Provide concise feedback explaining what information was well covered and what was missing, with suggestions for improvement.  
 
 Final Output Format:  
-Score: X/10  
+Score: X/5
 Feedback: [Your feedback here]
 
 IMPORTANT: Provide your evaluation response in {target_language}.
@@ -344,15 +344,15 @@ Evaluation Criteria:
 Output Instructions:
 At the end, provide two outputs:
 
-1. **Score (1-10):** Rate how well the hypotheses align with and make sense given the clinical case.
-   - 1 = Hypotheses are completely unrelated or demonstrate poor clinical reasoning
-   - 5 = Hypotheses are somewhat related but miss key aspects or lack logical progression
-   - 10 = Hypotheses are highly relevant, demonstrate excellent clinical reasoning, and align well with the clinical case
+1. **Score (0-5):** Rate how well the hypotheses align with and make sense given the clinical case. Decimal values are allowed.
+   - 0 = Hypotheses are completely unrelated or demonstrate poor clinical reasoning
+   - 2.5 = Hypotheses are somewhat related but miss key aspects or lack logical progression
+   - 5 = Hypotheses are highly relevant, demonstrate excellent clinical reasoning, and align well with the clinical case
 
 2. **Feedback (2-4 sentences MAXIMUM):** Provide concise feedback explaining how well the hypotheses relate to the clinical case, and whether they demonstrate good clinical reasoning.
 
 Final Output Format:
-Score: X/10
+Score: X/5
 Feedback: [Your feedback here]
 
 IMPORTANT: Please provide your evaluation response in {target_language}.
@@ -378,7 +378,7 @@ Hypothesis 2: Poor glycemic control requiring medication adjustment
 Hypothesis 3: Need to assess cardiovascular risk factors
 
 Evaluation:
-Score: 9/10
+Score: 4.5/5
 Feedback: The hypotheses demonstrate excellent clinical reasoning and are highly relevant to the clinical case. The doctor appropriately considers diabetes complications, glycemic control, and cardiovascular risk factors, which are all key concerns for a 70-year-old patient with long-standing diabetes. The prioritization shows good understanding of comprehensive diabetes care.
 
 Example 2:
@@ -402,7 +402,7 @@ Hypothesis 2: Musculoskeletal chest pain
 Hypothesis 3: Anxiety-related chest pain
 
 Evaluation:
-Score: 7/10
+Score: 3.5/5
 Feedback: The hypotheses show appropriate differential thinking for chest pain, considering cardiac, musculoskeletal, and psychological causes. However, given the family history of early heart disease, smoking history, and hypertension, the cardiac hypothesis should be prioritized more strongly. The hypotheses demonstrate good clinical reasoning but could better reflect the risk factors present.
 
 Example 3:
@@ -422,7 +422,7 @@ Hypothesis 2: Common cold
 Hypothesis 3: Seasonal allergies
 
 Evaluation:
-Score: 2/10
+Score: 1/5
 Feedback: The hypotheses are completely unrelated to the clinical presentation. The patient has acute lower abdominal pain, which requires consideration of conditions like appendicitis, ovarian cyst, or gastrointestinal issues. The hypotheses show poor clinical reasoning and fail to address the actual complaint and physical findings.
 
     """
@@ -437,7 +437,7 @@ You will be given:
    The preliminary evaluation will be provided in the following format:
    
    [PRELIMINARY EVALUATION]
-   Score: X/10
+   Score: X/5
    Feedback: [feedback text]
    
 2) The FULL CONVERSATION between the doctor and patient.
@@ -451,16 +451,16 @@ Your task is to verify if the PRELIMINARY EVALUATION is correct after checking t
 Output Instructions:  
 At the end, provide two outputs:  
 
-1. **Score (1-10):** Adjust inital score if needed based on the full conversation. Do not be too strict, if the user covered most of the information, give a high score.
-   - 1 = Very incomplete, most key information missing.  
-   - 10 = Excellent, nearly all relevant information from the clinical case was obtained.  
+1. **Score (0-5):** Adjust the initial score if needed based on the full conversation. Decimal values are allowed. Do not be too strict; if the user covered most of the information, give a high score.
+   - 0 = Very incomplete, most key information missing.
+   - 5 = Excellent, nearly all relevant information from the clinical case was obtained.
 
 2. **Feedback (2-4 sentences):** Adjust initial feedback if needed based on the full conversation.
    - Do NOT reference the preliminary evaluation or verification process
    - Write as if this is the only evaluation being provided
 
 Final Output Format:  
-Score: X/10  
+Score: X/5
 Feedback: [Your feedback here]
 
 IMPORTANT: Provide your evaluation response in {target_language}. Do not mention that this is a verification or that there was a preliminary evaluation.

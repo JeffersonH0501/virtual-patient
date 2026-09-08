@@ -16,7 +16,7 @@ type ChatInterfaceProps = {
 
 export const ChatInterface = ({messages, isLoading = false, onEndInterview, onShowEvaluation, durationInSeconds, showBottomSpace = false, disabled = false, audioAutoPlayEnabled = true, onToggleAudioAutoPlay}: ChatInterfaceProps) => {
   return (
-    <section className="flex flex-col flex-1 rounded-xl shadow-[0_1px_2px_rgba(0,0,0,0.05)] bg-white min-h-0">
+    <section className="flex flex-col flex-1 rounded-xl shadow-panel-subtle bg-white min-h-0">
       {onShowEvaluation ? (
         <ChatHeader onShowEvaluation={onShowEvaluation} />
       ) : durationInSeconds !== undefined ? (
@@ -37,8 +37,8 @@ export const ChatInterface = ({messages, isLoading = false, onEndInterview, onSh
           <div className="flex items-center gap-2 text-gray-500">
             <div className="flex space-x-1">
               <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
-              <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.1s'}}></div>
-              <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce" style={{animationDelay: '0.2s'}}></div>
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce loading-dot-second"></div>
+              <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce loading-dot-third"></div>
             </div>
           </div>
         </div>

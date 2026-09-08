@@ -1,6 +1,6 @@
-from pydantic import BaseModel, EmailStr
-from typing import Optional
-from sqlalchemy import Boolean, Column, String, Integer, Enum, ForeignKey
+from pydantic import BaseModel, ConfigDict, EmailStr, StringConstraints, field_validator
+from typing import Annotated, Literal, Optional
+from sqlalchemy import Boolean, Column, String, Integer, Enum, ForeignKey, Index, func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 import enum
@@ -16,9 +16,10 @@ class UserDB(Base):
     __tablename__ = "users"
 
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    email = Column(String, unique=True, index=True)
-    full_name = Column(String)
+    email = Column(String, unique=True, index=True, nullable=False)
+    first_name = Column(String, nullable=False)
+    last_name = Column(String, nullable=False)
+    __table_args__ = (Index("uq_users_email_normalized", func.lower(email), unique=True),)
     hashed_password = Column(String)
     disabled = Column(Boolean, default=False)
     preferred_language = Column(String, default="en")
@@ -29,25 +30,55 @@ class UserDB(Base):
     medical_interviews = relationship("MedicalInterviewDB", back_populates="user")
     organization = relationship("OrganizationDB")
 
+Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class EmailIdentity(BaseModel):
+    @field_validator("email", mode="before", check_fields=False)
+    @classmethod
+    def normalize_email(cls, value):
+        return value.strip().lower() if isinstance(value, str) else value
+
+
 # Pydantic Models
-class UserBase(BaseModel):
-    username: str
-    email: Optional[EmailStr] = None
-    full_name: Optional[str] = None
+class UserBase(EmailIdentity):
+    email: EmailStr
+    first_name: str
+    last_name: str
     disabled: Optional[bool] = None
     preferred_language: Optional[str] = "en"
     role: Optional[UserRole] = UserRole.STUDENT
     organization_id: Optional[int] = None
 
-class UserCreate(UserBase):
+class UserCreate(EmailIdentity):
+    """Fields accepted by the public registration endpoint."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    email: EmailStr
+    first_name: Name
+    last_name: Name
+    preferred_language: Optional[str] = "en"
+    role: Literal[UserRole.TEACHER, UserRole.STUDENT] = UserRole.STUDENT
     password: str
 
-class UserUpdate(BaseModel):
+class UserUpdate(EmailIdentity):
+    """Non-privileged fields users may update on their own profile."""
+
+    model_config = ConfigDict(extra="forbid")
+
     email: Optional[EmailStr] = None
-    full_name: Optional[str] = None
+    first_name: Optional[Name] = None
+    last_name: Optional[Name] = None
     preferred_language: Optional[str] = None
-    role: Optional[UserRole] = None
-    organization_id: Optional[int] = None
+
+    @field_validator("email", "first_name", "last_name", mode="before")
+    @classmethod
+    def reject_explicit_null(cls, value):
+        if value is None:
+            raise ValueError("Identity fields cannot be null")
+        return value
+
 
 class User(UserBase):
     id: int
@@ -65,4 +96,4 @@ class Token(BaseModel):
     expires_in: Optional[int] = None
 
 class TokenData(BaseModel):
-    username: Optional[str] = None
+    user_id: int

@@ -5,6 +5,7 @@ import {TableHeader} from '../common/Table/TableHeader';
 import {getOrganizationInterviews} from '../../services/interviews/getOrganizationInterviews';
 import {StudentsTableRow} from './StudentsTableRow';
 import {OrganizationInterview} from '../../types/interview';
+import {Funnel} from '../../icons';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -50,9 +51,9 @@ export const StudentsTable = () => {
 
 
   // Filter interviews based on search term
-  const filteredInterviews = interviews.filter(interview =>
+  const filteredInterviews = interviews.filter((interview) =>
     interview.clinicalCaseTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    interview.userUsername.toLowerCase().includes(searchTerm.toLowerCase())
+    [interview.userFirstName, interview.userLastName].filter(Boolean).join(' ').toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   if (isLoading) {
@@ -89,9 +90,9 @@ export const StudentsTable = () => {
             onChange={(e) => setSearchTerm(e.target.value)}
             margin={false}
           />
-          <button className="flex gap-2 items-center px-5 py-3 text-base text-white bg-blue-600 rounded-lg cursor-pointer border-[none] max-md:w-auto">
+          <button className="flex gap-2 items-center px-5 py-3 text-base text-white bg-blue-600 rounded-lg cursor-pointer border-none max-md:w-auto">
             <span>{t('conversations.filter')}</span>
-            <i className="ti ti-filter" />
+            <span className="block h-4 w-4 [&_svg]:h-full [&_svg]:w-full"><Funnel color="currentColor" /></span>
           </button>
         </div>
       </div>
@@ -107,7 +108,7 @@ export const StudentsTable = () => {
                   </td>
                 </tr>
               ) : (
-                filteredInterviews.map((interview, _) => (
+                filteredInterviews.map((interview) => (
                   <StudentsTableRow
                     key={interview.id}
                     interview={interview}
@@ -129,17 +130,17 @@ export const StudentsTable = () => {
           <button
             onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
             disabled={currentPage === 1 || isLoading}
-            className="flex items-center justify-center px-3.5 py-2 text-base text-gray-800 rounded-md border border-gray-300 border-solid cursor-pointer h-[34px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center px-3.5 py-2 text-base text-gray-800 rounded-md border border-gray-300 border-solid cursor-pointer h-pagination-control disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t('common.previous')}
           </button>
-          <button className="flex items-center justify-center px-3.5 py-2 text-base text-white bg-blue-600 rounded-md border border-blue-600 border-solid h-[34px]">
+          <button className="flex items-center justify-center px-3.5 py-2 text-base text-white bg-blue-600 rounded-md border border-blue-600 border-solid h-pagination-control">
             {currentPage}
           </button>
           <button
             onClick={() => setCurrentPage((prev) => prev + 1)}
             disabled={!hasMore || isLoading}
-            className="flex items-center justify-center px-3.5 py-2 text-base text-gray-800 rounded-md border border-gray-300 border-solid cursor-pointer h-[34px] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex items-center justify-center px-3.5 py-2 text-base text-gray-800 rounded-md border border-gray-300 border-solid cursor-pointer h-pagination-control disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {t('common.next')}
           </button>

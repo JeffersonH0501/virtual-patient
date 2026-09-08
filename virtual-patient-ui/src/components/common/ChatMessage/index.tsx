@@ -1,6 +1,6 @@
 import {FC, useEffect, useRef, useState} from 'react';
 import {Message} from '../../../types';
-import {PlayIcon, PauseIcon} from '../../../icons';
+import {Play, Pause} from '../../../icons';
 import doctorImage from '../../../assets/doctor.png';
 import patientImageM from '../../../assets/patient_m.png';
 
@@ -34,7 +34,7 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
     ) {
       // Mark as evaluated immediately, regardless of auto-play setting
       hasEvaluatedAutoPlay.current = true;
-      
+
       // Only auto-play if enabled
       if (audioAutoPlayEnabled) {
         hasAutoPlayed.current = true;
@@ -94,7 +94,7 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
         className="w-10 h-10 rounded-full"
       />
       <div
-        className={`p-4 rounded-xl max-w-[500px] max-sm:max-w-full text-gray-900 text-left flex flex-col gap-3 ${
+        className={`p-4 rounded-xl max-w-chat-bubble max-sm:max-w-full text-gray-900 text-left flex flex-col gap-3 ${
           isDoctor ? 'bg-blue-50' : 'bg-gray-100'
         }`}
       >
@@ -105,9 +105,9 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
               className="relative flex-shrink-0 w-9 h-9 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center transition-colors"
             >
               {isPlaying ? (
-                <PauseIcon color="#FFFFFF" className="scale-180" />
+                <span className="[&_svg]:h-6 [&_svg]:w-6"><Pause color="currentColor" /></span>
               ) : (
-                <PlayIcon color="#FFFFFF" className="scale-180" />
+                <span className="[&_svg]:h-6 [&_svg]:w-6"><Play color="currentColor" /></span>
               )}
               <svg className="absolute inset-0 w-9 h-9 -rotate-90" viewBox="0 0 48 48">
                 <circle
@@ -115,7 +115,8 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
                   cy="24"
                   r="22"
                   fill="none"
-                  stroke="rgba(255, 255, 255, 0.3)"
+                  stroke="currentColor"
+                  strokeOpacity="0.3"
                   strokeWidth="2"
                 />
                 <circle
@@ -123,7 +124,7 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
                   cy="24"
                   r="22"
                   fill="none"
-                  stroke="#FFFFFF"
+                  stroke="currentColor"
                   strokeWidth="2"
                   strokeDasharray={`${2 * Math.PI * 22}`}
                   strokeDashoffset={`${2 * Math.PI * 22 * (1 - progress / 100)}`}

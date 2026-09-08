@@ -156,7 +156,8 @@ class ClinicalCaseUpdate(BaseModel):
 class CreatedByUser(BaseModel):
     """User who created the clinical case (only for custom cases)"""
     id: int
-    username: str
+    first_name: str
+    last_name: str
     
     class Config:
         from_attributes = True

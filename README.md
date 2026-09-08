@@ -21,18 +21,18 @@ through `.env.local` or `.env.full` in this directory. Their corresponding
 `.example` files are the configuration inventories.
 
 Azure OpenAI uses the standard SDK against the v1 API. The application appends
-`/openai/v1/` to `AZURE_OPENAI_ENDPOINT`. The configured normal LLM, mini LLM,
+`/openai/v1/` to `AZURE_OPENAI_ENDPOINT` for chat, embeddings, and TTS. STT uses
+Azure's versioned deployment endpoint. The configured normal LLM, mini LLM,
 STT, TTS, and embedding values are deployment names from the same Azure
 resource.
 
 Speech behavior is selected independently from Azure credentials. The backend
-uses `SPEECH_TTS_PROVIDER=azure_openai` for patient audio and keeps server STT
-disabled by default. The active interview input is
-`VITE_SPEECH_INPUT_PROVIDER=browser`, which uses the browser speech-recognition
-implementation behind a replaceable UI provider contract. Depending on the
-browser, recognition may be processed by an external browser-vendor service.
-Transient service-network failures use bounded exponential reconnect attempts;
-permission and missing-device failures leave the written input available.
+uses Azure OpenAI for patient TTS and student STT. The active interview input is
+`VITE_SPEECH_INPUT_PROVIDER=server`: the browser delimits provisional audio
+segments and sends them to the authenticated API without persisting them as
+part of the transcription request. `VITE_SPEECH_INPUT_PROVIDER=browser` remains
+available as a fallback behind the same UI contract. Permission, device, codec,
+and provider failures leave written input available.
 
 Virtual-patient personality is split between semantic behavior and vocal
 delivery. Agent prompts determine what the patient says. A provider-neutral

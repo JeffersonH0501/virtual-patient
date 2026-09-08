@@ -1,13 +1,25 @@
 import uvicorn
+from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
+from app.core.database import SessionLocal
+from app.core.superuser import synchronize_superuser
 from app.routers import (
     auth, users, organizations, clinical_cases, 
     medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings
 )
 
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    """Synchronize deployment-managed accounts whenever the API starts."""
+    with SessionLocal() as session:
+        print(synchronize_superuser(session))
+    yield
+
+
 app = FastAPI(
+    lifespan=lifespan,
     title="Virtual Patient API",
     description="""
     A comprehensive medical education platform for conducting interactive patient interviews.

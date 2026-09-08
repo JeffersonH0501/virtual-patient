@@ -1,36 +1,62 @@
 import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {FormInput, Modal} from '../common';
+import {Modal} from '../common';
 import {TableHeader} from '../common/Table/TableHeader';
 import {getInterviews} from '../../services/interviews/getInterviews';
 import {ConversationTableRow} from './ConversationTableRow';
 import {InterviewListItem} from '../../types/interview';
 import {deleteInterview} from '../../services/interviews';
+import {CaretLeft, CaretRight} from '../../icons';
 
-const ITEMS_PER_PAGE = 10;
+const ITEMS_PER_PAGE = 5;
+const MAX_VISIBLE_PAGE_BUTTONS = 5;
+const MAX_INTERVIEWS_TO_LOAD = 1000;
+
+const getVisiblePageNumbers = (currentPage: number, totalPages: number) => {
+  const visiblePageCount = Math.min(totalPages, MAX_VISIBLE_PAGE_BUTTONS);
+  const halfWindow = Math.floor(visiblePageCount / 2);
+  let firstPage = Math.max(1, currentPage - halfWindow);
+  const lastPage = Math.min(totalPages, firstPage + visiblePageCount - 1);
+  firstPage = Math.max(1, lastPage - visiblePageCount + 1);
+
+  return Array.from(
+    {length: lastPage - firstPage + 1},
+    (_, index) => firstPage + index,
+  );
+};
 
 export const ConversationTable = () => {
   const {t} = useTranslation();
-  const [interviews, setInterviews] = useState<InterviewListItem[]>([]);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [allInterviews, setAllInterviews] = useState<InterviewListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [currentPage, setCurrentPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
   const [interviewToDelete, setInterviewToDelete] = useState<number | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const COLUMN_HEADERS = [
-    'ID',
     t('conversations.date'),
     t('conversations.clinicalCase'),
-    t('conversations.personality'),
     t('conversations.duration'),
     t('conversations.status'),
     t('conversations.score'),
-    t('conversations.feedback'),
     t('conversations.action'),
   ] as const;
+
+  const COLUMN_CLASS_NAMES = [
+    'table-column-date',
+    'table-column-case',
+    'table-column-duration',
+    'table-column-status',
+    'table-column-score',
+    'table-column-action',
+  ] as const;
+
+  const totalInterviews = allInterviews.length;
+  const totalPages = Math.max(1, Math.ceil(totalInterviews / ITEMS_PER_PAGE));
+  const pageStartIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const interviews = allInterviews.slice(pageStartIndex, pageStartIndex + ITEMS_PER_PAGE);
+  const visiblePageNumbers = getVisiblePageNumbers(currentPage, totalPages);
 
   const confirmDelete = async () => {
     if (interviewToDelete === null || isDeleting) return;
@@ -39,11 +65,9 @@ export const ConversationTable = () => {
     try {
       await deleteInterview(interviewToDelete);
       setInterviewToDelete(null);
-      if (interviews.length === 1 && currentPage > 1) {
-        setCurrentPage((page) => page - 1);
-      } else {
-        await fetchInterviews(currentPage);
-      }
+      const remainingInterviews = await fetchInterviews();
+      const remainingPages = Math.max(1, Math.ceil(remainingInterviews.length / ITEMS_PER_PAGE));
+      setCurrentPage((page) => Math.min(page, remainingPages));
     } catch (error) {
       console.error('Failed to delete interview:', error);
       setDeleteError(t('conversations.deleteFailed'));
@@ -52,73 +76,112 @@ export const ConversationTable = () => {
     }
   };
 
-  const fetchInterviews = async (page: number) => {
+  const fetchInterviews = async () => {
     try {
       setIsLoading(true);
-      const skip = (page - 1) * ITEMS_PER_PAGE;
-      const fetchedInterviews = await getInterviews(ITEMS_PER_PAGE, skip);
-      setInterviews(fetchedInterviews);
-      setHasMore(fetchedInterviews.length === ITEMS_PER_PAGE);
+      const fetchedInterviews = await getInterviews(MAX_INTERVIEWS_TO_LOAD, 0);
+      setAllInterviews(fetchedInterviews);
+      return fetchedInterviews;
     } catch (error) {
       console.error('Failed to fetch interviews:', error);
       // 401 errors are now handled globally by apiFetch
     } finally {
       setIsLoading(false);
     }
+    return [];
   };
 
   useEffect(() => {
-    fetchInterviews(currentPage);
-  }, [currentPage]);
+    void fetchInterviews();
+  }, []);
+
+  const renderTableControls = () => (
+    <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-sm text-slate-600">
+          {t('pagination.showing', {
+            from: interviews.length > 0 ? pageStartIndex + 1 : 0,
+            to: pageStartIndex + interviews.length,
+            total: totalInterviews,
+          })}
+        </span>
+      </div>
+
+      <nav className="flex flex-wrap items-center gap-2" aria-label={t('conversations.myConversationHistory')}>
+        <button
+          type="button"
+          onClick={() => setCurrentPage((previousPage) => Math.max(1, previousPage - 1))}
+          disabled={currentPage === 1 || isLoading}
+          className="flex h-9 w-9 items-center justify-center rounded-control border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:h-5 [&_svg]:w-5"
+          aria-label={t('common.previous')}
+          title={t('common.previous')}
+        >
+          <CaretLeft color="currentColor" />
+        </button>
+        {visiblePageNumbers.map((pageNumber) => (
+          <button
+            key={pageNumber}
+            type="button"
+            onClick={() => setCurrentPage(pageNumber)}
+            className={`flex h-9 w-9 items-center justify-center rounded-control border text-sm font-semibold transition-colors ${
+              pageNumber === currentPage
+                ? 'border-brand-600 bg-brand-600 text-white'
+                : 'border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+            }`}
+            aria-current={pageNumber === currentPage ? 'page' : undefined}
+            aria-label={t('pagination.page', {page: pageNumber})}
+          >
+            {pageNumber}
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setCurrentPage((previousPage) => Math.min(totalPages, previousPage + 1))}
+          disabled={currentPage >= totalPages || isLoading}
+          className="flex h-9 w-9 items-center justify-center rounded-control border border-slate-300 bg-white text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:h-5 [&_svg]:w-5"
+          aria-label={t('common.next')}
+          title={t('common.next')}
+        >
+          <CaretRight color="currentColor" />
+        </button>
+      </nav>
+    </div>
+  );
 
   return (
-    <div className="bg-white rounded-lg shadow">
-      <div className="flex justify-between items-center p-6 border-b border-solid max-md:flex-col max-md:gap-4">
-        <h2 className="text-xl font-semibold text-gray-900">{t('conversations.myConversationHistory')}</h2>
-        <div className="flex gap-4 max-md:w-full">
-          <FormInput
-            label=""
-            type="text"
-            id="search"
-            placeholder={t('conversations.searchCases')}
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            margin={false}
-          />
-          <button className="flex gap-2 items-center px-5 py-3 text-base text-white bg-blue-600 rounded-lg cursor-pointer border-[none] max-md:w-auto">
-            <span>{t('conversations.filter')}</span>
-            <i className="ti ti-filter" />
-          </button>
-        </div>
-      </div>
-      <div className="w-full">
-        <div className="overflow-hidden w-full bg-white rounded-lg max-md:overflow-x-auto">
-          <table className="w-full">
-            <TableHeader columns={COLUMN_HEADERS} />
+    <section className="overflow-hidden rounded-card bg-white shadow-card">
+      <header className="flex min-h-12 items-center border-b border-slate-200 px-4">
+        <h2 className="component-title text-left">{t('conversations.myConversationHistory')}</h2>
+      </header>
+      {renderTableControls()}
+      <div className="w-full px-4 pb-4 pt-0">
+        <div className="w-full overflow-hidden bg-white max-md:overflow-x-auto">
+          <table className="w-full [&_thead_tr]:border-t-0">
+            <TableHeader columns={COLUMN_HEADERS} columnClassNames={COLUMN_CLASS_NAMES} />
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                     {t('common.loading')}
                   </td>
                 </tr>
               ) : interviews.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
                     {t('conversations.noConversations')}
                   </td>
                 </tr>
               ) : (
                 interviews.map((interview) => (
                   <ConversationTableRow
-                    key={interview.id}
+                    key={interview.publicId}
                     id={String(interview.id)}
                     createdAt={interview.createdAt}
                     startTime={interview.startTime}
                     status={interview.status}
                     duration={interview.totalDuration}
                     clinicalCase={interview.clinicalCase}
-                    score={interview.evaluationScore?.toString()}
+                    score={interview.evaluationScore}
                     personality={interview.personality}
                     onDelete={(id) => {
                       setDeleteError(null);
@@ -131,71 +194,53 @@ export const ConversationTable = () => {
           </table>
         </div>
       </div>
-      <div className="flex justify-between items-center px-6 py-4 border-t border-solid">
-        <div className="text-sm text-gray-700">
-          {t('pagination.showing', {
-            from: interviews.length > 0 ? (currentPage - 1) * ITEMS_PER_PAGE + 1 : 0,
-            to: (currentPage - 1) * ITEMS_PER_PAGE + interviews.length,
-          })}
-        </div>
-        <div className="flex gap-2 max-sm:flex-wrap max-sm:justify-center">
-          <button
-            onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-            disabled={currentPage === 1 || isLoading}
-            className="flex items-center justify-center px-3.5 py-2 text-base text-gray-800 rounded-md border border-gray-300 border-solid cursor-pointer h-[34px] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {t('common.previous')}
-          </button>
-          <button className="flex items-center justify-center px-3.5 py-2 text-base text-white bg-blue-600 rounded-md border border-blue-600 border-solid h-[34px]">
-            {currentPage}
-          </button>
-          <button
-            onClick={() => setCurrentPage((prev) => prev + 1)}
-            disabled={!hasMore || isLoading}
-            className="flex items-center justify-center px-3.5 py-2 text-base text-gray-800 rounded-md border border-gray-300 border-solid cursor-pointer h-[34px] disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {t('common.next')}
-          </button>
-        </div>
-      </div>
       <Modal
         open={interviewToDelete !== null}
         closeAction={() => {
           if (!isDeleting) setInterviewToDelete(null);
         }}
         closeOnOutsideClick={!isDeleting}
+        hasActions
         size="small"
       >
-        <div className="p-6">
-          <h2 className="text-xl font-semibold text-slate-900">
-            {t('conversations.deleteInterviewTitle')}
-          </h2>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            {t('conversations.deleteInterviewDescription')}
-          </p>
-          {deleteError && (
-            <p role="alert" className="mt-3 text-sm text-red-600">{deleteError}</p>
-          )}
-          <div className="mt-6 flex justify-end gap-3">
-            <button
-              type="button"
-              disabled={isDeleting}
-              onClick={() => setInterviewToDelete(null)}
-              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              type="button"
-              disabled={isDeleting}
-              onClick={() => void confirmDelete()}
-              className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-            >
-              {isDeleting ? t('conversations.deletingInterview') : t('common.delete')}
-            </button>
+        <div className="flex flex-col overflow-hidden rounded-panel text-left">
+          <header className="border-b border-border bg-surface px-5 py-3.5">
+            <h2 className="text-lg font-semibold text-slate-800">
+              {t('conversations.deleteInterviewTitle')}
+            </h2>
+          </header>
+
+          <div className="bg-surface px-5 py-4">
+            <p className="text-sm leading-6 text-slate-600">
+              {t('conversations.deleteInterviewDescription')}
+            </p>
+            {deleteError && (
+              <p role="alert" className="mt-3 text-sm text-danger-600">{deleteError}</p>
+            )}
           </div>
+
+          <footer className="flex justify-end bg-surface px-5 py-3.5">
+            <div className="dialog-actions">
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => setInterviewToDelete(null)}
+                className="dialog-action dialog-action--secondary"
+              >
+                {t('common.cancel')}
+              </button>
+              <button
+                type="button"
+                disabled={isDeleting}
+                onClick={() => void confirmDelete()}
+                className="dialog-action dialog-action--danger"
+              >
+                {isDeleting ? t('conversations.deletingInterview') : t('common.delete')}
+              </button>
+            </div>
+          </footer>
         </div>
       </Modal>
-    </div>
+    </section>
   );
 };

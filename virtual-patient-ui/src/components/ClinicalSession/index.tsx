@@ -2,7 +2,7 @@ import {FC, useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {ActionButtons} from './ActionButtons';
-import {ROUTES} from '../../utils/routes';
+import {interviewPath} from '../../utils/routes';
 import type {ClinicalCaseSimplified} from '../../services/clinicalCases';
 import {createInterview} from '../../services/interviews/createInterview';
 import {getPersonalities} from '../../services/personalities';
@@ -73,7 +73,7 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
     });
     if (!interview) return;
 
-    navigate(ROUTES.clinicalChat + '/' + interview.id);
+    navigate(interviewPath(interview.id, 'session'));
   };
 
   return (

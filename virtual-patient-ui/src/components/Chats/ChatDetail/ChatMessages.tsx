@@ -23,7 +23,7 @@ export const ChatMessages = ({messages, audioAutoPlayEnabled = true}: ChatMessag
   return (
     <div
       ref={messagesContainerRef}
-      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto border-b border-gray-200 p-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto border-b border-gray-200 p-6 scrollbar-hidden"
     >
       {messages?.map((message, index) => (
         <ChatMessage key={index} message={message} audioAutoPlayEnabled={audioAutoPlayEnabled} />

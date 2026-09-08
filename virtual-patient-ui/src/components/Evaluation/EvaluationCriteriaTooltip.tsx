@@ -1,29 +1,28 @@
 import { FC } from 'react';
+import {Modal} from '../common/Modal';
+import {X} from '../../icons';
 import { useTranslation } from 'react-i18next';
 import { EvaluationResult } from '../../types/evaluation';
 import { useEvaluationAspects } from '../../contexts/EvaluationAspectsContext';
-import { QuestionMarkIcon } from '../../icons';
 
 type EvaluationCriteriaTooltipProps = {
   aspect: EvaluationResult['aspect'];
   isVisible: boolean;
-  onMouseEnter: () => void;
-  onMouseLeave: () => void;
+  onClose: () => void;
 };
 
 
 export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
   aspect,
   isVisible,
-  onMouseEnter,
-  onMouseLeave
+  onClose,
 }) => {
   const { t } = useTranslation();
   const { aspects, error } = useEvaluationAspects();
 
   // Convert snake_case aspect to camelCase for API response
-  const getAspectKey = (aspect: EvaluationResult['aspect']) => {
-    switch (aspect) {
+  const getAspectKey = (aspectName: EvaluationResult['aspect']) => {
+    switch (aspectName) {
       case 'general_communication':
         return 'generalCommunication';
       case 'show_interest':
@@ -37,29 +36,27 @@ export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
       case 'completeness':
         return 'completeness';
       default:
-        return aspect;
+        return aspectName;
     }
   };
 
   return (
-    <div 
-      className="relative"
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      data-aspect={aspect}
+    <Modal
+      open={isVisible}
+      closeAction={onClose}
+      size="medium"
+      containerId={`evaluation-criteria-${aspect}`}
+      ariaLabel={t('evaluation.evaluationCriteria')}
     >
-      <button 
-      className="text-gray-400 hover:text-gray-600 transition-colors" 
-      style={{ padding: "8px"}}>
-        <QuestionMarkIcon size={16} />
-      </button>
-      {isVisible && (
-        <div
-          className="fixed left-1/2 top-4 z-[110] max-h-[calc(100dvh-2rem)] w-[min(600px,calc(100vw-2rem))] -translate-x-1/2 overflow-y-auto rounded-lg border border-gray-200 bg-white p-6 text-left shadow-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-        >
-          <h5 className="font-semibold text-gray-800 mb-3">
-            {t('evaluation.evaluationCriteria')}
-          </h5>
+      <header className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+        <h2 className="component-title text-left">
+          {t('evaluation.evaluationCriteria')}
+        </h2>
+        <button type="button" onClick={onClose} className="dialog-close-button" aria-label={t('common.close')}>
+          <X color="currentColor" />
+        </button>
+      </header>
+      <div className="min-h-0 overflow-y-auto p-5 text-left">
           {error || !aspects ? (
             <div className="text-center py-4">
               <p className="text-red-600 text-sm">
@@ -97,8 +94,7 @@ export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
               </ul>
             </div>
           )}
-        </div>
-      )}
-    </div>
+      </div>
+    </Modal>
   );
 };

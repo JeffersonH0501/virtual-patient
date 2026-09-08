@@ -14,6 +14,7 @@ def configured_settings(**overrides: object) -> Settings:
     values: dict[str, object] = {
         "azure_openai_api_key": "test-key",
         "azure_openai_endpoint": "https://example.openai.azure.com/",
+        "azure_openai_api_version": "2025-03-01-preview",
         "azure_openai_llm_deployment_name": "llm-normal",
         "azure_openai_llm_mini_deployment_name": "llm-mini",
         "azure_openai_stt_deployment_name": "speech-to-text",
@@ -94,6 +95,22 @@ class AzureOpenAIConfigurationTests(unittest.TestCase):
             {
                 "api_key": "test-key",
                 "base_url": "https://example.openai.azure.com/openai/v1/",
+            },
+        )
+
+    def test_azure_client_uses_versioned_deployment_endpoint(self) -> None:
+        with (
+            patch.object(azure_openai, "settings", configured_settings()),
+            patch.object(azure_openai, "AzureOpenAI") as azure_openai_class,
+        ):
+            azure_openai.create_azure_openai_client()
+
+        self.assertEqual(
+            azure_openai_class.call_args.kwargs,
+            {
+                "api_key": "test-key",
+                "azure_endpoint": "https://example.openai.azure.com/",
+                "api_version": "2025-03-01-preview",
             },
         )
 

@@ -6,6 +6,7 @@ import { TeacherFeedback } from '../../types/teacherFeedback';
 import { useUser } from '../../hooks/useUser';
 import { AddTeacherFeedbackModal } from './AddTeacherFeedbackModal';
 import { Button } from '../common/Button';
+import {EditIcon, X} from '../../icons';
 
 type TeacherFeedbackSectionProps = {
   interviewId: number;
@@ -73,8 +74,8 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   if (loading) {
     return (
-      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-        <h3 className="flex min-h-12 items-center border-b border-slate-200 px-4 text-left text-sm font-medium text-slate-600">
+      <section className="overflow-hidden rounded-xl bg-white shadow-panel-subtle">
+        <h3 className="component-title flex min-h-12 items-center border-b border-slate-200 px-4 text-left">
           {t('clinicalChat.teacherFeedback')}
         </h3>
         <p className="p-4 text-center text-sm text-gray-500">
@@ -86,8 +87,8 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   if (error) {
     return (
-      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
-        <h3 className="flex min-h-12 items-center border-b border-slate-200 px-4 text-left text-sm font-medium text-slate-600">
+      <section className="overflow-hidden rounded-xl bg-white shadow-panel-subtle">
+        <h3 className="component-title flex min-h-12 items-center border-b border-slate-200 px-4 text-left">
           {t('clinicalChat.teacherFeedback')}
         </h3>
         <p className="p-4 text-center text-sm text-red-500">
@@ -99,9 +100,9 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   if (feedbacks.length === 0) {
     return (
-      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+      <section className="overflow-hidden rounded-xl bg-white shadow-panel-subtle">
         <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
-          <h3 className="text-left text-sm font-medium text-slate-600">
+          <h3 className="component-title text-left">
             {t('clinicalChat.teacherFeedback')}
           </h3>
           {(user?.role === 'teacher' || user?.role === 'superuser') && (
@@ -130,9 +131,9 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
 
   return (
     <>
-      <section className="overflow-hidden rounded-xl bg-white shadow-[0_1px_2px_rgba(0,0,0,0.05)]">
+      <section className="overflow-hidden rounded-xl bg-white shadow-panel-subtle">
         <div className="flex min-h-12 items-center justify-between gap-3 border-b border-slate-200 px-4">
-          <h3 className="text-left text-sm font-medium text-slate-600">
+          <h3 className="component-title text-left">
             {t('clinicalChat.teacherFeedback')}
           </h3>
           {(user?.role === 'teacher' || user?.role === 'superuser') && (
@@ -161,7 +162,7 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-900">
-                      {feedback.teacherUsername || `Teacher ${feedback.teacherId}`}
+                      {[feedback.teacherFirstName, feedback.teacherLastName].filter(Boolean).join(' ') || `Teacher ${feedback.teacherId}`}
                     </p>
                     <p className="text-xs text-gray-500">
                       {new Date(feedback.createdAt).toLocaleDateString('en-US', {
@@ -186,18 +187,18 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
       {/* Teacher Feedback Modal */}
       {selectedFeedback && (
         <Modal open={isModalOpen} closeAction={closeModal} size="medium" containerId="teacher-feedback-modal">
-          <div className="flex flex-col h-full max-h-[80vh] rounded-2xl">
+          <div className="flex flex-col h-full max-h-dialog-content rounded-2xl">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white rounded-t-2xl">
               <h2 className="text-lg font-semibold text-gray-800">
                 {t('clinicalChat.teacherFeedback')}
               </h2>
               <button
                 onClick={closeModal}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="dialog-close-button"
+                aria-label={t('common.close')}
+                title={t('common.close')}
               >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                <span className="block h-6 w-6 [&_svg]:h-full [&_svg]:w-full"><X color="currentColor" /></span>
               </button>
             </div>
 
@@ -212,7 +213,7 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
                   </div>
                   <div>
                     <p className="text-lg font-semibold text-gray-900">
-                      {selectedFeedback.teacherUsername || `Teacher ${selectedFeedback.teacherId}`}
+                      {[selectedFeedback.teacherFirstName, selectedFeedback.teacherLastName].filter(Boolean).join(' ') || `Teacher ${selectedFeedback.teacherId}`}
                     </p>
                     <p className="text-sm text-gray-500">
                       {new Date(selectedFeedback.createdAt).toLocaleDateString('en-US', {
@@ -242,9 +243,7 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
                         className="flex items-center justify-center p-2 text-blue-600 hover:text-blue-800 hover:bg-blue-50 rounded-lg transition-colors"
                         title={t('clinicalChat.editTeacherFeedback')}
                       >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
+                        <span className="block h-4 w-4 [&_svg]:h-full [&_svg]:w-full"><EditIcon color="currentColor" /></span>
                       </button>
                     )}
                   </div>

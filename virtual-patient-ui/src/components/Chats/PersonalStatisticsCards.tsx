@@ -1,8 +1,8 @@
 import {FC, useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {StatCard} from './StatCard';
-import {CheckIcon, ClockIcon, StarIcon} from '../../icons';
 import {getPersonalStatistics, PersonalStatistics} from '../../services/statistics/getPersonalStatistics';
+import {EvaluationScore} from '../common';
 
 export const PersonalStatisticsCards: FC = () => {
   const {t} = useTranslation();
@@ -55,26 +55,22 @@ export const PersonalStatisticsCards: FC = () => {
     return `${remainingSeconds}s`;
   };
 
-  const formatScore = (score: number): string => {
-    return `${score.toFixed(1)}/10`;
-  };
-
   if (isLoading) {
     return (
-      <div className="flex gap-16 mb-16 max-md:flex-col max-md:gap-6">
-        <StatCard title={t('conversations.completedCases')} value={t('common.loading')} icon={<CheckIcon />} />
-        <StatCard title={t('conversations.averageDuration')} value={t('common.loading')} icon={<ClockIcon />} />
-        <StatCard title={t('conversations.overallScore')} value={t('common.loading')} icon={<StarIcon />} />
+      <div className="grid gap-2 md:grid-cols-3">
+        <StatCard title={t('conversations.completedCases')} value={t('common.loading')} />
+        <StatCard title={t('conversations.averageDuration')} value={t('common.loading')} />
+        <StatCard title={t('conversations.overallScore')} value={t('common.loading')} />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex gap-16 mb-16 max-md:flex-col max-md:gap-6">
-        <StatCard title={t('conversations.completedCases')} value="N/A" icon={<CheckIcon />} change={error} isNegative />
-        <StatCard title={t('conversations.averageDuration')} value="N/A" icon={<ClockIcon />} change={error} isNegative />
-        <StatCard title={t('conversations.overallScore')} value="N/A" icon={<StarIcon />} change={error} isNegative />
+      <div className="grid gap-2 md:grid-cols-3">
+        <StatCard title={t('conversations.completedCases')} value="N/A" change={error} isNegative />
+        <StatCard title={t('conversations.averageDuration')} value="N/A" change={error} isNegative />
+        <StatCard title={t('conversations.overallScore')} value="N/A" change={error} isNegative />
       </div>
     );
   }
@@ -84,23 +80,20 @@ export const PersonalStatisticsCards: FC = () => {
   }
 
   return (
-    <div className="flex gap-16 mb-16 max-md:flex-col max-md:gap-6">
+    <div className="grid gap-2 md:grid-cols-3">
       <StatCard
         title={t('conversations.completedCases')}
         value={statistics.completedCases.toString()}
-        icon={<CheckIcon />}
         change={t('conversations.totalCompleted')}
       />
       <StatCard
         title={t('conversations.averageDuration')}
         value={statistics.hasDurationData ? formatDuration(statistics.averageDurationSeconds) : 'N/A'}
-        icon={<ClockIcon />}
         change={statistics.hasDurationData ? `${statistics.totalCompletedCases} ${t('conversations.cases')}` : t('conversations.noData')}
       />
       <StatCard
         title={t('conversations.overallScore')}
-        value={statistics.hasScoreData ? formatScore(statistics.averageScore) : 'N/A'}
-        icon={<StarIcon />}
+        value={statistics.hasScoreData ? <EvaluationScore score={statistics.averageScore} size="large" /> : 'N/A'}
         change={statistics.hasScoreData ? `${statistics.totalEvaluations} ${t('conversations.evaluations')}` : t('conversations.noData')}
       />
     </div>

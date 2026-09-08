@@ -9,7 +9,7 @@ export const StatusIndicator: FC<StatusIndicatorProps> = ({online, status}) => {
   // For backward compatibility, if online is provided, use it
   if (online !== undefined) {
     return online ? (
-      <span className="absolute bottom-0 right-0 w-5 h-5 bg-green-400 rounded-full border-2 border-solid border-white right-[12px]" />
+      <span className="absolute bottom-0 right-0 w-5 h-5 bg-green-400 rounded-full border-2 border-solid border-white right-status-dot" />
     ) : null;
   }
 
@@ -30,6 +30,6 @@ export const StatusIndicator: FC<StatusIndicatorProps> = ({online, status}) => {
   };
 
   return (
-    <span className={`absolute bottom-0 right-0 w-5 h-5 ${getStatusColor()} rounded-full border-2 border-solid border-white right-[12px]`} />
+    <span className={`absolute bottom-0 right-0 w-5 h-5 ${getStatusColor()} rounded-full border-2 border-solid border-white right-status-dot`} />
   );
 };

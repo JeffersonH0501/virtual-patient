@@ -17,10 +17,9 @@ export const useOnOutsideClick = (
       const target = event.target as HTMLElement;
       if (!target) return;
 
-      let insideElementArray: InsideElement[];
-      if (!Array.isArray(insideElement)) insideElementArray = [insideElement];
-      else insideElementArray = insideElement;
-
+      const insideElementArray = Array.isArray(insideElement)
+        ? [...insideElement]
+        : [insideElement];
       insideElementArray.push(document.querySelector(`.${REACT_SELECT_PORTAL_CLASS_NAME}`));
       if (!insideElementArray.some((element) => element && element.contains(target))) {
         onOutsideClick(event);

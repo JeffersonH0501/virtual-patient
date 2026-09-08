@@ -1,47 +1,62 @@
 import {FC, useState} from 'react';
-import {useOnOutsideClick} from '../../../hooks';
-import {useUser} from '../../../hooks';
+import {useOnOutsideClick, useUser} from '../../../hooks';
 import {useTranslation} from 'react-i18next';
+import {LanguageSwitcher} from '../LanguageSwitcher';
 
 type Props = {
   open: boolean;
-  onOutsideClick?: (event: MouseEvent) => void;
+  onOutsideClick?: (event?: MouseEvent) => void;
   onSignOut: () => void;
+  triggerElement?: HTMLElement | null;
 };
 
-export const Menu: FC<Props> = ({open, onOutsideClick, onSignOut}) => {
-  const [elementReference, setElementReference] = useState<HTMLDivElement | null>();
+export const Menu: FC<Props> = ({open, onOutsideClick, onSignOut, triggerElement = null}) => {
+  const [elementReference, setElementReference] = useState<HTMLDivElement | null>(null);
   const {user} = useUser();
   const {t} = useTranslation();
-  useOnOutsideClick(onOutsideClick, elementReference, !open);
+  useOnOutsideClick(onOutsideClick, [elementReference, triggerElement], !open);
+
+  const roleLabel = user?.role === 'teacher'
+    ? t('common.teacher')
+    : user?.role === 'superuser'
+      ? t('common.superuser')
+      : t('common.student');
+
+  const handleSignOut = () => {
+    onOutsideClick?.();
+    onSignOut();
+  };
 
   return (
     <div
-      className="absolute right-0 mt-2 w-64 bg-white border border-gray-200 rounded-md shadow-lg"
+      className="profile-menu absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-panel border border-border bg-surface text-left shadow-modal"
       ref={setElementReference}
+      role="menu"
     >
-      {/* User Info Section */}
       {user && (
-        <div className="px-4 py-3 border-b border-gray-200 text-left">
-          <p className="text-sm font-semibold text-gray-900 truncate">
-            {user.fullName}
+        <div className="border-b border-border px-4 py-4">
+          <span className="inline-flex rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold text-brand-700">
+            {roleLabel}
+          </span>
+          <p className="mt-3 truncate text-sm font-semibold text-slate-800">
+            {[user.firstName, user.lastName].filter(Boolean).join(' ')}
           </p>
-          <p className="text-xs text-gray-600 truncate mt-0.5">
-            @{user.username}
-          </p>
-          <p className="text-xs text-gray-500 truncate mt-1">
+          <p className="mt-1 truncate text-xs text-slate-500" title={user.email}>
             {user.email}
           </p>
-          <span className="inline-block mt-2 px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">
-            {user.role === 'teacher' ? t('common.teacher') : user.role === 'superuser' ? t('common.superuser') : t('common.student')}
-          </span>
         </div>
       )}
-      
-      {/* Sign Out Button */}
+
+      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
+        <span className="text-sm font-medium text-slate-700">{t('common.language')}</span>
+        <LanguageSwitcher />
+      </div>
+
       <button
-        onClick={onSignOut}
-        className="block w-full text-left px-4 py-2 text-gray-700 hover:bg-gray-100"
+        type="button"
+        role="menuitem"
+        onClick={handleSignOut}
+        className="block w-full px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-danger-50 hover:text-danger-700 focus-visible:bg-danger-50 focus-visible:text-danger-700 focus-visible:outline-none"
       >
         {t('auth.signOut')}
       </button>

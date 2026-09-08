@@ -17,12 +17,12 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
   onClose,
   interviewId,
   onFeedbackAdded,
-  editingFeedback
+  editingFeedback,
 }) => {
   const { t } = useTranslation();
   const [newFeedback, setNewFeedback] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  
+
   // Initialize feedback content when editing
   useEffect(() => {
     if (editingFeedback) {
@@ -37,29 +37,29 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
 
     try {
       setIsSubmitting(true);
-      
+
       if (editingFeedback) {
         // Update existing feedback
         const updateData: UpdateTeacherFeedbackRequest = {
-          feedback: newFeedback.trim()
+          feedback: newFeedback.trim(),
         };
-        
+
         const updatedFeedback = await updateTeacherFeedback(
-          interviewId, 
-          editingFeedback.id.toString(), 
-          updateData
+          interviewId,
+          editingFeedback.id.toString(),
+          updateData,
         );
         onFeedbackAdded(updatedFeedback);
       } else {
         // Create new feedback
         const feedbackData: CreateTeacherFeedbackRequest = {
-          feedback: newFeedback.trim()
+          feedback: newFeedback.trim(),
         };
-        
+
         const createdFeedback = await createTeacherFeedback(interviewId, feedbackData);
         onFeedbackAdded(createdFeedback);
       }
-      
+
       handleClose();
     } catch (err) {
       console.error('Error saving teacher feedback:', err);
@@ -74,20 +74,12 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
   };
 
   return (
-    <Modal open={isOpen} closeAction={handleClose} size="medium" containerId="add-teacher-feedback-modal">
-      <div className="flex flex-col h-full max-h-[80vh] rounded-2xl">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white rounded-t-2xl">
+    <Modal open={isOpen} closeAction={handleClose} size="medium" containerId="add-teacher-feedback-modal" hasActions>
+      <div className="flex flex-col h-full max-h-dialog-content rounded-2xl">
+        <div className="border-b border-gray-200 bg-white p-4 rounded-t-2xl">
           <h2 className="text-lg font-semibold text-gray-800">
             {editingFeedback ? t('clinicalChat.editTeacherFeedback') : t('clinicalChat.addTeacherFeedback')}
           </h2>
-          <button
-            onClick={handleClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-6">
@@ -107,20 +99,22 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 p-4 border-t border-gray-200 bg-white rounded-b-2xl">
-          <button
-            onClick={handleClose}
-            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-          >
-            {t('common.cancel')}
-          </button>
-          <button
-            onClick={handleSaveFeedback}
-            disabled={!newFeedback.trim() || isSubmitting}
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-          >
-            {isSubmitting ? t('common.loading') : (editingFeedback ? t('clinicalChat.updateFeedback') : t('clinicalChat.saveFeedback'))}
-          </button>
+        <div className="flex justify-end rounded-b-2xl bg-white p-4">
+          <div className="dialog-actions">
+            <button
+              onClick={handleClose}
+              className="dialog-action dialog-action--secondary"
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              onClick={handleSaveFeedback}
+              disabled={!newFeedback.trim() || isSubmitting}
+              className="dialog-action dialog-action--primary"
+            >
+              {isSubmitting ? t('common.loading') : (editingFeedback ? t('clinicalChat.updateFeedback') : t('clinicalChat.saveFeedback'))}
+            </button>
+          </div>
         </div>
       </div>
     </Modal>

@@ -8,7 +8,8 @@ export type TeacherFeedback = {
   teacherId: number;
   feedback: string;
   createdAt: string;
-  teacherUsername?: string | null;
+  teacherFirstName?: string | null;
+  teacherLastName?: string | null;
   reviewedByYou?: boolean | null;
 };
 

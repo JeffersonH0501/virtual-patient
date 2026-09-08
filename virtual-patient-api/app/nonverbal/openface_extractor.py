@@ -193,6 +193,8 @@ def _summarize_turn(frames: list[_FrameObservation]) -> dict[str, Any]:
         if settings.openface_au12_active_threshold is not None
         else []
     )
+    gaze_yaw_values = [frame.gaze_yaw for frame in valid_frames if frame.gaze_yaw is not None]
+    gaze_pitch_values = [frame.gaze_pitch for frame in valid_frames if frame.gaze_pitch is not None]
 
     return {
         "extractor": {
@@ -203,6 +205,8 @@ def _summarize_turn(frames: list[_FrameObservation]) -> dict[str, Any]:
         },
         "visual_alignment_ratio": _round(len(aligned) / len(valid_frames)) if aligned else (0.0 if valid_frames and settings.openface_gaze_alignment_max_radians is not None else None),
         "visual_alignment_dwell_ms": _longest_run_ms(valid_frames, aligned, sample_duration_ms) if settings.openface_gaze_alignment_max_radians is not None else None,
+        "gaze_yaw_mean": _round(sum(gaze_yaw_values) / len(gaze_yaw_values)) if gaze_yaw_values else None,
+        "gaze_pitch_mean": _round(sum(gaze_pitch_values) / len(gaze_pitch_values)) if gaze_pitch_values else None,
         "nod_count": None,
         "nod_rate_min": None,
         "smile_activity_ratio": _round(len(active_smiles) / len(valid_frames)) if smile_values and settings.openface_au12_active_threshold is not None else None,

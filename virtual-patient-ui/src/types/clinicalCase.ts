@@ -2,7 +2,8 @@ export type CaseType = 'default' | 'custom';
 
 export type CreatedByUser = {
   id: number;
-  username: string;
+  firstName: string;
+  lastName: string;
 };
 
 export type ClinicalCaseBase = {

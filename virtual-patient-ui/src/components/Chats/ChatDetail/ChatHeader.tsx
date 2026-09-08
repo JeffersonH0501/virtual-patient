@@ -1,6 +1,6 @@
 import {FC, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {VolumeIcon} from '../../../icons';
+import {Speaker} from '../../../icons';
 import {Tooltip} from '../../common/Tooltip';
 
 export type ChatHeaderProps =
@@ -34,7 +34,7 @@ export const ChatHeader: FC<ChatHeaderProps> = ({durationInSeconds, onEndIntervi
   const [showTooltip, setShowTooltip] = useState(false);
   
   return (
-    <header className="flex justify-between items-center p-4 border-b border-solid border-b-gray-200 h-[75px]">
+    <header className="flex justify-between items-center p-4 border-b border-solid border-b-gray-200 h-chat-header">
       <h2 className="text-xl font-bold text-gray-800">{t('clinicalChat.clinicalInterview')}</h2>
       {durationInSeconds && !onShowEvaluation ? (
         <time className="text-sm text-gray-500">
@@ -61,7 +61,7 @@ export const ChatHeader: FC<ChatHeaderProps> = ({durationInSeconds, onEndIntervi
                     : 'bg-gray-400 text-white hover:bg-gray-500'
                 }`}
               >
-                <VolumeIcon className="w-5 h-5" color="currentColor" muted={!audioAutoPlayEnabled} />
+                <span className="[&_svg]:h-6 [&_svg]:w-6"><Speaker color="currentColor" /></span>
               </button>
               <Tooltip
                 showTooltip={showTooltip}
@@ -77,7 +77,6 @@ export const ChatHeader: FC<ChatHeaderProps> = ({durationInSeconds, onEndIntervi
                 ? 'opacity-60' 
                 : 'cursor-pointer hover:bg-red-700'
             }`}
-            style={disabled ? { cursor: 'not-allowed' } : {}}
           >
             <span>{t('clinicalChat.endInterview')}</span>
           </button>

@@ -28,7 +28,11 @@ def analyze_pyfeat_student_turn_videos(
         raise ValueError("PYFEAT_SAMPLE_FPS must be greater than zero")
 
     import cv2
+    import feat.utils.io as feat_io
     from feat import Detectorv2
+
+    settings.pyfeat_weights_root.mkdir(parents=True, exist_ok=True)
+    feat_io.get_resource_path = lambda: str(settings.pyfeat_weights_root)
 
     capture = cv2.VideoCapture(str(video_path))
     source_fps = capture.get(cv2.CAP_PROP_FPS)
@@ -94,10 +98,16 @@ def _summarize_turn(rows: list[dict[str, Any]]) -> dict[str, Any]:
         if settings.pyfeat_au12_active_threshold is not None
         and value >= settings.pyfeat_au12_active_threshold
     ]
+    gaze_yaw_values = [row["gaze_yaw"] for row in valid_rows if row["gaze_yaw"] is not None]
+    gaze_pitch_values = [row["gaze_pitch"] for row in valid_rows if row["gaze_pitch"] is not None]
+    head_pitch_values = [row["head_pitch"] for row in valid_rows if row["head_pitch"] is not None]
     return {
         "extractor": {"name": EXTRACTOR_NAME, "version": EXTRACTOR_VERSION, "detector": "Detectorv2", "sample_fps": settings.pyfeat_sample_fps},
         "visual_alignment_ratio": _round(len(aligned) / len(valid_rows)) if aligned else (0.0 if valid_rows and settings.pyfeat_gaze_alignment_max_radians is not None else None),
         "visual_alignment_dwell_ms": None,
+        "gaze_yaw_mean": _round(sum(gaze_yaw_values) / len(gaze_yaw_values)) if gaze_yaw_values else None,
+        "gaze_pitch_mean": _round(sum(gaze_pitch_values) / len(gaze_pitch_values)) if gaze_pitch_values else None,
+        "head_pitch_mean": _round(sum(head_pitch_values) / len(head_pitch_values)) if head_pitch_values else None,
         "nod_count": None,
         "nod_rate_min": None,
         "smile_activity_ratio": _round(len(active) / len(valid_rows)) if au12_values and settings.pyfeat_au12_active_threshold is not None else None,
@@ -118,7 +128,6 @@ def _aligned_rows(rows: list[dict[str, Any]], issues: list[str]) -> list[dict[st
 def _au12_values(rows: list[dict[str, Any]], issues: list[str]) -> list[float]:
     if settings.pyfeat_au12_active_threshold is None:
         issues.append("smile_au12_threshold_not_configured")
-        return []
     values = [row["au12"] for row in rows if row["au12"] is not None]
     if not values:
         issues.append("smile_au12_unavailable")

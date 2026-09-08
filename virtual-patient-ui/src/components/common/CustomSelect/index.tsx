@@ -1,4 +1,5 @@
 import {FC, useState, useRef, useEffect} from 'react';
+import {CaretDown} from '../../../icons';
 
 type CustomSelectProps = {
   label: string;
@@ -69,10 +70,9 @@ export const CustomSelect: FC<CustomSelectProps> = ({
             type="button"
             onClick={toggleDropdown}
             disabled={disabled}
-            className={`w-full text-left bg-transparent outline-none disabled:cursor-not-allowed cursor-pointer pr-8 text-gray-900 ${
+            className={`w-full text-left bg-transparent outline-none disabled:cursor-not-allowed cursor-pointer select-trigger-padding text-gray-900 ${
               disabled ? 'cursor-not-allowed' : 'cursor-pointer'
             }`}
-            style={{ padding: '12px' }}
             aria-haspopup="listbox"
             aria-expanded={isOpen}
             aria-label={label}
@@ -81,21 +81,13 @@ export const CustomSelect: FC<CustomSelectProps> = ({
               {value || placeholder}
             </span>
             <span className="absolute inset-y-0 right-0 flex items-center pr-3 pointer-events-none">
-              <svg
-                className={`w-5 h-5 text-gray-400 transition-transform duration-200 ${
+              <span
+                className={`block h-5 w-5 text-gray-400 transition-transform duration-200 [&_svg]:h-full [&_svg]:w-full ${
                   isOpen ? 'rotate-180' : ''
                 }`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M19 9l-7 7-7-7"
-                />
-              </svg>
+                <CaretDown color="currentColor" />
+              </span>
             </span>
           </button>
 
@@ -113,19 +105,6 @@ export const CustomSelect: FC<CustomSelectProps> = ({
                   aria-selected={value === option}
                 >
                   <div className="flex items-center">
-                    {value === option && (
-                      <svg
-                        className="w-4 h-4 mr-3 text-blue-600"
-                        fill="currentColor"
-                        viewBox="0 0 20 20"
-                      >
-                        <path
-                          fillRule="evenodd"
-                          d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                          clipRule="evenodd"
-                        />
-                      </svg>
-                    )}
                     <span className={value === option ? 'font-medium' : ''}>
                       {option}
                     </span>
