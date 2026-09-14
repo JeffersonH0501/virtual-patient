@@ -73,7 +73,7 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
     });
     if (!interview) return;
 
-    navigate(interviewPath(interview.id, 'session'));
+    navigate(interviewPath(interview.id, 'calibration'));
   };
 
   return (

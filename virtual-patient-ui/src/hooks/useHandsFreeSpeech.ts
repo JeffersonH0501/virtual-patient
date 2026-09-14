@@ -7,6 +7,7 @@ type UseHandsFreeSpeechOptions = {
   paused: boolean;
   disabled?: boolean;
   autoStart?: boolean;
+  microphoneStream?: MediaStream | null;
   onUtteranceCommitted?: () => void;
   onUtteranceFailed?: () => void;
   onUtterance: (text: string, timing?: SpeechTiming) => void | Promise<void>;
@@ -17,6 +18,7 @@ export const useHandsFreeSpeech = ({
   paused,
   disabled = false,
   autoStart = false,
+  microphoneStream = null,
   onUtteranceCommitted,
   onUtteranceFailed,
   onUtterance,
@@ -116,7 +118,7 @@ export const useHandsFreeSpeech = ({
             setIsEnabled(false);
           }
         },
-      });
+      }, microphoneStream);
     } catch {
       setIsSupported(false);
       setErrorCode('unsupported-provider');
@@ -132,7 +134,7 @@ export const useHandsFreeSpeech = ({
       provider.dispose();
       providerRef.current = null;
     };
-  }, [disabled, flushBuffer, isEnabled, language, onUtteranceCommitted, onUtteranceFailed]);
+  }, [disabled, flushBuffer, isEnabled, language, microphoneStream, onUtteranceCommitted, onUtteranceFailed]);
 
   useEffect(() => {
     const provider = providerRef.current;

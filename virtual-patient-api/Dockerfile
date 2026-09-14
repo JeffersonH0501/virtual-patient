@@ -25,8 +25,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
         torch==2.11.0+cpu torchvision==0.26.0+cpu && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir --no-deps openface-test==0.1.26
+    pip install --no-cache-dir -r requirements.txt
 
 # Production stage
 FROM python:3.12-slim AS production

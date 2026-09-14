@@ -4,7 +4,7 @@ import {DURATION} from '../../constants/duration';
 import {useOnOutsideClick} from '../../../hooks/useOnOutsideClick';
 import {CSSProperties, FC, PropsWithChildren, useState} from 'react';
 
-export type ModalSize = 'small' | 'medium' | 'large';
+export type ModalSize = 'small' | 'medium' | 'large' | 'extralarge';
 
 export type ModalProps = {
   open: boolean;

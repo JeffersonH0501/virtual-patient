@@ -60,19 +60,15 @@ after extraction. `PARAVERBAL_MIN_PAUSE_MS` and
 `PARAVERBAL_MIN_VOICED_DURATION_MS` are provisional research parameters, not
 clinical thresholds or performance labels.
 
-When `NONVERBAL_ANALYSIS_ENABLED=true`, finalization samples private
-`student_video` frames and runs the OpenFace 3.0 package once for the
-interview. The per-turn result is stored in `interview_turns.nonverbal_features`
-and reports video-validity quality. `OPENFACE_GAZE_ALIGNMENT_MAX_RADIANS`,
-`OPENFACE_AU12_INDEX`, and `OPENFACE_AU12_ACTIVE_THRESHOLD` are deliberately
-empty until calibrated; their dependent metrics remain unavailable rather than
-being fabricated. The upstream OpenFace 3.0 output used here does not expose
-head pose, so nod measures remain unavailable pending a separately validated
-detector. Before enabling extraction, obtain the upstream weights with:
-
-```bash
-openface download --output /app/openface/weights
-```
+When `PYFEAT_ANALYSIS_ENABLED=true`, which is the default, finalization samples
+private `student_video` frames and runs Py-Feat 2.1.1 `Detectorv2` once for the
+interview. Per-turn results are stored in the canonical
+`interview_turns.nonverbal_features` field. Model resources are downloaded to
+the persistent path configured by `PYFEAT_WEIGHTS_ROOT`.
+`PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS` and
+`PYFEAT_AU12_ACTIVE_THRESHOLD` remain empty until calibrated; dependent values
+are stored as unavailable. Pose values are retained for future validation, but
+nod count and rate remain unavailable until the temporal detector is defined.
 
 ## Recommended execution
 

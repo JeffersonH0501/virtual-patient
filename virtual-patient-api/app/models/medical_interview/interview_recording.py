@@ -137,7 +137,6 @@ class InterviewTurnDB(Base):
     timing_quality = Column(String(30), nullable=False)
     paraverbal = Column(JSON, nullable=True)
     nonverbal_features = Column(JSON, nullable=True)
-    pyfeat_nonverbal_features = Column(JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(
         DateTime(timezone=True),
@@ -204,7 +203,6 @@ class RecapTurn(BaseModel):
     timing_quality: str
     paraverbal: Optional[Dict[str, Any]] = None
     nonverbal_features: Optional[Dict[str, Any]] = None
-    pyfeat_nonverbal_features: Optional[Dict[str, Any]] = None
 
 
 class InterviewRecapResponse(BaseModel):

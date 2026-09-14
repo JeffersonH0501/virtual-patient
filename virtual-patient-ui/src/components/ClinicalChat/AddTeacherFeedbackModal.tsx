@@ -1,4 +1,4 @@
-import { FC, useState, useEffect } from 'react';
+﻿import { FC, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { createTeacherFeedback, updateTeacherFeedback } from '../../services/teacherFeedback';
@@ -75,14 +75,14 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
 
   return (
     <Modal open={isOpen} closeAction={handleClose} size="medium" containerId="add-teacher-feedback-modal" hasActions>
-      <div className="flex flex-col h-full max-h-dialog-content rounded-2xl">
-        <div className="border-b border-gray-200 bg-white p-4 rounded-t-2xl">
-          <h2 className="text-lg font-semibold text-gray-800">
+      <div className="dialog-shell">
+        <div className="dialog-header">
+          <h2 className="dialog-title">
             {editingFeedback ? t('clinicalChat.editTeacherFeedback') : t('clinicalChat.addTeacherFeedback')}
           </h2>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="dialog-content flex-1">
           <div className="space-y-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -99,7 +99,7 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
           </div>
         </div>
 
-        <div className="flex justify-end rounded-b-2xl bg-white p-4">
+        <div className="dialog-footer">
           <div className="dialog-actions">
             <button
               onClick={handleClose}
@@ -120,3 +120,4 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
     </Modal>
   );
 };
+

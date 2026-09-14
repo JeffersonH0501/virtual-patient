@@ -26,23 +26,22 @@ export type RecapTurn = {
   timingQuality: string;
   paraverbal?: ParaverbalObservation | null;
   nonverbalFeatures?: NonverbalObservation | null;
-  pyfeatNonverbalFeatures?: NonverbalObservation | null;
 };
 
 export type ParaverbalObservation = {
   extractor?: {name: string; version: string; featureSet: string};
   wordCount?: number;
   voicedDurationMs?: number;
-  speakingRateWpm?: number | null;
+  speechRateWpm?: number | null;
   articulationRateWpm?: number | null;
   pauseCount?: number;
-  pauseTotalMs?: number;
-  pauseMedianMs?: number | null;
-  pauseRatio?: number | null;
-  f0MedianHz?: number | null;
-  f0IqrSt?: number | null;
-  loudnessMedianRel?: number | null;
-  loudnessIqr?: number | null;
+  totalPauseDurationMs?: number;
+  medianPauseDurationMs?: number | null;
+  pauseTimeRatio?: number | null;
+  f0MedianSemitones?: number | null;
+  f0P20P80RangeSemitones?: number | null;
+  medianLoudness?: number | null;
+  loudnessP20P80Range?: number | null;
   audioQuality?: {validRatio?: number | null; issues?: string[]};
   interpretability?: {
     acousticTemporal?: {
@@ -57,11 +56,11 @@ export type ParaverbalObservation = {
 export type NonverbalObservation = {
   extractor?: {name: string; package?: string; version: string; sampleFps?: number};
   visualAlignmentRatio?: number | null;
-  visualAlignmentDwellMs?: number | null;
+  medianVisualAlignmentDwellMs?: number | null;
   nodCount?: number | null;
   nodRateMin?: number | null;
   smileActivityRatio?: number | null;
-  smileIntensityMean?: number | null;
+  meanSmileActivation?: number | null;
   videoValidRatio?: number | null;
   videoQuality?: {sampledFrameCount?: number; validFrameCount?: number; issues?: string[]};
 };

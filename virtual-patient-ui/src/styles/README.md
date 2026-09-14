@@ -18,6 +18,7 @@ semantic classes and variants rather than defining CSS values in JavaScript.
 | Buttons, badges, scores | `.ui-button*`, `.ui-badge*`, `.evaluation-score*` |
 | Motion and portal removal | `--motion-*` and the named keyframes; keep removal delay at least as long as exit animation |
 | Audio visualization | `--wave-*`, `.voice-wave`, `.patient-voice-wave` |
+| Interview calibration | `.calibration-*` components and `--calibration-level` |
 | Recorded canvas appearance | `--recording-*` |
 | Icon development gallery | `.icon-gallery` scoped rules |
 
@@ -95,3 +96,7 @@ corepack yarn build
 ```
 
 This updates current Tailwind utilities and semantic utilities from one place.
+
+Dialogs share typography through `.modal-panel` in `design-system.css`: `.dialog-title` marks the main heading; other headings are subtitles; paragraphs and native ordered/unordered lists share the body scale. `.dialog-annotation` provides a smaller blue callout with the only decorative content border. Inputs retain their functional borders. `extralarge` uses `--dialog-width-extralarge` (1200px), still constrained to the viewport, and is used by turn details.
+
+Dialog headers retain a bottom divider. `--dialog-content-gap` defines the 16px gap before action rows; the preceding body has no bottom padding to avoid doubling that space. All annotation descendants and list markers inherit the blue annotation color.

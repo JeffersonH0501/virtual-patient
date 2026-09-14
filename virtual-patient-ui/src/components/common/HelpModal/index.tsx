@@ -1,4 +1,4 @@
-import {FC} from 'react';
+﻿import {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Modal} from '../Modal';
 import {X} from '../../../icons';
@@ -22,9 +22,9 @@ export const HelpModal: FC<HelpModalProps> = ({isOpen, onClose}) => {
       containerId="help-modal"
       ariaLabel={t('help.title')}
     >
-      <div className="flex max-h-dialog min-h-0 flex-col overflow-hidden rounded-panel bg-surface text-left">
-        <header className="flex shrink-0 items-center justify-between border-b border-border bg-surface px-5 py-3.5">
-          <h2 className="text-lg font-semibold text-slate-800">
+      <div className="dialog-shell">
+        <header className="dialog-header">
+          <h2 className="dialog-title">
             {t('help.title')}
           </h2>
           <button
@@ -40,7 +40,7 @@ export const HelpModal: FC<HelpModalProps> = ({isOpen, onClose}) => {
           </button>
         </header>
 
-        <div className="flex-1 overflow-y-auto bg-surface px-5 py-4 sm:px-6 sm:py-5">
+        <div className="dialog-content flex-1">
           <div className="space-y-6">
             <section>
               <h3 className="component-subtitle">{t('help.purpose.title')}</h3>
@@ -57,7 +57,6 @@ export const HelpModal: FC<HelpModalProps> = ({isOpen, onClose}) => {
               <ol className="mt-3 grid gap-y-2.5">
                 {STEP_NUMBERS.map((stepNumber) => (
                   <li key={stepNumber} className="flex items-start gap-2.5">
-                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-600 text-xs font-semibold text-white">{stepNumber}</span>
                     <span className="dialog-copy">{t(`help.howItWorks.step${stepNumber}`)}</span>
                   </li>
                 ))}
@@ -70,14 +69,13 @@ export const HelpModal: FC<HelpModalProps> = ({isOpen, onClose}) => {
               <ul className="mt-2.5 grid gap-y-1.5">
                 {FEATURE_NUMBERS.map((featureNumber) => (
                   <li key={featureNumber} className="dialog-copy flex items-start gap-2">
-                    <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-brand-500" />
                     <span>{t(`help.clinicalCases.feature${featureNumber}`)}</span>
                   </li>
                 ))}
               </ul>
             </section>
 
-            <p className="dialog-copy dialog-info-callout">
+            <p className="dialog-annotation">
               {t('help.additionalInfo.description')}
             </p>
           </div>
@@ -86,3 +84,4 @@ export const HelpModal: FC<HelpModalProps> = ({isOpen, onClose}) => {
     </Modal>
   );
 };
+

@@ -1,4 +1,4 @@
-import { FC } from 'react';
+﻿import { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { TranslatedClinicalCase } from '../../types/clinicalCase';
@@ -39,9 +39,9 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
 
   return (
     <Modal open={isOpen} closeAction={handleClose} size="large" containerId='clinical-case-comparison-modal'>
-      <div className="h-full flex flex-col">
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white">
-          <h2 className="text-2xl font-bold text-gray-800">
+      <div className="dialog-shell">
+        <div className="dialog-header">
+          <h2 className="dialog-title">
             {t('evaluation.clinicalCaseComparison')}
           </h2>
           <button
@@ -54,7 +54,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="dialog-content flex-1">
           <div className="max-w-7xl mx-auto">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {/* Original Clinical Case */}
@@ -155,7 +155,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
                       <h4 className="font-semibold text-gray-800 mb-2">{t('evaluation.currentSymptoms')}</h4>
                       <div className="space-y-2">
                         {progressSummary.currentSymptoms.map((symptom, index: number) => (
-                          <div key={index} className="bg-white rounded p-3 border border-green-200">
+                          <div key={index} className="bg-white rounded p-3">
                             <div className="flex justify-between items-start">
                               <span className="font-medium text-gray-800">{symptom.symptom}</span>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -191,7 +191,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
                       <h4 className="font-semibold text-gray-800 mb-2">{t('evaluation.currentIllnesses')}</h4>
                       <div className="space-y-2">
                         {progressSummary.currentIllnesses.map((illness, index: number) => (
-                          <div key={index} className="bg-white rounded p-3 border border-green-200">
+                          <div key={index} className="bg-white rounded p-3">
                             <div className="flex justify-between items-start">
                               <span className="font-medium text-gray-800">{illness.illness}</span>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -234,7 +234,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
                       <h4 className="font-semibold text-gray-800 mb-2">{t('createCase.medications')}</h4>
                       <div className="space-y-2">
                         {progressSummary.medications.map((medication, index: number) => (
-                          <div key={index} className="bg-white rounded p-3 border border-green-200">
+                          <div key={index} className="bg-white rounded p-3">
                             <div className="font-medium text-gray-800">{medication.medication}</div>
                             {medication.dosage && (
                               <p className="text-sm text-gray-600 mt-1">
@@ -269,7 +269,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
                       <h4 className="font-semibold text-gray-800 mb-2">{t('createCase.habits')}</h4>
                       <div className="space-y-2">
                         {progressSummary.habits.map((habit, index: number) => (
-                          <div key={index} className="bg-white rounded p-3 border border-green-200">
+                          <div key={index} className="bg-white rounded p-3">
                             <div className="font-medium text-gray-800">{habit.habit}</div>
                             {habit.duration && (
                               <p className="text-sm text-gray-600 mt-1">
@@ -299,7 +299,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
                       <h4 className="font-semibold text-gray-800 mb-2">{t('evaluation.medicalHistory')}</h4>
                       <div className="space-y-2">
                         {progressSummary.medicalHistory.map((history, index: number) => (
-                          <div key={index} className="bg-white rounded p-3 border border-green-200">
+                          <div key={index} className="bg-white rounded p-3">
                             <div className="font-medium text-gray-800">{history.type}</div>
                             {history.date && (
                               <p className="text-sm text-gray-600 mt-1">
@@ -327,7 +327,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
                       <h4 className="font-semibold text-gray-800 mb-2">{t('createCase.familyHistory')}</h4>
                       <div className="space-y-2">
                         {progressSummary.familyHistory.map((history, index: number) => (
-                          <div key={index} className="bg-white rounded p-3 border border-green-200">
+                          <div key={index} className="bg-white rounded p-3">
                             <div className="font-medium text-gray-800">{history.condition}</div>
                             {history.relationship && (
                               <p className="text-sm text-gray-600 mt-1">
@@ -353,7 +353,7 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
                         {hypotheses
                           .sort((a, b) => a.hypothesisOrder - b.hypothesisOrder)
                           .map((hypothesis) => (
-                            <div key={hypothesis.id} className="bg-white rounded p-4 border border-green-200">
+                            <div key={hypothesis.id} className="bg-white rounded p-4">
                               <div className="flex items-start gap-3">
                                 <span className="flex-shrink-0 w-6 h-6 bg-green-600 text-white rounded-full flex items-center justify-center text-sm font-medium">
                                   {hypothesis.hypothesisOrder}
@@ -375,3 +375,4 @@ export const ClinicalCaseComparisonModal: FC<ClinicalCaseComparisonModalProps> =
     </Modal>
   );
 };
+

@@ -52,7 +52,7 @@ class MedicalInterviewController:
             clinical_case_id=clinical_case_id,
             status=InterviewStatus.ACTIVE,
             interview_metadata=interview_metadata or {},
-            start_time=datetime.now(timezone.utc),
+            start_time=None,
             patient_name=final_patient_name,
             patient_photo=final_patient_photo,
             patient_gender=final_patient_gender,
@@ -156,6 +156,11 @@ class MedicalInterviewController:
         interview = self.db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id).first()
         if not interview:
             return None
+        if interview.start_time is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The interview has not started",
+            )
         
         # Calculate total duration
         end_time = datetime.now(timezone.utc)
@@ -171,6 +176,33 @@ class MedicalInterviewController:
                 end_time=end_time
             )
         )
+
+    def start_interview(self, interview_id: int) -> Optional[MedicalInterview]:
+        """Start a calibrated interview and establish its official clock."""
+        interview = self.db.query(MedicalInterviewDB).filter(
+            MedicalInterviewDB.id == interview_id
+        ).first()
+        if not interview:
+            return None
+        if interview.status != InterviewStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only active interviews can be started",
+            )
+        if interview.start_time is not None:
+            return MedicalInterview.from_orm(interview)
+
+        calibration = (interview.interview_metadata or {}).get("calibration") or {}
+        if calibration.get("status") != "passed":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Technical calibration must pass before the interview starts",
+            )
+
+        interview.start_time = datetime.now(timezone.utc)
+        self.db.commit()
+        self.db.refresh(interview)
+        return MedicalInterview.from_orm(interview)
     
     def abandon_interview(self, interview_id: int) -> Optional[MedicalInterview]:
         """Abandon an interview"""
@@ -228,6 +260,11 @@ class MedicalInterviewController:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Interview is not active"
+            )
+        if interview.start_time is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The interview has not started",
             )
 
         # Get the complete clinical case with all medical details
@@ -420,7 +457,7 @@ class MedicalInterviewController:
             joinedload(MedicalInterviewDB.teacher_feedback)
         ).join(ClinicalCaseDB, MedicalInterviewDB.clinical_case_id == ClinicalCaseDB.id).join(
             UserDB, MedicalInterviewDB.user_id == UserDB.id
-        )
+        ).filter(MedicalInterviewDB.start_time.isnot(None))
         
         # Filter by role only if user is not a superuser
         if current_user.role != UserRole.SUPERUSER.value:
@@ -498,6 +535,7 @@ class MedicalInterviewController:
             UserDB, MedicalInterviewDB.user_id == UserDB.id
         ).filter(
             MedicalInterviewDB.status == InterviewStatus.ACTIVE,
+            MedicalInterviewDB.start_time.isnot(None),
             UserDB.role == UserRole.STUDENT.value
         ).count()
         
@@ -625,4 +663,4 @@ class MedicalInterviewController:
                 "average_score": None,
                 "total_evaluations": 0,
                 "has_data": False
-            } 
+            }

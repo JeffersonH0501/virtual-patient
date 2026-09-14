@@ -1,15 +1,11 @@
 import {transcribeStudentAudio} from '../services/speech/transcribeStudentAudio';
 import {SpeechInputCallbacks, SpeechInputProvider} from './SpeechInputProvider';
+import {selectAudioMimeType} from '../utils/mediaRecorder';
 
 const ANALYSIS_INTERVAL_MS = 50;
 const MINIMUM_SPEECH_MS = 250;
 const MINIMUM_ACTIVITY_RMS = 0.012;
 const NOISE_MULTIPLIER = 2.5;
-
-const selectAudioMimeType = (): string | null => {
-  const candidates = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4'];
-  return candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? null;
-};
 
 const extensionFor = (mimeType: string): string =>
   mimeType.includes('mp4') ? 'm4a' : 'webm';
@@ -44,7 +40,10 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
   private inputGeneration = 0;
   private captureGeneration = 0;
 
-  constructor(private readonly callbacks: SpeechInputCallbacks) {}
+  constructor(
+    private readonly callbacks: SpeechInputCallbacks,
+    private readonly sharedStream: MediaStream | null = null,
+  ) {}
 
   start(language: string): void {
     if (!this.isSupported) {
@@ -106,11 +105,11 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
     const generation = this.captureGeneration;
     try {
       if (!this.stream) {
-        const stream = await navigator.mediaDevices.getUserMedia({
+        const stream = this.sharedStream ?? await navigator.mediaDevices.getUserMedia({
           audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
         });
         if (!this.active || generation !== this.captureGeneration) {
-          stream.getTracks().forEach((track) => track.stop());
+          if (!this.sharedStream) stream.getTracks().forEach((track) => track.stop());
           return;
         }
         this.stream = stream;
@@ -254,7 +253,7 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
   }
 
   private releaseCapture(): void {
-    this.stream?.getTracks().forEach((track) => track.stop());
+    if (!this.sharedStream) this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     void this.audioContext?.close();
     this.audioContext = null;

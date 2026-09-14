@@ -1,4 +1,4 @@
-import {useEffect, useState} from 'react';
+﻿import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Modal} from '../common';
 import {TableHeader} from '../common/Table/TableHeader';
@@ -203,14 +203,14 @@ export const ConversationTable = () => {
         hasActions
         size="small"
       >
-        <div className="flex flex-col overflow-hidden rounded-panel text-left">
-          <header className="border-b border-border bg-surface px-5 py-3.5">
-            <h2 className="text-lg font-semibold text-slate-800">
+        <div className="dialog-shell">
+          <header className="dialog-header">
+            <h2 className="dialog-title">
               {t('conversations.deleteInterviewTitle')}
             </h2>
           </header>
 
-          <div className="bg-surface px-5 py-4">
+          <div className="dialog-content">
             <p className="text-sm leading-6 text-slate-600">
               {t('conversations.deleteInterviewDescription')}
             </p>
@@ -219,7 +219,7 @@ export const ConversationTable = () => {
             )}
           </div>
 
-          <footer className="flex justify-end bg-surface px-5 py-3.5">
+          <footer className="dialog-footer">
             <div className="dialog-actions">
               <button
                 type="button"
@@ -244,3 +244,4 @@ export const ConversationTable = () => {
     </section>
   );
 };
+

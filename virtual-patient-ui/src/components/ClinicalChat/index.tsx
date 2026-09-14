@@ -1,4 +1,4 @@
-import {FC, useCallback, useEffect, useRef, useState} from 'react';
+﻿import {FC, useCallback, useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {useTranslation} from 'react-i18next';
 import {Navigate, useNavigate, useOutletContext, useParams} from 'react-router-dom';
@@ -12,7 +12,7 @@ import {CallToolbar} from './CallToolbar';
 import {ConversationTranscript} from './ConversationTranscript';
 import {InterviewRecap} from './InterviewRecap';
 import {ActiveSimulationLayout, SimulationResultsLayout} from './InterviewLayouts';
-import {completeInterview, createSummary, sendMessage} from '../../services/interviews';
+import {completeInterview, createSummary, sendMessage, startInterview} from '../../services/interviews';
 import {getInterview} from '../../services/interviews/getInterview';
 import {getSessionNote, updateSessionNote} from '../../services/sessionNote';
 import {CompleteInterviewResponse} from '../../types/interview';
@@ -22,7 +22,6 @@ import {InterviewEvaluationResponse} from '../../types/evaluation';
 import {EvaluationResultsPanel} from '../Evaluation';
 import {getPatientImage, processMessagesWithAvatars, processSummaryData} from './helpers';
 import {useHandsFreeSpeech} from '../../hooks/useHandsFreeSpeech';
-import {useLocalCamera} from '../../hooks/useLocalCamera';
 import {useInterviewRecording} from '../../hooks/useInterviewRecording';
 import {useUser} from '../../hooks/useUser';
 import {SpeechTiming} from '../../types/recording';
@@ -31,6 +30,7 @@ import patientImageM from '../../assets/patient_m.png';
 import {AppContainerOutletContext} from '../common/AppContainer';
 import {X} from '../../icons';
 import {interviewPath} from '../../utils/routes';
+import {useInterviewMedia} from '../../contexts/interviewMedia';
 
 const EMPTY_PATIENT: Patient = {
   name: '',
@@ -105,7 +105,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     resumeAudioGraph: () => Promise<void>;
     recordStudentTurn: (messageId: number, sequence: number, transcript: string, timing?: SpeechTiming) => void;
   } | null>(null);
-  const camera = useLocalCamera(false);
+  const media = useInterviewMedia();
 
   const isOwner = interview?.isOwner ?? false;
   const isCompleted = interview?.status === 'completed';
@@ -135,9 +135,10 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   }, [isInterviewOpen]);
 
   useEffect(() => {
-    if (isSimulationActive && isOwner) void camera.start();
-    else camera.stop();
-  }, [camera.start, camera.stop, isOwner, isSimulationActive]);
+    if (isSimulationActive && isOwner) {
+      void Promise.all([media.startCamera(), media.startMicrophone()]);
+    }
+  }, [isOwner, isSimulationActive, media.startCamera, media.startMicrophone]);
 
   const fetchInterview = useCallback(async () => {
     if (!interviewId) return;
@@ -201,19 +202,27 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       console.error('Failed to load session note:', error);
     }
 
+    const calibrationPassed = interviewData.interviewMetadata?.calibration?.status === 'passed';
+    const hasSharedMedia = media.cameraState === 'ready' && media.microphoneState === 'ready';
+    if (mode === 'session' && !interviewData.startTime && (!calibrationPassed || !hasSharedMedia)) {
+      navigate(interviewPath(interviewData.id, 'calibration'), {replace: true});
+      return;
+    }
+
     if (
       mode === 'session' &&
       interviewData.status !== 'completed' &&
       interviewData.messages?.length === 0 &&
       interviewData.isOwner &&
+      (!interviewData.startTime || !calibrationPassed) &&
       !welcomeShownRef.current
     ) {
       welcomeShownRef.current = true;
       setOpenWelcomeModal(true);
-    } else if (interviewData.messages?.length || interviewData.status === 'completed') {
+    } else if (interviewData.startTime || interviewData.messages?.length || interviewData.status === 'completed') {
       setSimulationAccepted(true);
     }
-  }, [interfaceLanguage, interviewId, mode, t]);
+  }, [interfaceLanguage, interviewId, media.cameraState, media.microphoneState, mode, navigate, t]);
 
   const fetchAndProcessSummary = useCallback(
     async (context: string = 'summary') => {
@@ -361,6 +370,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     paused: patientHasFloor,
     disabled: mode !== 'session' || !isOwner || isCompleted || ending,
     autoStart: Boolean(isSimulationActive && isOwner),
+    microphoneStream: media.microphoneStream,
     onUtteranceCommitted: handleUtteranceCommitted,
     onUtteranceFailed: handleUtteranceFailed,
     onUtterance: handleSendMessage,
@@ -373,8 +383,9 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const recording = useInterviewRecording({
     interviewId: interviewId ?? undefined,
     enabled: Boolean(isSimulationActive && isOwner),
-    cameraStream: camera.stream,
-    cameraEnabled: camera.isEnabled,
+    cameraStream: media.cameraStream,
+    microphoneStream: media.microphoneStream,
+    cameraEnabled: media.cameraState === 'ready',
     microphoneEnabled: speech.isEnabled && !patientHasFloor,
     patientAudioEnabled: audioAutoPlayEnabled,
     patientAvatar: patient.avatar,
@@ -439,7 +450,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setOpenObservationDialog(false);
     setEnding(true);
     recording.pause();
-    camera.stop();
+    media.stopAll();
     setIsPatientSpeaking(false);
 
     void (async () => {
@@ -457,7 +468,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       }
     })();
   }, [
-    camera.stop,
+    media.stopAll,
     elapsedSeconds,
     fetchAndProcessSummary,
     interviewId,
@@ -505,11 +516,11 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           patientName={patient.name}
           studentName={studentName}
           patientSpeaking={isPatientSpeaking}
-          cameraStream={camera.stream}
-          cameraEnabled={camera.isEnabled}
-          cameraStarting={camera.isStarting}
-          cameraErrorCode={camera.errorCode}
-          onRetryCamera={() => void camera.start()}
+          cameraStream={media.cameraStream}
+          cameraEnabled={media.cameraState === 'ready'}
+          cameraStarting={media.cameraState === 'loading'}
+          cameraErrorCode={['permission-denied', 'unavailable', 'unsupported'].includes(media.cameraState) ? media.cameraState : null}
+          onRetryCamera={() => void media.startCamera()}
         />
       )}
 
@@ -626,9 +637,11 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       >
         {durationLimitExceeded ? (
           <div className="flex h-full flex-col justify-center p-6 text-left sm:p-8">
-            <h2 className="text-xl font-semibold text-slate-900">
-              {t('clinicalChat.durationLimit.title')}
-            </h2>
+            <header className="pb-4">
+              <h2 className="dialog-title">
+                {t('clinicalChat.durationLimit.title')}
+              </h2>
+            </header>
             <p className="mt-3 text-sm leading-6 text-slate-600">
               {t('clinicalChat.durationLimit.hypothesesUnavailable')}
             </p>
@@ -659,13 +672,13 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         hasActions
         ariaLabel={t('clinicalChat.reportObservation')}
       >
-        <div className="flex flex-col overflow-hidden rounded-panel bg-surface text-left">
-          <header className="border-b border-border px-5 py-3.5">
-            <h2 className="text-lg font-semibold text-slate-800">
+        <div className="dialog-shell">
+          <header className="dialog-header">
+            <h2 className="dialog-title">
               {t('clinicalChat.reportObservation')}
             </h2>
           </header>
-          <div className="px-5 py-4">
+          <div className="dialog-content">
             <p className="mb-3 text-sm leading-6 text-slate-600">
               {t('clinicalChat.observationDescription')}
             </p>
@@ -678,7 +691,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
               className="w-full resize-none rounded-control border border-border bg-surface px-3 py-2.5 text-sm leading-6 text-slate-700 placeholder:text-slate-400 hover:border-neutral-400 disabled:cursor-not-allowed disabled:bg-neutral-100"
             />
           </div>
-          <footer className="flex justify-end px-5 py-3.5">
+          <footer className="dialog-footer">
             <div className="dialog-actions">
               <button
                 type="button"
@@ -703,12 +716,19 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       <WelcomeModal
         isOpen={openWelcomeModal}
         onAccept={() => {
-          void recording.resumeAudioGraph();
-          setSimulationAccepted(true);
-          setOpenWelcomeModal(false);
+          if (!interviewId) return;
+          void startInterview(interviewId)
+            .then((startedInterview) => {
+              setInterview((current) => current ? {...current, startTime: startedInterview.startTime} : current);
+              void recording.resumeAudioGraph();
+              setSimulationAccepted(true);
+              setOpenWelcomeModal(false);
+            })
+            .catch(() => setMessageError(t('calibration.startError')));
         }}
-        onCancel={() => navigate(-1)}
+        onCancel={() => navigate(interviewPath(interviewId, 'calibration'), {replace: true})}
       />
     </InterviewLayout>
   );
 };
+

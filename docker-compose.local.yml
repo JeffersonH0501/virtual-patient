@@ -34,14 +34,7 @@ x-api-environment: &api-environment
   PARAVERBAL_ANALYSIS_ENABLED: ${PARAVERBAL_ANALYSIS_ENABLED:-true}
   PARAVERBAL_MIN_PAUSE_MS: ${PARAVERBAL_MIN_PAUSE_MS:-200}
   PARAVERBAL_MIN_VOICED_DURATION_MS: ${PARAVERBAL_MIN_VOICED_DURATION_MS:-300}
-  NONVERBAL_ANALYSIS_ENABLED: ${NONVERBAL_ANALYSIS_ENABLED:-true}
-  OPENFACE_DEVICE: ${OPENFACE_DEVICE:-cpu}
-  OPENFACE_WEIGHTS_ROOT: ${OPENFACE_WEIGHTS_ROOT:-/app/openface/weights}
-  OPENFACE_SAMPLE_FPS: ${OPENFACE_SAMPLE_FPS:-2}
-  OPENFACE_GAZE_ALIGNMENT_MAX_RADIANS: ${OPENFACE_GAZE_ALIGNMENT_MAX_RADIANS:-}
-  OPENFACE_AU12_INDEX: ${OPENFACE_AU12_INDEX:-}
-  OPENFACE_AU12_ACTIVE_THRESHOLD: ${OPENFACE_AU12_ACTIVE_THRESHOLD:-}
-  PYFEAT_ANALYSIS_ENABLED: ${PYFEAT_ANALYSIS_ENABLED:-false}
+  PYFEAT_ANALYSIS_ENABLED: ${PYFEAT_ANALYSIS_ENABLED:-true}
   PYFEAT_DEVICE: ${PYFEAT_DEVICE:-cpu}
   PYFEAT_WEIGHTS_ROOT: ${PYFEAT_WEIGHTS_ROOT:-/app/pyfeat/weights}
   PYFEAT_SAMPLE_FPS: ${PYFEAT_SAMPLE_FPS:-2}
@@ -86,14 +79,6 @@ services:
       - interview_media:/app/media
     restart: "no"
 
-  openface-init:
-    build: *api-build
-    user: "root"
-    command: ["sh", "-c", "mkdir -p /app/openface && chown -R appuser:appuser /app/openface"]
-    volumes:
-      - openface_models:/app/openface
-    restart: "no"
-
   pyfeat-init:
     build: *api-build
     user: "root"
@@ -111,14 +96,11 @@ services:
     volumes:
       - ./virtual-patient-api:/app
       - interview_media:/app/media
-      - openface_models:/app/openface
       - pyfeat_models:/app/pyfeat
     depends_on:
       postgres:
         condition: service_healthy
       media-init:
-        condition: service_completed_successfully
-      openface-init:
         condition: service_completed_successfully
       pyfeat-init:
         condition: service_completed_successfully
@@ -158,5 +140,4 @@ volumes:
   postgres_local_data:
   ui_node_modules:
   interview_media:
-  openface_models:
   pyfeat_models:

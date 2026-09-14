@@ -24,7 +24,7 @@ class MedicalInterviewDB(Base):
     public_id = Column(String(11), unique=True, nullable=False, index=True, default=generate_public_interview_id)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     clinical_case_id = Column(Integer, ForeignKey("clinical_cases.id"), nullable=False, index=True)
-    start_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    start_time = Column(DateTime(timezone=True), nullable=True)
     end_time = Column(DateTime(timezone=True), nullable=True)
     status = Column(Enum(InterviewStatus, name='interview_status'), nullable=False, default=InterviewStatus.ACTIVE)
     interview_metadata = Column(JSON, nullable=True)  # Additional interview-level information
@@ -84,7 +84,7 @@ class MedicalInterview(MedicalInterviewBase):
     id: int
     public_id: str
     user_id: int
-    start_time: datetime
+    start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     total_duration: Optional[int] = None
     created_at: datetime = Field(default_factory=datetime.utcnow)

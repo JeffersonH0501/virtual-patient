@@ -27,7 +27,7 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
 
   // Calculate live duration for active interviews
   const liveDuration = useMemo(() => {
-    if (interview.status === 'active') {
+    if (interview.status === 'active' && interview.startTime) {
       const now = new Date().getTime();
       const start = new Date(interview.startTime).getTime();
       return Math.floor((now - start) / 1000);
@@ -81,7 +81,7 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
 
       {/* Duration Column */}
       <td className="flex-1 px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
-        {interview.status === 'active' ? formatDuration(liveDuration, t('conversations.min')) : formatDuration(interview.totalDuration, t('conversations.min'))}
+        {interview.status === 'active' && interview.startTime ? formatDuration(liveDuration, t('conversations.min')) : formatDuration(interview.totalDuration, t('conversations.min'))}
       </td>
 
       {/* Score Column */}

@@ -13,6 +13,7 @@ import {
   RecordingStatus,
   SpeechTiming,
 } from '../types/recording';
+import {selectAudioMimeType, selectVideoMimeType} from '../utils/mediaRecorder';
 
 const VIDEO_WIDTH = 1280;
 const VIDEO_HEIGHT = 720;
@@ -37,15 +38,13 @@ type UseInterviewRecordingOptions = {
   interviewId?: number;
   enabled: boolean;
   cameraStream: MediaStream | null;
+  microphoneStream: MediaStream | null;
   cameraEnabled: boolean;
   microphoneEnabled: boolean;
   patientAudioEnabled: boolean;
   patientAvatar: string;
   patientName: string;
 };
-
-const selectMimeType = (candidates: string[]): string | null =>
-  candidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? null;
 
 const extensionForMime = (mimeType: string): string =>
   mimeType.includes('mp4') ? (mimeType.startsWith('audio') ? '.m4a' : '.mp4') : '.webm';
@@ -65,6 +64,7 @@ export const useInterviewRecording = ({
   interviewId,
   enabled,
   cameraStream,
+  microphoneStream,
   cameraEnabled,
   microphoneEnabled,
   patientAudioEnabled,
@@ -77,6 +77,7 @@ export const useInterviewRecording = ({
   const [patientAudioLevel, setPatientAudioLevel] = useState(0);
   const recordersRef = useRef<RecorderRuntime[]>([]);
   const cameraStreamRef = useRef(cameraStream);
+  const microphoneInputRef = useRef(microphoneStream);
   const cameraEnabledRef = useRef(cameraEnabled);
   const microphoneEnabledRef = useRef(microphoneEnabled);
   const patientAudioEnabledRef = useRef(patientAudioEnabled);
@@ -89,7 +90,6 @@ export const useInterviewRecording = ({
   const audioContextRef = useRef<AudioContext | null>(null);
   const patientAnalyserRef = useRef<AnalyserNode | null>(null);
   const patientLevelTimerRef = useRef<number | null>(null);
-  const microphoneStreamRef = useRef<MediaStream | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const originRef = useRef<number | null>(null);
   const pausedAtRef = useRef<number | null>(null);
@@ -107,6 +107,9 @@ export const useInterviewRecording = ({
   useEffect(() => {
     cameraStreamRef.current = cameraStream;
   }, [cameraStream]);
+  useEffect(() => {
+    microphoneInputRef.current = microphoneStream;
+  }, [microphoneStream]);
   useEffect(() => {
     cameraEnabledRef.current = cameraEnabled;
   }, [cameraEnabled]);
@@ -183,8 +186,6 @@ export const useInterviewRecording = ({
     patientLevelTimerRef.current = null;
     patientAnalyserRef.current = null;
     setPatientAudioLevel(0);
-    microphoneStreamRef.current?.getTracks().forEach((track) => track.stop());
-    microphoneStreamRef.current = null;
     const runtimes = recordersRef.current;
     recordersRef.current = [];
     runtimes.forEach(({recorder}) => {
@@ -218,8 +219,8 @@ export const useInterviewRecording = ({
       return;
     }
 
-    const videoMime = selectMimeType(['video/webm;codecs=vp8', 'video/webm', 'video/mp4']);
-    const audioMime = selectMimeType(['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4']);
+    const videoMime = selectVideoMimeType();
+    const audioMime = selectAudioMimeType();
     if (!videoMime || !audioMime) {
       setStatus('failed');
       setErrorCode('unsupported-codec');
@@ -246,16 +247,9 @@ export const useInterviewRecording = ({
       patientSilence.start();
 
       try {
-        const microphoneStream = await navigator.mediaDevices.getUserMedia({
-          video: false,
-          audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
-        });
-        if (generation !== captureGenerationRef.current) {
-          microphoneStream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        microphoneStreamRef.current = microphoneStream;
-        const microphoneSource = audioContext.createMediaStreamSource(microphoneStream);
+        const activeMicrophoneStream = microphoneInputRef.current;
+        if (!activeMicrophoneStream?.active) throw new Error('Microphone stream unavailable');
+        const microphoneSource = audioContext.createMediaStreamSource(activeMicrophoneStream);
         const microphoneGain = audioContext.createGain();
         microphoneGain.gain.value = microphoneEnabledRef.current ? 1 : 0;
         microphoneSource.connect(microphoneGain).connect(studentDestination);

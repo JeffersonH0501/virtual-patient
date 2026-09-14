@@ -46,13 +46,8 @@ def main() -> None:
             )
         )
         paraverbal = [turn.paraverbal for turn in turns if turn.paraverbal]
-        openface = [
+        nonverbal = [
             turn.nonverbal_features for turn in turns if turn.nonverbal_features
-        ]
-        pyfeat = [
-            turn.pyfeat_nonverbal_features
-            for turn in turns
-            if turn.pyfeat_nonverbal_features
         ]
         interpreted = [
             item["interpretability"]["acoustic_temporal"]
@@ -65,7 +60,6 @@ def main() -> None:
             for payload in (
                 turn.paraverbal,
                 turn.nonverbal_features,
-                turn.pyfeat_nonverbal_features,
             )
             if payload
         ]
@@ -78,8 +72,7 @@ def main() -> None:
             "turnCount": len(turns),
             "available": {
                 "paraverbal": len(paraverbal),
-                "openface": len(openface),
-                "pyfeat": len(pyfeat),
+                "nonverbal": len(nonverbal),
             },
             "interpretability": {
                 "turnCount": len(interpreted),

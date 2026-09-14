@@ -6,7 +6,7 @@ Virtual patient application for clinical history-taking training. The repository
 
 This repository extends the earlier Virtual Patient implementation developed by Andrea Bayona. The current work builds on that foundation as part of a master's thesis focused on expanding the platform toward multimodal clinical-interview training and evaluation.
 
-The original authorship and license notices included in the inherited source code are preserved. New work in this repository includes the current deployment structure and the ongoing multimodal extensions, including interview recording, synchronized recap, paraverbal analysis with OpenSMILE/eGeMAPSv02, non-verbal feature extraction with OpenFace 3.0, and related research-oriented processing infrastructure.
+The original authorship and license notices included in the inherited source code are preserved. New work in this repository includes the current deployment structure and the ongoing multimodal extensions, including interview recording, synchronized recap, paraverbal analysis with OpenSMILE/eGeMAPSv02, non-verbal feature extraction with Py-Feat 2.1.1, and related research-oriented processing infrastructure.
 
 ## Structure
 
@@ -41,7 +41,7 @@ Virtual-patient personality is split between semantic behavior and vocal deliver
 
 The interview screen is presented as a call and captures four private, continuous sources on one browser timeline: student microphone audio, student camera canvas, patient TTS audio, and the rendered patient canvas. Turning off the microphone or camera preserves silence or a disabled-camera frame instead of shortening the timeline. Temporary chunks use OPFS when available and fall back to memory; completed files are uploaded to authenticated private storage.
 
-After an interview, the recap view synchronizes the two recorded video panels and mixes the two audio sources locally. Seeking also updates the cumulative transcript. Legacy interviews and failed captures retain their full transcript and explicitly report that no recording is available. At finalization, the API can derive descriptive, per-student-turn OpenSMILE/eGeMAPSv02 observations from the private student-audio recording and OpenFace 3.0 observations from the private student-video recording. Video outputs include face-tracking validity; gaze and AU12 aggregates require explicit research configuration. The pause, gaze and AU rules are provisional processing parameters; this does not validate VAD, visual alignment, nod detection, non-verbal inference, or multimodal evaluation.
+After an interview, the recap view synchronizes the two recorded video panels and mixes the two audio sources locally. Seeking also updates the cumulative transcript. Legacy interviews and failed captures retain their full transcript and explicitly report that no recording is available. At finalization, the API derives descriptive OpenSMILE/eGeMAPSv02 observations for student speech and Py-Feat 2.1.1 observations from the private student video. The turn-details dialog presents only the selected raw variables grouped by family. Gaze and AU12 aggregates that require calibration remain unavailable until configured. These processing parameters do not validate VAD, visual alignment, nod detection, non-verbal inference, or multimodal evaluation.
 
 ## Security and Configuration
 

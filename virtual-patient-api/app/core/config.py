@@ -99,32 +99,8 @@ class Settings:
     paraverbal_min_voiced_duration_ms: int = int(
         os.getenv("PARAVERBAL_MIN_VOICED_DURATION_MS", "300")
     )
-    nonverbal_analysis_enabled: bool = os.getenv(
-        "NONVERBAL_ANALYSIS_ENABLED",
-        "true",
-    ).strip().lower() in {"1", "true", "yes", "on"}
-    openface_device: str = os.getenv("OPENFACE_DEVICE", "cpu").strip().lower()
-    openface_weights_root: Path = Path(
-        os.getenv("OPENFACE_WEIGHTS_ROOT", "/app/openface/weights")
-    )
-    openface_sample_fps: float = float(os.getenv("OPENFACE_SAMPLE_FPS", "2"))
-    openface_gaze_alignment_max_radians: float | None = (
-        float(os.environ["OPENFACE_GAZE_ALIGNMENT_MAX_RADIANS"])
-        if os.getenv("OPENFACE_GAZE_ALIGNMENT_MAX_RADIANS", "").strip()
-        else None
-    )
-    openface_au12_index: int | None = (
-        int(os.environ["OPENFACE_AU12_INDEX"])
-        if os.getenv("OPENFACE_AU12_INDEX", "").strip()
-        else None
-    )
-    openface_au12_active_threshold: float | None = (
-        float(os.environ["OPENFACE_AU12_ACTIVE_THRESHOLD"])
-        if os.getenv("OPENFACE_AU12_ACTIVE_THRESHOLD", "").strip()
-        else None
-    )
     pyfeat_analysis_enabled: bool = os.getenv(
-        "PYFEAT_ANALYSIS_ENABLED", "false",
+        "PYFEAT_ANALYSIS_ENABLED", "true",
     ).strip().lower() in {"1", "true", "yes", "on"}
     pyfeat_device: str = os.getenv("PYFEAT_DEVICE", "cpu").strip().lower()
     pyfeat_weights_root: Path = Path(

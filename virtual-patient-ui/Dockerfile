@@ -14,7 +14,7 @@ COPY . .
 
 EXPOSE 5173
 
-CMD ["node", ".yarn/releases/yarn-4.6.0.cjs", "dev", "--host", "0.0.0.0"]
+CMD ["sh", "-c", "node .yarn/releases/yarn-4.6.0.cjs install --immutable && exec node .yarn/releases/yarn-4.6.0.cjs dev --host 0.0.0.0"]
 
 
 FROM dependencies AS build

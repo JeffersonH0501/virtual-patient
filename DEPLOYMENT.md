@@ -74,6 +74,20 @@ not delete expired files automatically. Nginx streams uploads without request
 buffering and does not expose the media directory as public static content.
 Playback is authorized by the API and supports HTTP Range requests.
 
+Post-interview observations use OpenSMILE for student audio and Py-Feat 2.1.1
+for student video. Py-Feat is enabled by default and stores downloaded model
+resources in the persistent `/app/pyfeat` volume. The optional gaze and AU12
+calibration values remain empty until the research procedure is defined:
+
+```bash
+PYFEAT_ANALYSIS_ENABLED=true
+PYFEAT_DEVICE=cpu
+PYFEAT_WEIGHTS_ROOT=/app/pyfeat/weights
+PYFEAT_SAMPLE_FPS=2
+PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS=
+PYFEAT_AU12_ACTIVE_THRESHOLD=
+```
+
 During an interview, four continuous sources share one browser clock:
 `student_audio`, `student_video`, `patient_audio`, and `patient_video`. Student
 video is a 1280x720 canvas representation of the camera feed, while patient
@@ -202,3 +216,11 @@ Replace the former superuser name settings with `SUPERUSER_FIRST_NAME` and
 `SUPERUSER_LAST_NAME` in deployment environment files. Existing local superusers
 retain their stored names when these are unset; creating a superuser requires
 both names. The deployment-managed email and password remain unchanged.
+
+### Py-Feat observation migration
+
+Migration `022_pyfeat_primary` promotes existing Py-Feat results to the
+canonical `nonverbal_features` field and removes the former secondary field.
+Rows that contain only results from the retired visual extractor become null so
+that unavailable evidence is never presented as a Py-Feat result. Its downgrade
+restores the former schema shape, but cannot reconstruct discarded observations.

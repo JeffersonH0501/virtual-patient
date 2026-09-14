@@ -1,18 +1,24 @@
 """Unit tests for synchronized interview recording endpoints."""
 
+import asyncio
+from pathlib import Path
 from types import SimpleNamespace
 import unittest
+from unittest.mock import AsyncMock, patch
 
 from fastapi import HTTPException, status
 
 from app.models.user import UserRole
 from app.models.medical_interview import RecordingStatus, TurnUpsertRequest
 from app.routers.interview_recordings import (
+    _attach_student_nonverbal_observations,
     _parse_range,
+    _observation_counts,
     _require_owner,
     _require_replay_access,
     _status_for_asset_count,
     _validate_source_durations,
+    _without_none,
 )
 
 
@@ -122,3 +128,87 @@ class RecordingStatusTests(unittest.TestCase):
         self.assertEqual(_status_for_asset_count(4), RecordingStatus.READY)
         self.assertEqual(_status_for_asset_count(3), RecordingStatus.PARTIAL)
         self.assertEqual(_status_for_asset_count(0), RecordingStatus.UNAVAILABLE)
+
+
+class ObservationContractTests(unittest.TestCase):
+    def test_progress_counts_only_canonical_pyfeat_and_student_audio(self) -> None:
+        turns = [
+            SimpleNamespace(
+                speaker="student",
+                paraverbal={"speech_rate_wpm": 0},
+                nonverbal_features={"visual_alignment_ratio": 0},
+            ),
+            SimpleNamespace(
+                speaker="patient",
+                paraverbal=None,
+                nonverbal_features=None,
+            ),
+        ]
+
+        self.assertEqual(
+            _observation_counts(
+                turns,
+                paraverbal_enabled=True,
+                pyfeat_enabled=True,
+            ),
+            (3, 2),
+        )
+
+    def test_public_payload_keeps_zero_and_omits_unavailable_values(self) -> None:
+        payload = _without_none({
+            "visual_alignment_ratio": 0,
+            "nod_count": None,
+            "nested": {"value": None},
+        })
+
+        self.assertEqual(payload, {"visual_alignment_ratio": 0, "nested": {}})
+
+    def test_pyfeat_failure_preserves_turn_transcript(self) -> None:
+        turn = SimpleNamespace(
+            id="turn-1",
+            start_ms=0,
+            end_ms=1000,
+            speaker="student",
+            transcript="Preserved transcript",
+            nonverbal_features=None,
+        )
+        asset = SimpleNamespace(storage_key="student.webm")
+
+        class Query:
+            def __init__(self, value):
+                self.value = value
+
+            def filter(self, *args):
+                return self
+
+            def order_by(self, *args):
+                return self
+
+            def first(self):
+                return self.value
+
+            def all(self):
+                return [self.value]
+
+        class Database:
+            def query(self, model):
+                return Query(asset if model.__name__ == "InterviewMediaAssetDB" else turn)
+
+        storage = SimpleNamespace(resolve=lambda key: Path(key))
+        recording = SimpleNamespace(id="recording-1")
+        with patch(
+            "app.routers.interview_recordings.settings",
+            SimpleNamespace(pyfeat_analysis_enabled=True),
+        ), patch(
+            "app.routers.interview_recordings.run_in_threadpool",
+            new=AsyncMock(side_effect=RuntimeError("extractor failed")),
+        ):
+            asyncio.run(_attach_student_nonverbal_observations(
+                db=Database(),
+                storage=storage,
+                interview_id=7,
+                recording=recording,
+            ))
+
+        self.assertEqual(turn.transcript, "Preserved transcript")
+        self.assertIsNone(turn.nonverbal_features)

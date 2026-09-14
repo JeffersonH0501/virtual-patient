@@ -1,8 +1,9 @@
 import logging
+from datetime import datetime, timezone
 from typing import List, Dict, Any, Literal, Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 from app.core.database import get_db
 from app.core.auth import get_current_active_user
 from app.models.user import User, UserRole
@@ -43,6 +44,52 @@ class CompleteInterviewResponse(BaseModel):
 
 class CompleteInterviewRequest(BaseModel):
     completion_reason: Literal["user_completed", "duration_limit_exceeded"] = "user_completed"
+
+
+class CalibrationAudioResult(BaseModel):
+    microphone_available: bool
+    stream_active: bool
+    voice_detected: bool
+    input_level: Literal["low", "adequate", "high"]
+    clipping_detected: bool
+
+
+class CalibrationVideoResult(BaseModel):
+    camera_available: bool
+    stream_active: bool
+    face_detected: bool
+    face_detection_rate: float = Field(ge=0, le=100)
+    quality_status: Literal["adequate", "inadequate"]
+
+
+class CalibrationResultRequest(BaseModel):
+    version: Literal["technical_v2"] = "technical_v2"
+    status: Literal["passed", "failed"]
+    duration_ms: int = Field(ge=1_000, le=60_000)
+    recording_supported: bool
+    audio: CalibrationAudioResult
+    video: CalibrationVideoResult
+    personal_baseline: Dict[str, Any] | None = None
+
+    @model_validator(mode="after")
+    def validate_passed_result(self):
+        required_checks = (
+            self.recording_supported,
+            self.audio.microphone_available,
+            self.audio.stream_active,
+            self.audio.voice_detected,
+            self.audio.input_level == "adequate",
+            not self.audio.clipping_detected,
+            self.video.camera_available,
+            self.video.stream_active,
+            self.video.face_detected,
+            self.video.quality_status == "adequate",
+        )
+        if self.status == "passed" and not all(required_checks):
+            raise ValueError("A passed calibration must satisfy every required technical check")
+        if self.personal_baseline is not None:
+            raise ValueError("Personal baseline extraction is not implemented")
+        return self
 
 def translate_interview_personality(interview_dict: Dict[str, Any], user_language: str) -> None:
     """Helper to translate personality name in interview dict"""
@@ -101,6 +148,7 @@ async def create_interview(
         interview_data.interview_metadata,
         interview_data.patient_response_language,
     )
+    interview_metadata.pop("calibration", None)
     
     interview = service.create_interview(
         user_id=current_user.id,
@@ -113,6 +161,51 @@ async def create_interview(
     )
     
     return InterviewResponse(interview=interview)
+
+
+@router.put("/{interview_id}/calibration", response_model=MedicalInterview)
+async def save_calibration_result(
+    interview_id: int,
+    calibration: CalibrationResultRequest,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Save the latest technical calibration summary without retaining media."""
+    interview = db.query(MedicalInterviewDB).filter(
+        MedicalInterviewDB.id == interview_id,
+        MedicalInterviewDB.user_id == current_user.id,
+    ).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    if interview.status != "active":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview is not active")
+    if interview.start_time is not None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The interview has already started")
+
+    result = calibration.model_dump()
+    result["completed_at"] = datetime.now(timezone.utc).isoformat()
+    metadata = dict(interview.interview_metadata or {})
+    metadata["calibration"] = result
+    interview.interview_metadata = metadata
+    db.commit()
+    db.refresh(interview)
+    return MedicalInterview.from_orm(interview)
+
+
+@router.post("/{interview_id}/start", response_model=MedicalInterview)
+async def start_interview(
+    interview_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Start the official interview clock after successful calibration."""
+    service = MedicalInterviewController(db)
+    if not service.validate_interview_access(interview_id, current_user.id):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this interview")
+    interview = service.start_interview(interview_id)
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    return interview
 
 @router.get("/{interview_id}", response_model=MedicalInterviewComplete)
 async def get_interview(
@@ -283,6 +376,11 @@ async def update_interview(
     Returns the updated interview.
     """
     service = MedicalInterviewController(db)
+    if update_data.interview_metadata and "calibration" in update_data.interview_metadata:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Use the calibration endpoint to update technical calibration",
+        )
     
     # Validate access
     if not service.validate_interview_access(interview_id, current_user.id):
@@ -321,6 +419,15 @@ async def complete_interview(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this interview"
+        )
+
+    interview_to_complete = db.query(MedicalInterviewDB).filter(
+        MedicalInterviewDB.id == interview_id
+    ).first()
+    if not interview_to_complete or interview_to_complete.start_time is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The interview has not started",
         )
 
     print(f"Interview ID: {interview_id}")    

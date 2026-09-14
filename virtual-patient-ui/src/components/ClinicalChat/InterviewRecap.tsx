@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+﻿import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {getInterviewRecap, resolveRecordingSource} from '../../services/recordings';
 import {InterviewRecap as InterviewRecapData, RecapTurn} from '../../types/recording';
@@ -16,6 +16,19 @@ const formatElapsed = (seconds: number): string => {
   const minutes = Math.floor(safeSeconds / 60);
   const remainder = safeSeconds % 60;
   return `${minutes}:${remainder.toString().padStart(2, '0')}`;
+};
+
+const formatTimestamp = (milliseconds?: number | null): string | null => {
+  if (typeof milliseconds !== 'number') return null;
+  const seconds = milliseconds / 1000;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = (seconds % 60).toFixed(3).padStart(6, '0');
+  return `${minutes}:${remainder} (${milliseconds} ms)`;
+};
+
+const formatMetricValue = (value?: number | null): string | null => {
+  if (typeof value !== 'number') return null;
+  return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
 };
 
 const legacyTurns = (messages: Message[] = []): RecapTurn[] => messages.map((message) => ({
@@ -226,8 +239,15 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     setCurrentTime(duration);
   };
 
-  const visibleParaverbal = detailTurn?.paraverbal?.interpretability
-    ?.acousticTemporal?.labels;
+  const observationUnavailable = t('clinicalChat.recap.notAvailable');
+
+  const renderMetricRow = (labelKey: string, value?: number | null, unitKey?: string) => (
+    <div className="turn-detail-row" key={labelKey}>
+      <dt>{t(labelKey)}</dt>
+      <dd>{formatMetricValue(value) ?? observationUnavailable}</dd>
+      <span>{unitKey && typeof value === 'number' ? t(unitKey) : ''}</span>
+    </div>
+  );
 
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label={t('clinicalChat.recap.title')}>
@@ -368,12 +388,12 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
       <Modal
         open={Boolean(detailTurn)}
         closeAction={() => setDetailTurn(null)}
-        size="large"
+        size="extralarge"
       >
         {detailTurn && (
-          <div className="flex max-h-dialog min-h-0 flex-col overflow-hidden">
-            <header className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
-              <h3 className="text-base font-semibold text-slate-800">{t('clinicalChat.recap.turnDetails')}</h3>
+          <div className="dialog-shell">
+            <header className="dialog-header">
+              <h3 className="dialog-title">{t('clinicalChat.recap.turnDetails')}</h3>
               <button
                 type="button"
                 onClick={() => setDetailTurn(null)}
@@ -384,45 +404,86 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                 <X color="currentColor" />
               </button>
             </header>
-            <div className="grid min-h-0 grid-cols-1 gap-3 overflow-y-auto px-5 py-4 text-sm text-slate-700 scrollbar-hidden md:grid-cols-2 xl:grid-cols-4">
-              <section className="min-w-0 rounded-lg border border-slate-200 p-3">
-                <h4 className="mb-3 font-semibold text-slate-800">{t('clinicalChat.recap.generalInformation')}</h4>
-                <pre className="whitespace-pre-wrap break-words rounded bg-slate-50 p-3 text-xs text-slate-700">
-                  {JSON.stringify({
-                    turnId: detailTurn.turnId,
-                    messageId: detailTurn.messageId ?? null,
-                    speaker: detailTurn.speaker,
-                    transcript: detailTurn.transcript,
-                    startMs: detailTurn.startMs ?? null,
-                    endMs: detailTurn.endMs ?? null,
-                    inputSource: detailTurn.inputSource,
-                    timingSource: detailTurn.timingSource,
-                    timingQuality: detailTurn.timingQuality,
-                  }, null, 2)}
-                </pre>
+            <div className="dialog-content turn-detail-content scrollbar-hidden">
+              <section className="turn-detail-section turn-detail-section--general">
+                <h4>{t('clinicalChat.recap.generalInformation')}</h4>
+                <dl className="turn-detail-general-grid">
+                  <div className="turn-detail-general-item">
+                    <dt>{t('clinicalChat.recap.speaker')}</dt>
+                    <dd>{t(`clinicalChat.recap.speakers.${detailTurn.speaker}`)}</dd>
+                  </div>
+                  <div className="turn-detail-general-item">
+                    <dt>{t('clinicalChat.recap.start')}</dt>
+                    <dd>{formatTimestamp(detailTurn.startMs) ?? t('clinicalChat.recap.notAvailable')}</dd>
+                  </div>
+                  <div className="turn-detail-general-item">
+                    <dt>{t('clinicalChat.recap.end')}</dt>
+                    <dd>{formatTimestamp(detailTurn.endMs) ?? t('clinicalChat.recap.notAvailable')}</dd>
+                  </div>
+                  <div className="turn-detail-general-item turn-detail-general-item--transcript">
+                    <dt>{t('clinicalChat.recap.transcript')}</dt>
+                    <dd>{detailTurn.transcript || t('clinicalChat.recap.notAvailable')}</dd>
+                  </div>
+                </dl>
               </section>
-              {([
-                [
-                  'clinicalChat.recap.paraverbal',
-                  visibleParaverbal ? {labels: visibleParaverbal} : null,
-                ],
-                ['clinicalChat.recap.nonverbal', detailTurn.nonverbalFeatures],
-                ['clinicalChat.recap.pyfeatBenchmark', detailTurn.pyfeatNonverbalFeatures],
-              ] as const).map(([title, observation]) => (
-                <section key={title} className="min-w-0 rounded-lg border border-slate-200 p-3">
-                  <h4 className="mb-3 font-semibold text-slate-800">{t(title)}</h4>
-                  {observation ? (
-                    <pre className="whitespace-pre-wrap break-words rounded bg-slate-50 p-3 text-xs text-slate-700">
-                      {JSON.stringify(observation, null, 2)}
-                    </pre>
-                  ) : <p>{
-                    recap?.observationProcessing?.status === 'queued'
-                    || recap?.observationProcessing?.status === 'processing'
-                      ? t('clinicalChat.recap.processingObservations')
-                      : t('clinicalChat.recap.notAvailable')
-                  }</p>}
-                </section>
-              ))}
+
+              <section className="turn-detail-section">
+                <h4>{t('clinicalChat.recap.paraverbal')}</h4>
+                <div className="turn-detail-families">
+                  <div className="turn-detail-family">
+                    <h5>{t('clinicalChat.recap.families.temporal')}</h5>
+                    <dl>
+                      {renderMetricRow('clinicalChat.recap.metrics.speechRateWpm', detailTurn.paraverbal?.speechRateWpm, 'clinicalChat.recap.units.wordsPerMinute')}
+                      {renderMetricRow('clinicalChat.recap.metrics.articulationRateWpm', detailTurn.paraverbal?.articulationRateWpm, 'clinicalChat.recap.units.wordsPerMinute')}
+                      {renderMetricRow('clinicalChat.recap.metrics.pauseCount', detailTurn.paraverbal?.pauseCount, 'clinicalChat.recap.units.count')}
+                      {renderMetricRow('clinicalChat.recap.metrics.totalPauseDurationMs', detailTurn.paraverbal?.totalPauseDurationMs, 'clinicalChat.recap.units.milliseconds')}
+                      {renderMetricRow('clinicalChat.recap.metrics.medianPauseDurationMs', detailTurn.paraverbal?.medianPauseDurationMs, 'clinicalChat.recap.units.milliseconds')}
+                      {renderMetricRow('clinicalChat.recap.metrics.pauseTimeRatio', detailTurn.paraverbal?.pauseTimeRatio, 'clinicalChat.recap.units.ratio')}
+                    </dl>
+                  </div>
+                  <div className="turn-detail-family">
+                    <h5>{t('clinicalChat.recap.families.prosodicLevel')}</h5>
+                    <dl>
+                      {renderMetricRow('clinicalChat.recap.metrics.f0MedianSemitones', detailTurn.paraverbal?.f0MedianSemitones, 'clinicalChat.recap.units.semitones')}
+                      {renderMetricRow('clinicalChat.recap.metrics.medianLoudness', detailTurn.paraverbal?.medianLoudness, 'clinicalChat.recap.units.loudness')}
+                    </dl>
+                  </div>
+                  <div className="turn-detail-family">
+                    <h5>{t('clinicalChat.recap.families.prosodicModulation')}</h5>
+                    <dl>
+                      {renderMetricRow('clinicalChat.recap.metrics.f0P20P80RangeSemitones', detailTurn.paraverbal?.f0P20P80RangeSemitones, 'clinicalChat.recap.units.semitones')}
+                      {renderMetricRow('clinicalChat.recap.metrics.loudnessP20P80Range', detailTurn.paraverbal?.loudnessP20P80Range, 'clinicalChat.recap.units.loudness')}
+                    </dl>
+                  </div>
+                </div>
+              </section>
+
+              <section className="turn-detail-section">
+                <h4>{t('clinicalChat.recap.nonverbal')}</h4>
+                <div className="turn-detail-families">
+                  <div className="turn-detail-family">
+                    <h5>{t('clinicalChat.recap.families.visualOrientation')}</h5>
+                    <dl>
+                      {renderMetricRow('clinicalChat.recap.metrics.visualAlignmentRatio', detailTurn.nonverbalFeatures?.visualAlignmentRatio, 'clinicalChat.recap.units.ratio')}
+                      {renderMetricRow('clinicalChat.recap.metrics.medianVisualAlignmentDwellMs', detailTurn.nonverbalFeatures?.medianVisualAlignmentDwellMs, 'clinicalChat.recap.units.milliseconds')}
+                    </dl>
+                  </div>
+                  <div className="turn-detail-family">
+                    <h5>{t('clinicalChat.recap.families.headGesturalFeedback')}</h5>
+                    <dl>
+                      {renderMetricRow('clinicalChat.recap.metrics.nodCount', detailTurn.nonverbalFeatures?.nodCount, 'clinicalChat.recap.units.count')}
+                      {renderMetricRow('clinicalChat.recap.metrics.nodRateMin', detailTurn.nonverbalFeatures?.nodRateMin, 'clinicalChat.recap.units.eventsPerMinute')}
+                    </dl>
+                  </div>
+                  <div className="turn-detail-family">
+                    <h5>{t('clinicalChat.recap.families.facialExpressivity')}</h5>
+                    <dl>
+                      {renderMetricRow('clinicalChat.recap.metrics.smileActivityRatio', detailTurn.nonverbalFeatures?.smileActivityRatio, 'clinicalChat.recap.units.ratio')}
+                      {renderMetricRow('clinicalChat.recap.metrics.meanSmileActivation', detailTurn.nonverbalFeatures?.meanSmileActivation, 'clinicalChat.recap.units.auActivation')}
+                    </dl>
+                  </div>
+                </div>
+              </section>
             </div>
           </div>
         )}
@@ -430,3 +491,4 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     </section>
   );
 };
+

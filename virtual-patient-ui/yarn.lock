@@ -654,6 +654,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@mediapipe/face_detection@npm:^0.4.1646425229":
+  version: 0.4.1646425229
+  resolution: "@mediapipe/face_detection@npm:0.4.1646425229"
+  checksum: 10c0/f9e1f41119caea76e1fbca005f68936574f6f5b1d427ac53fb8fd5e0615598d981bc182b16f9f0a0c85eb317a9e7893dec05ad2b01adfec32a0548e048c2976d
+  languageName: node
+  linkType: hard
+
 "@nodelib/fs.scandir@npm:2.1.5":
   version: 2.1.5
   resolution: "@nodelib/fs.scandir@npm:2.1.5"
@@ -5466,6 +5473,7 @@ __metadata:
   resolution: "virtual-patient-ui@workspace:."
   dependencies:
     "@eslint/js": "npm:^9.19.0"
+    "@mediapipe/face_detection": "npm:^0.4.1646425229"
     "@tailwindcss/postcss": "npm:^4.0.6"
     "@types/js-cookie": "npm:^3"
     "@types/node": "npm:^26.2.0"

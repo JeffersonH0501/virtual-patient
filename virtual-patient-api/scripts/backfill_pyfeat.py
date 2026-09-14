@@ -9,9 +9,7 @@ import asyncio
 from app.core.database import SessionLocal
 from app.media.storage import get_media_storage
 from app.models.medical_interview.interview_recording import InterviewRecordingDB
-from app.routers.interview_recordings import (
-    _attach_student_pyfeat_benchmark_observations,
-)
+from app.routers.interview_recordings import _attach_student_nonverbal_observations
 
 
 async def backfill(interview_ids: list[int]) -> None:
@@ -29,7 +27,7 @@ async def backfill(interview_ids: list[int]) -> None:
                 continue
 
             print(f"Interview {interview_id}: processing", flush=True)
-            await _attach_student_pyfeat_benchmark_observations(
+            await _attach_student_nonverbal_observations(
                 db=db,
                 storage=storage,
                 interview_id=interview_id,

@@ -1,4 +1,4 @@
-import { FC, useState } from 'react';
+﻿import { FC, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { InterviewEvaluationResponse, EvaluationResult } from '../../types/evaluation';
 import { Modal } from '../common/Modal';
@@ -31,9 +31,9 @@ export const EvaluationResultsModal: FC<EvaluationResultsModalProps> = ({
   return (
     <>
       <Modal open={isOpen} closeAction={onClose} size="large" containerId="evaluation-modal">
-        <div className="h-full flex flex-col">
-          <div className="flex items-center justify-between p-6 border-b border-gray-200 bg-white" data-modal-header>
-            <h2 className="text-2xl font-bold text-gray-800">{t('evaluation.interviewEvaluationResults')}</h2>
+        <div className="dialog-shell">
+          <div className="dialog-header" data-modal-header>
+            <h2 className="dialog-title">{t('evaluation.interviewEvaluationResults')}</h2>
             <button
               onClick={onClose}
               className="dialog-close-button"
@@ -43,7 +43,7 @@ export const EvaluationResultsModal: FC<EvaluationResultsModalProps> = ({
               <span className="block h-6 w-6 [&_svg]:h-full [&_svg]:w-full"><X color="currentColor" /></span>
             </button>
           </div>
-          <div className="flex-1 overflow-y-auto p-6">
+          <div className="dialog-content flex-1">
             <div className="max-w-4xl mx-auto space-y-6">
               {/* Interview Summary */}
               <div className="bg-gray-50 p-4 rounded-lg">
@@ -84,7 +84,7 @@ export const EvaluationResultsModal: FC<EvaluationResultsModalProps> = ({
                 {sortedResults.map((result, index) => (
                   <div
                     key={index}
-                    className="relative rounded-panel border border-slate-200 bg-white p-4 shadow-card"
+                    className="relative rounded-panel bg-white p-4"
                   >
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div className="flex items-center gap-0.5">
@@ -147,3 +147,4 @@ export const EvaluationResultsModal: FC<EvaluationResultsModalProps> = ({
     </>
   );
 };
+

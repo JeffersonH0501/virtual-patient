@@ -14,7 +14,7 @@ type TableRowProps = {
   status: string;
   duration: number | null;
   createdAt: string;
-  startTime: string;
+  startTime: string | null;
   score?: number | null;
   clinicalCase: ClinicalCaseSimplified;
   personality?: Personality | null;
@@ -37,7 +37,7 @@ export const ConversationTableRow: FC<TableRowProps> = ({
 
   // Calculate live duration for active interviews
   const liveDuration = useMemo(() => {
-    if (status === 'active') {
+    if (status === 'active' && startTime) {
       const now = new Date().getTime();
       const start = new Date(startTime).getTime();
       return Math.floor((now - start) / 1000);
@@ -46,7 +46,7 @@ export const ConversationTableRow: FC<TableRowProps> = ({
   }, [status, startTime]);
 
   const handleRowClick = () => {
-    navigate(interviewPath(id, status === 'completed' ? 'review' : 'session'));
+    navigate(interviewPath(id, status === 'completed' ? 'review' : startTime ? 'session' : 'calibration'));
   };
 
   const statusVariant = status === 'completed' ? 'green' : status === 'abandoned' ? 'red' : 'blue';
@@ -72,10 +72,14 @@ export const ConversationTableRow: FC<TableRowProps> = ({
         <span className="text-xs text-gray-500">{personality?.name || 'N/A'}</span>
       </td>
       <td className="flex min-w-0 table-column-duration items-center px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
-        {status === 'active' ? formatDuration(liveDuration, t('conversations.min')) : formatDuration(duration, t('conversations.min'))}
+        {status === 'active' && !startTime
+          ? t('calibration.notStarted')
+          : status === 'active'
+            ? formatDuration(liveDuration, t('conversations.min'))
+            : formatDuration(duration, t('conversations.min'))}
       </td>
       <td className="flex min-w-0 table-column-status flex-wrap items-center gap-2 px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
-        <Badge variant={statusVariant}>{t(`clinicalChat.${status}`)}</Badge>
+        <Badge variant={statusVariant}>{status === 'active' && !startTime ? t('calibration.pending') : t(`clinicalChat.${status}`)}</Badge>
         <Badge variant="orange">{t('common.noFeedback')}</Badge>
       </td>
       <td className="flex min-w-0 table-column-score items-center px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">

@@ -49,8 +49,7 @@ from app.models.medical_interview import (
 from app.models.medical_interview.interview_message import InterviewMessageDB
 from app.models.user import UserDB, UserRole
 from app.paraverbal import StudentTurnAudio, analyze_student_turns
-from app.nonverbal import StudentTurnVideo, analyze_student_turn_videos
-from app.nonverbal.pyfeat_extractor import analyze_pyfeat_student_turn_videos
+from app.nonverbal import StudentTurnVideo, analyze_pyfeat_student_turn_videos
 
 
 router = APIRouter(prefix="/medical-interviews", tags=["interview-recordings"])
@@ -132,6 +131,8 @@ def start_recording(
     _require_owner(interview, user)
     if getattr(interview.status, "value", interview.status) != "active":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active interviews can start recording")
+    if interview.start_time is None:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The interview has not started")
 
     recording = db.query(InterviewRecordingDB).filter(
         InterviewRecordingDB.medical_interview_id == interview_id
@@ -612,7 +613,6 @@ def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
         timing_quality=turn.timing_quality,
         paraverbal=_without_none(turn.paraverbal),
         nonverbal_features=_without_none(turn.nonverbal_features),
-        pyfeat_nonverbal_features=_without_none(turn.pyfeat_nonverbal_features),
     )
 
 
@@ -689,8 +689,8 @@ async def _attach_student_nonverbal_observations(
     interview_id: int,
     recording: InterviewRecordingDB,
 ) -> None:
-    """Populate descriptive per-turn visual observations from student video."""
-    if not settings.nonverbal_analysis_enabled:
+    """Populate descriptive Py-Feat observations from student video."""
+    if not settings.pyfeat_analysis_enabled:
         return
     student_video = db.query(InterviewMediaAssetDB).filter(
         InterviewMediaAssetDB.recording_id == recording.id,
@@ -719,7 +719,7 @@ async def _attach_student_nonverbal_observations(
     try:
         video_path = storage.resolve(student_video.storage_key)
         observations = await run_in_threadpool(
-            analyze_student_turn_videos,
+            analyze_pyfeat_student_turn_videos,
             video_path,
             [
                 StudentTurnVideo(
@@ -733,7 +733,7 @@ async def _attach_student_nonverbal_observations(
         )
     except Exception:
         logger.exception(
-            "Nonverbal extraction failed for interview %s; transcript remains available",
+            "Py-Feat extraction failed for interview %s; transcript remains available",
             interview_id,
         )
         return
@@ -742,64 +742,6 @@ async def _attach_student_nonverbal_observations(
     logger.info(
         "recording_storage_event interview_id=%s recording_id=%s "
         "event=nonverbal_completed turn_window_count=%s observation_count=%s",
-        interview_id,
-        recording.id,
-        len(turn_windows),
-        len(observations),
-    )
-
-
-async def _attach_student_pyfeat_benchmark_observations(
-    db: Session,
-    storage: LocalMediaStorage,
-    interview_id: int,
-    recording: InterviewRecordingDB,
-) -> None:
-    """Persist Py-Feat v2 observations separately for later benchmarking."""
-    if not settings.pyfeat_analysis_enabled:
-        return
-    student_video = db.query(InterviewMediaAssetDB).filter(
-        InterviewMediaAssetDB.recording_id == recording.id,
-        InterviewMediaAssetDB.kind == MediaAssetKind.STUDENT_VIDEO.value,
-        InterviewMediaAssetDB.status == "ready",
-    ).first()
-    turn_windows = db.query(InterviewTurnDB).filter(
-        InterviewTurnDB.medical_interview_id == interview_id,
-    ).order_by(InterviewTurnDB.sequence).all()
-    if student_video is None or not turn_windows:
-        logger.info(
-            "recording_storage_event interview_id=%s recording_id=%s "
-            "event=pyfeat_skipped reason=%s",
-            interview_id,
-            recording.id,
-            "student_video_unavailable" if student_video is None else "turn_windows_unavailable",
-        )
-        return
-    try:
-        observations = await run_in_threadpool(
-            analyze_pyfeat_student_turn_videos,
-            storage.resolve(student_video.storage_key),
-            [
-                StudentTurnVideo(
-                    turn_id=turn.id,
-                    start_ms=turn.start_ms,
-                    end_ms=turn.end_ms,
-                    conversation_speaker=turn.speaker,
-                )
-                for turn in turn_windows
-            ],
-        )
-    except Exception:
-        logger.exception(
-            "Py-Feat benchmark extraction failed for interview %s; OpenFace remains available",
-            interview_id,
-        )
-        return
-    for turn in turn_windows:
-        turn.pyfeat_nonverbal_features = observations.get(turn.id)
-    logger.info(
-        "recording_storage_event interview_id=%s recording_id=%s "
-        "event=pyfeat_completed turn_window_count=%s observation_count=%s",
         interview_id,
         recording.id,
         len(turn_windows),
@@ -841,18 +783,9 @@ async def _process_recording_observations(
             recording=recording,
         )
         db.commit()
-        _set_observation_processing(recording, "processing", "openface")
-        db.commit()
-        await _attach_student_nonverbal_observations(
-            db=db,
-            storage=storage,
-            interview_id=interview_id,
-            recording=recording,
-        )
-        db.commit()
         _set_observation_processing(recording, "processing", "pyfeat")
         db.commit()
-        await _attach_student_pyfeat_benchmark_observations(
+        await _attach_student_nonverbal_observations(
             db=db,
             storage=storage,
             interview_id=interview_id,
@@ -862,16 +795,10 @@ async def _process_recording_observations(
         turns = db.query(InterviewTurnDB).filter(
             InterviewTurnDB.medical_interview_id == interview_id,
         ).all()
-        student_turns = [turn for turn in turns if turn.speaker == "student"]
-        expected = (
-            (len(student_turns) if settings.paraverbal_analysis_enabled else 0)
-            + (len(turns) if settings.nonverbal_analysis_enabled else 0)
-            + (len(turns) if settings.pyfeat_analysis_enabled else 0)
-        )
-        available = (
-            sum(turn.paraverbal is not None for turn in student_turns)
-            + sum(turn.nonverbal_features is not None for turn in turns)
-            + sum(turn.pyfeat_nonverbal_features is not None for turn in turns)
+        expected, available = _observation_counts(
+            turns,
+            paraverbal_enabled=settings.paraverbal_analysis_enabled,
+            pyfeat_enabled=settings.pyfeat_analysis_enabled,
         )
         _set_observation_processing(
             recording,
@@ -925,6 +852,25 @@ def _without_none(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_none(item) for item in value if item is not None]
     return value
+
+
+def _observation_counts(
+    turns: list[InterviewTurnDB],
+    *,
+    paraverbal_enabled: bool,
+    pyfeat_enabled: bool,
+) -> tuple[int, int]:
+    """Count only the canonical OpenSMILE and Py-Feat turn observations."""
+    student_turns = [turn for turn in turns if turn.speaker == "student"]
+    expected = (
+        (len(student_turns) if paraverbal_enabled else 0)
+        + (len(turns) if pyfeat_enabled else 0)
+    )
+    available = (
+        sum(turn.paraverbal is not None for turn in student_turns)
+        + sum(turn.nonverbal_features is not None for turn in turns)
+    )
+    return expected, available
 
 
 def _recap_turns(db: Session, interview: MedicalInterviewDB) -> list[RecapTurn]:

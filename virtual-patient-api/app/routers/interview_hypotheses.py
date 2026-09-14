@@ -71,6 +71,11 @@ async def submit_hypotheses(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Interview is not active"
         )
+    if interview.start_time is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The interview has not started",
+        )
     
     try:
         hypotheses = hypothesis_service.create_hypotheses_batch(
@@ -283,4 +288,4 @@ async def get_hypothesis_status(
         required_count=3,
         is_complete=is_complete,
         hypotheses=hypotheses
-    ) 
+    )

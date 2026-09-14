@@ -68,6 +68,11 @@ async def send_message(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Interview not found",
             )
+        if interview.start_time is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The interview has not started",
+            )
         elapsed_seconds = (datetime.now(timezone.utc) - interview.start_time).total_seconds()
         if elapsed_seconds >= 3600:
             metadata = dict(interview.interview_metadata or {})

@@ -1,4 +1,4 @@
-import { FC, useState, useEffect } from 'react';
+﻿import { FC, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Modal } from '../common/Modal';
 import { getTeacherFeedbacks } from '../../services/teacherFeedback';
@@ -187,9 +187,9 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
       {/* Teacher Feedback Modal */}
       {selectedFeedback && (
         <Modal open={isModalOpen} closeAction={closeModal} size="medium" containerId="teacher-feedback-modal">
-          <div className="flex flex-col h-full max-h-dialog-content rounded-2xl">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white rounded-t-2xl">
-              <h2 className="text-lg font-semibold text-gray-800">
+          <div className="dialog-shell">
+            <div className="dialog-header">
+              <h2 className="dialog-title">
                 {t('clinicalChat.teacherFeedback')}
               </h2>
               <button
@@ -202,10 +202,10 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6">
+            <div className="dialog-content flex-1">
               <div className="space-y-6">
                 {/* Teacher Info */}
-                <div className="flex items-center gap-3 pb-4 border-b border-gray-200">
+                <div className="flex items-center gap-3 pb-4">
                   <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center">
                     <span className="text-lg font-medium text-blue-600">
                       T
@@ -269,3 +269,4 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
     </>
   );
 };
+

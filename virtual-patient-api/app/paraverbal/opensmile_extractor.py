@@ -33,12 +33,6 @@ class StudentTurnAudio:
     transcript: str
 
 
-@dataclass(frozen=True)
-class _TurnFeatures:
-    observation: dict[str, Any]
-    loudness_median: float | None
-
-
 def analyze_student_turns(
     audio_path: Path,
     turns: Iterable[StudentTurnAudio],
@@ -53,7 +47,7 @@ def analyze_student_turns(
     if not settings.paraverbal_analysis_enabled:
         return {}
 
-    extracted: dict[str, _TurnFeatures] = {}
+    extracted: dict[str, dict[str, Any]] = {}
     with tempfile.TemporaryDirectory(prefix="virtual-patient-paraverbal-") as directory:
         temp_dir = Path(directory)
         for turn in turns:
@@ -61,27 +55,14 @@ def analyze_student_turns(
             if result is not None:
                 extracted[turn.turn_id] = result
 
-    reference_values = [
-        result.loudness_median
-        for result in extracted.values()
-        if result.loudness_median is not None
-    ]
-    session_loudness_reference = median(reference_values) if reference_values else None
-    for result in extracted.values():
-        raw_loudness = result.loudness_median
-        result.observation["loudness_median_rel"] = (
-            _round(raw_loudness - session_loudness_reference)
-            if raw_loudness is not None and session_loudness_reference is not None
-            else None
-        )
-    return {turn_id: result.observation for turn_id, result in extracted.items()}
+    return extracted
 
 
 def _analyze_turn(
     audio_path: Path,
     turn: StudentTurnAudio,
     temp_dir: Path,
-) -> _TurnFeatures | None:
+) -> dict[str, Any] | None:
     duration_ms = turn.end_ms - turn.start_ms
     if duration_ms <= 0:
         return None
@@ -143,7 +124,7 @@ def _summarize_wav(
     sample_rate: int,
     turn_duration_ms: int,
     transcript: str,
-) -> _TurnFeatures | None:
+) -> dict[str, Any] | None:
     try:
         import opensmile
     except ImportError:
@@ -178,16 +159,16 @@ def _summarize_wav(
         "extractor": {"name": EXTRACTOR_NAME, "version": EXTRACTOR_VERSION, "feature_set": FEATURE_SET},
         "word_count": word_count,
         "voiced_duration_ms": voiced_duration_ms,
-        "speaking_rate_wpm": _round(word_count / total_seconds * 60) if total_seconds else None,
+        "speech_rate_wpm": _round(word_count / total_seconds * 60) if total_seconds else None,
         "articulation_rate_wpm": _round(word_count / voiced_seconds * 60) if voiced_seconds else None,
         "pause_count": len(pause_durations),
-        "pause_total_ms": round(sum(pause_durations)),
-        "pause_median_ms": _round(_median_or_none(pause_durations)),
-        "pause_ratio": _round(sum(pause_durations) / turn_duration_ms) if turn_duration_ms else None,
-        "f0_median_hz": _round(_semitone_to_hz(_median_or_none(voiced_values))),
-        "f0_iqr_st": _round(_iqr(voiced_values)),
-        "loudness_median_rel": None,
-        "loudness_iqr": _round(_iqr(loudness_values)),
+        "total_pause_duration_ms": round(sum(pause_durations)),
+        "median_pause_duration_ms": _round(_median_or_none(pause_durations)),
+        "pause_time_ratio": _round(sum(pause_durations) / turn_duration_ms) if turn_duration_ms else None,
+        "f0_median_semitones": _round(_median_or_none(voiced_values)),
+        "f0_p20_p80_range_semitones": _round(_percentile_range(voiced_values, 0.2, 0.8)),
+        "median_loudness": _round(loudness_median),
+        "loudness_p20_p80_range": _round(_percentile_range(loudness_values, 0.2, 0.8)),
         "audio_quality": {
             "valid_ratio": _round(len(voiced_values) / max(len(pitch_values), 1)),
             "issues": issues,
@@ -197,7 +178,7 @@ def _summarize_wav(
         observation,
         turn_duration_ms=turn_duration_ms,
     )
-    return _TurnFeatures(observation=observation, loudness_median=loudness_median)
+    return observation
 
 
 def _temporal_interpretability(
@@ -207,19 +188,19 @@ def _temporal_interpretability(
 ) -> dict[str, Any]:
     """Build a traceable temporal interpretation using provisional thresholds."""
     raw_keys = (
-        "speaking_rate_wpm",
+        "speech_rate_wpm",
         "articulation_rate_wpm",
         "pause_count",
-        "pause_total_ms",
-        "pause_median_ms",
-        "pause_ratio",
+        "total_pause_duration_ms",
+        "median_pause_duration_ms",
+        "pause_time_ratio",
     )
     raw = {key: observation[key] for key in raw_keys if observation.get(key) is not None}
-    speaking_rate = observation.get("speaking_rate_wpm")
+    speaking_rate = observation.get("speech_rate_wpm")
     articulation_rate = observation.get("articulation_rate_wpm")
     pause_count = observation.get("pause_count")
-    pause_median = observation.get("pause_median_ms")
-    pause_ratio = observation.get("pause_ratio")
+    pause_median = observation.get("median_pause_duration_ms")
+    pause_ratio = observation.get("pause_time_ratio")
     derived: dict[str, float] = {}
     if speaking_rate is not None and articulation_rate is not None:
         derived["rate_gap_wpm"] = _round(articulation_rate - speaking_rate)
@@ -268,12 +249,12 @@ def _temporal_interpretability(
             "raw": raw,
             "derived": derived,
             "roles": {
-                "speaking_rate_wpm": "principal_global_rate",
+                "speech_rate_wpm": "principal_global_rate",
                 "articulation_rate_wpm": "principal_effective_production_rate",
-                "pause_ratio": "principal_relative_silence_load",
-                "pause_median_ms": "principal_typical_pause_duration",
+                "pause_time_ratio": "principal_relative_silence_load",
+                "median_pause_duration_ms": "principal_typical_pause_duration",
                 "pause_count": "support_duration_dependent",
-                "pause_total_ms": "support_duration_dependent",
+                "total_pause_duration_ms": "support_duration_dependent",
             },
             "labels": {
                 "status": "provisional",
@@ -284,10 +265,10 @@ def _temporal_interpretability(
                 "strategy": "fixed_initial_reference_ranges",
                 "version": "temporal_initial_v1",
                 "thresholds": {
-                    "speaking_rate_wpm": {"low_below": 110, "high_above": 170},
+                    "speech_rate_wpm": {"low_below": 110, "high_above": 170},
                     "articulation_rate_wpm": {"low_below": 130, "high_above": 190},
-                    "pause_ratio": {"low_below": 0.15, "high_above": 0.30},
-                    "pause_median_ms": {"low_below": 500, "high_above": 1000},
+                    "pause_time_ratio": {"low_below": 0.15, "high_above": 0.30},
+                    "median_pause_duration_ms": {"low_below": 500, "high_above": 1000},
                     "pause_frequency_per_min": {"low_below": 6, "high_above": 12},
                 },
                 "limitations": [
@@ -417,17 +398,27 @@ def _median_or_none(values: Iterable[float]) -> float | None:
     return median(sequence) if sequence else None
 
 
-def _iqr(values: Iterable[float]) -> float | None:
+def _percentile_range(
+    values: Iterable[float],
+    lower_quantile: float,
+    upper_quantile: float,
+) -> float | None:
     sequence = sorted(values)
     if len(sequence) < 2:
         return None
-    lower_index = round((len(sequence) - 1) * 0.25)
-    upper_index = round((len(sequence) - 1) * 0.75)
-    return sequence[upper_index] - sequence[lower_index]
+    return _percentile(sequence, upper_quantile) - _percentile(sequence, lower_quantile)
 
 
-def _semitone_to_hz(value: float | None) -> float | None:
-    return 27.5 * (2 ** (value / 12)) if value is not None else None
+def _percentile(sequence: list[float], quantile: float) -> float:
+    position = (len(sequence) - 1) * quantile
+    lower_index = math.floor(position)
+    upper_index = math.ceil(position)
+    if lower_index == upper_index:
+        return sequence[lower_index]
+    fraction = position - lower_index
+    return sequence[lower_index] + (
+        sequence[upper_index] - sequence[lower_index]
+    ) * fraction
 
 
 def _round(value: float | None) -> float | None:
