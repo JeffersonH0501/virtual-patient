@@ -58,7 +58,7 @@ case "$action" in
     verify
     ;;
   restart)
-    compose restart api ui
+    compose up -d --force-recreate api ui
     verify
     ;;
   status)

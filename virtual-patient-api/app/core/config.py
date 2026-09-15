@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 
 # Direct host execution may use the one local environment file at repository
 # root. Docker injects the same variables and takes precedence.
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 load_dotenv(REPOSITORY_ROOT / ".env.local", override=False)
 
 
@@ -55,6 +55,31 @@ class Settings:
         "SPEECH_STT_PROVIDER",
         "disabled",
     ).strip().lower()
+
+    avatar_pilot_enabled: bool = os.getenv(
+        "AVATAR_PILOT_ENABLED",
+        "false",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    azure_speech_key: str | None = os.getenv("AZURE_SPEECH_KEY")
+    azure_speech_region: str = os.getenv("AZURE_SPEECH_REGION", "eastus2")
+    azure_speech_avatar_character_female: str = os.getenv(
+        "AZURE_SPEECH_AVATAR_CHARACTER_FEMALE",
+        "lisa",
+    )
+    azure_speech_avatar_character_male: str = os.getenv(
+        "AZURE_SPEECH_AVATAR_CHARACTER_MALE",
+        "max",
+    )
+    azure_speech_avatar_idle_optimization: bool = os.getenv(
+        "AZURE_SPEECH_AVATAR_IDLE_OPTIMIZATION",
+        "true",
+    ).strip().lower() in {"1", "true", "yes", "on"}
+    avatar_pilot_telemetry_dir: Path = Path(
+        os.getenv(
+            "AVATAR_PILOT_TELEMETRY_DIR",
+            str(REPOSITORY_ROOT / "media" / "pilot_telemetry"),
+        )
+    )
 
     gcs_bucket_name: str | None = os.getenv("GCS_BUCKET_NAME")
     gcs_credentials_path: str | None = os.getenv("GCS_CREDENTIALS_PATH")

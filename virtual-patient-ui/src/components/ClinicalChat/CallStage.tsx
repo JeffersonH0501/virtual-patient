@@ -1,5 +1,6 @@
 import {useEffect, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
+import patientImageM from '../../assets/patient_m.png';
 
 type CallStageProps = {
   className?: string;
@@ -12,6 +13,10 @@ type CallStageProps = {
   cameraStarting: boolean;
   cameraErrorCode: string | null;
   onRetryCamera: () => void;
+  avatarStream?: MediaStream | null;
+  avatarPilotActive?: boolean;
+  avatarPilotConnecting?: boolean;
+  avatarPilotError?: string | null;
 };
 
 export const CallStage = ({
@@ -25,13 +30,22 @@ export const CallStage = ({
   cameraStarting,
   cameraErrorCode,
   onRetryCamera,
+  avatarStream = null,
+  avatarPilotActive = false,
+  avatarPilotConnecting = false,
+  avatarPilotError = null,
 }: CallStageProps) => {
   const {t} = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const patientVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = cameraStream;
   }, [cameraStream]);
+
+  useEffect(() => {
+    if (patientVideoRef.current) patientVideoRef.current.srcObject = avatarStream;
+  }, [avatarStream]);
 
   const cameraMessage = cameraStarting
     ? t('clinicalChat.call.cameraStarting')
@@ -45,38 +59,75 @@ export const CallStage = ({
       aria-label={t('clinicalChat.call.videoArea')}
     >
       <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-900 md:h-[calc((100%_-_0.5rem)/2)] md:w-auto md:max-w-full md:flex-none">
-        <div
-          className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
-            patientSpeaking ? 'opacity-80' : 'opacity-100'
-          }`}
-        />
-        <div
-          className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 ring-4 transition-all sm:h-24 sm:w-24 ${
-            patientSpeaking
-              ? 'scale-105 ring-emerald-400 shadow-[0_0_30px_rgba(52,211,153,0.35)]'
-              : 'ring-white/15'
-          }`}
-        >
-          <img
-            src={patientAvatar}
-            alt=""
-            className="h-[86%] w-[86%] rounded-full object-cover"
+        {avatarPilotActive && avatarStream && avatarStream.getVideoTracks().length > 0 ? (
+          <video
+            ref={(el) => {
+              if (el && avatarStream && el.srcObject !== avatarStream) {
+                el.srcObject = avatarStream;
+              }
+            }}
+            autoPlay
+            playsInline
+            muted={false}
+            className="h-full w-full object-cover"
+            aria-label={patientName || t('clinicalChat.call.patient')}
           />
-        </div>
+        ) : (
+          <>
+            <div
+              className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
+                patientSpeaking ? 'opacity-80' : 'opacity-100'
+              }`}
+            />
+            <div
+              className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 ring-4 transition-all sm:h-24 sm:w-24 ${
+                patientSpeaking
+                  ? 'scale-105 ring-emerald-400 shadow-[0_0_30px_rgba(52,211,153,0.35)]'
+                  : 'ring-white/15'
+              }`}
+            >
+              <img
+                src={patientAvatar || patientImageM}
+                alt={patientName || 'Patient'}
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = patientImageM;
+                }}
+                className="h-[86%] w-[86%] rounded-full object-cover"
+              />
+            </div>
+          </>
+        )}
         <div className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-black/45 px-3 py-2 text-left text-xs text-white backdrop-blur-sm">
-          <span className="truncate">{patientName || t('clinicalChat.call.patient')}</span>
+          <span className="flex items-center gap-1.5 truncate">
+            {patientName || t('clinicalChat.call.patient')}
+            {avatarPilotActive && (
+              <span className="rounded bg-sky-500/30 px-1 py-0.5 text-[10px] font-medium text-sky-200">
+                Pilot
+              </span>
+            )}
+          </span>
           <span className={patientSpeaking ? 'text-emerald-300' : 'text-slate-300'}>
             {patientSpeaking
               ? t('clinicalChat.call.speaking')
               : t('clinicalChat.call.listening')}
           </span>
         </div>
+        {(avatarPilotConnecting || avatarPilotError) && (
+          <div className="absolute inset-x-3 top-3 rounded bg-black/60 px-2 py-1 text-xs text-white">
+            {avatarPilotError || 'Connecting Azure Avatar...'}
+          </div>
+        )}
       </article>
 
       <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-800 md:h-[calc((100%_-_0.5rem)/2)] md:w-auto md:max-w-full md:flex-none">
         {cameraEnabled && cameraStream ? (
           <video
-            ref={videoRef}
+            ref={(el) => {
+              if (el && cameraStream && el.srcObject !== cameraStream) {
+                el.srcObject = cameraStream;
+              }
+            }}
             autoPlay
             muted
             playsInline

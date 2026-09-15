@@ -10,6 +10,7 @@ type ConversationTranscriptProps = {
   isLoading: boolean;
   audioAutoPlayEnabled: boolean;
   playbackReady?: boolean;
+  useAvatarSpeech?: boolean;
   onPatientSpeakingChange: (speaking: boolean) => void;
   captureEnabled?: boolean;
   routePatientAudio?: (audio: HTMLAudioElement) => boolean;
@@ -24,6 +25,7 @@ export const ConversationTranscript = ({
   isLoading,
   audioAutoPlayEnabled,
   playbackReady = true,
+  useAvatarSpeech = false,
   onPatientSpeakingChange,
   captureEnabled = false,
   routePatientAudio,
@@ -72,10 +74,15 @@ export const ConversationTranscript = ({
       stopAudio();
       setAudioError(null);
       try {
+        const sequence = messages?.findIndex((candidate) => candidate.id === message.id) ?? 0;
+        if (useAvatarSpeech) {
+          await onPatientTurnStart?.(message.id, Math.max(sequence, 0), message.content);
+          onPatientTurnEnd?.(message.id);
+          return;
+        }
         const source = await getAudioSource(message);
         const audio = new Audio(source);
         audioRef.current = audio;
-        const sequence = messages?.findIndex((candidate) => candidate.id === message.id) ?? 0;
         const routed = routePatientAudio?.(audio) ?? false;
         if (captureEnabled && !routed && !audioAutoPlayEnabled) {
           audioRef.current = null;
@@ -98,7 +105,7 @@ export const ConversationTranscript = ({
         stopAudio();
       }
     },
-    [audioAutoPlayEnabled, captureEnabled, getAudioSource, messages, onPatientSpeakingChange, onPatientTurnStart, playingMessageId, routePatientAudio, stopAudio, t],
+    [audioAutoPlayEnabled, captureEnabled, getAudioSource, messages, onPatientSpeakingChange, onPatientTurnEnd, onPatientTurnStart, playingMessageId, routePatientAudio, stopAudio, t, useAvatarSpeech],
   );
 
   useEffect(() => {

@@ -27,6 +27,7 @@ import {getPatientImage, processMessagesWithAvatars, processSummaryData} from '.
 import {useHandsFreeSpeech} from '../../hooks/useHandsFreeSpeech';
 import {useLocalCamera} from '../../hooks/useLocalCamera';
 import {useInterviewRecording} from '../../hooks/useInterviewRecording';
+import {useAvatarPilotWebRTC} from '../../hooks/useAvatarPilotWebRTC';
 import {useUser} from '../../hooks/useUser';
 import {SpeechTiming} from '../../types/recording';
 import doctorImage from '../../assets/doctor.png';
@@ -148,7 +149,13 @@ export const ClinicalChat: FC = () => {
       name: interviewData.patientName || t('clinicalChat.call.patient'),
       id: interviewData.clinicalCase?.id.toString() || 'unknown',
       avatar:
-        interviewData.patientPhoto || getPatientImage(interviewData.patientGender || undefined),
+        (interviewData.patientPhoto &&
+          interviewData.patientPhoto.trim() !== '' &&
+          interviewData.patientPhoto !== 'string' &&
+          interviewData.patientPhoto !== 'null' &&
+          interviewData.patientPhoto !== 'undefined')
+          ? interviewData.patientPhoto
+          : getPatientImage(interviewData.patientGender || undefined),
       basicInfo: {
         age: interviewData.clinicalCase?.age || 0,
         gender: interviewData.patientGender || '',
@@ -328,6 +335,13 @@ export const ClinicalChat: FC = () => {
     onUtterance: handleSendMessage,
   });
 
+  const isAvatarPilotEnabled = import.meta.env.VITE_AVATAR_PILOT_ENABLED === 'true';
+  const avatarPilot = useAvatarPilotWebRTC({
+    interviewId: interviewId ?? undefined,
+    enabled: Boolean(isAvatarPilotEnabled && isSimulationActive && isOwner),
+    onPatientSpeakingChange: setIsPatientSpeaking,
+  });
+
   const recording = useInterviewRecording({
     interviewId: interviewId ?? undefined,
     enabled: Boolean(isSimulationActive && isOwner),
@@ -337,8 +351,29 @@ export const ClinicalChat: FC = () => {
     patientAudioEnabled: audioAutoPlayEnabled,
     patientAvatar: patient.avatar,
     patientName: patient.name,
+    avatarStream: avatarPilot.avatarStream,
   });
   recordingRef.current = recording;
+
+  const handlePatientTurnStart = useCallback(
+    async (messageId: number, sequence: number, transcript: string) => {
+      recording.beginPatientTurn(messageId, sequence, transcript);
+      if (isAvatarPilotEnabled && avatarPilot.isConnected) {
+        await avatarPilot.startTurnSpeech(transcript);
+      }
+    },
+    [recording, isAvatarPilotEnabled, avatarPilot],
+  );
+
+  const handlePatientTurnEnd = useCallback(
+    (messageId: number) => {
+      recording.endPatientTurn(messageId);
+      if (isAvatarPilotEnabled && avatarPilot.isConnected) {
+        void avatarPilot.endTurnSpeech();
+      }
+    },
+    [recording, isAvatarPilotEnabled, avatarPilot],
+  );
 
   useEffect(() => {
     if (!isSimulationActive) {
@@ -487,6 +522,10 @@ export const ClinicalChat: FC = () => {
           cameraStarting={camera.isStarting}
           cameraErrorCode={camera.errorCode}
           onRetryCamera={() => void camera.start()}
+          avatarStream={avatarPilot.avatarStream}
+          avatarPilotActive={isAvatarPilotEnabled && avatarPilot.isConnected}
+          avatarPilotConnecting={isAvatarPilotEnabled && avatarPilot.isConnecting}
+          avatarPilotError={isAvatarPilotEnabled ? avatarPilot.error : null}
         />
       )}
 
@@ -504,11 +543,12 @@ export const ClinicalChat: FC = () => {
               isLoading={isLoading}
               audioAutoPlayEnabled={audioAutoPlayEnabled}
               playbackReady={recording.status !== 'idle'}
+              useAvatarSpeech={isAvatarPilotEnabled && avatarPilot.isConnected}
               onPatientSpeakingChange={setIsPatientSpeaking}
               captureEnabled={recording.isCapturing}
               routePatientAudio={recording.routePatientAudio}
-              onPatientTurnStart={recording.beginPatientTurn}
-              onPatientTurnEnd={recording.endPatientTurn}
+              onPatientTurnStart={handlePatientTurnStart}
+              onPatientTurnEnd={handlePatientTurnEnd}
             />
             {(speech.errorCode || messageError) && (
               <div className="mx-3 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800" role="alert">

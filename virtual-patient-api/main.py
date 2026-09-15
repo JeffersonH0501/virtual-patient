@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.routers import (
     auth, users, organizations, clinical_cases, 
-    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings
+    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, avatar_pilot
 )
 
 app = FastAPI(
@@ -106,12 +106,20 @@ origins = [
     "http://127.0.0.1:5173",  # React app alternative
 ]
 
+cors_kwargs = {
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+}
+
+if settings.environment != "production":
+    cors_kwargs["allow_origin_regex"] = r"https?://.*"
+else:
+    cors_kwargs["allow_origins"] = origins
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    **cors_kwargs,
 )
 
 # Include routers
@@ -129,6 +137,7 @@ app.include_router(personalities.router, tags=["personalities"])
 app.include_router(evaluations.router, tags=["evaluations"])
 app.include_router(speech.router, tags=["speech"])
 app.include_router(interview_recordings.router, tags=["interview-recordings"])
+app.include_router(avatar_pilot.router, tags=["avatar-pilot"])
 
 # Health check endpoint for Docker
 @app.get("/health", tags=["health"])
