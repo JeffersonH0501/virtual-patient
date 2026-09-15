@@ -201,6 +201,42 @@
       "clippingPending": "Saturación pendiente de comprobar",
       "noClipping": "Sin saturación de audio",
       "clippingDetected": "Saturación de audio detectada"
+    },
+    "debug": {
+      "label": "MODO DEPURACIÓN",
+      "on": "ACTIVADO",
+      "off": "DESACTIVADO",
+      "title": "DEPURACIÓN MULTIMODAL EN CRUDO",
+      "na": "—",
+      "yes": "SÍ",
+      "no": "NO",
+      "sections": {
+        "pyfeat": "Py-Feat",
+        "opensmile": "OpenSMILE"
+      },
+      "fields": {
+        "faceDetected": "Rostro detectado",
+        "faceConfidence": "Confianza del rostro",
+        "gazeYaw": "Guiñada de la mirada",
+        "gazePitch": "Cabeceo de la mirada",
+        "headYaw": "Guiñada de la cabeza",
+        "headPitch": "Cabeceo de la cabeza",
+        "headRoll": "Alabeo de la cabeza",
+        "au12": "AU12 (elevador de comisuras)",
+        "frameTimestamp": "Marca de tiempo del cuadro",
+        "processingFps": "FPS de muestreo / latencia",
+        "f0": "F0",
+        "loudness": "Sonoridad",
+        "voicing": "Sonoridad de voz"
+      },
+      "reason": {
+        "pyfeat_unavailable": "Extractor Py-Feat no disponible",
+        "opensmile_unavailable": "Extractor OpenSMILE no disponible",
+        "face_not_detected": "No se detectó rostro en este cuadro",
+        "no_audio_frames": "No hay cuadros de audio en este fragmento",
+        "low_quality": "Señal de baja calidad, valor no disponible",
+        "unavailable": "No disponible"
+      }
     }
   },
   "clinicalChat": {
@@ -369,6 +405,19 @@
         "visualOrientation": "Orientación visual",
         "headGesturalFeedback": "Retroalimentación gestual de la cabeza",
         "facialExpressivity": "Expresividad facial"
+      },
+      "integratedLabel": "Etiqueta integrada",
+      "labelUnavailableWithReason": "No disponible ({{reason}})",
+      "paraverbalUnavailable": "Sin observaciones paraverbales para este turno.",
+      "nonverbalUnavailable": "Sin observaciones no verbales para este turno.",
+      "observationStatus": {
+        "unavailable": "no disponible",
+        "insufficient_reference_data": "datos de referencia insuficientes",
+        "feature_unavailable": "característica no disponible",
+        "missing_calibration": "calibración faltante",
+        "insufficient_signal": "señal insuficiente",
+        "extractor_failure": "fallo del extractor",
+        "processing_error": "error de procesamiento"
       },
       "metrics": {
         "speechRateWpm": "Velocidad del habla",

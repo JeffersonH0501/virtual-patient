@@ -201,6 +201,42 @@
       "clippingPending": "Clipping check pending",
       "noClipping": "No audio clipping",
       "clippingDetected": "Audio clipping detected"
+    },
+    "debug": {
+      "label": "DEBUG MODE",
+      "on": "ON",
+      "off": "OFF",
+      "title": "RAW MULTIMODAL DEBUG",
+      "na": "—",
+      "yes": "YES",
+      "no": "NO",
+      "sections": {
+        "pyfeat": "Py-Feat",
+        "opensmile": "OpenSMILE"
+      },
+      "fields": {
+        "faceDetected": "Face detected",
+        "faceConfidence": "Face confidence",
+        "gazeYaw": "Gaze yaw",
+        "gazePitch": "Gaze pitch",
+        "headYaw": "Head yaw",
+        "headPitch": "Head pitch",
+        "headRoll": "Head roll",
+        "au12": "AU12 (lip corner puller)",
+        "frameTimestamp": "Frame timestamp",
+        "processingFps": "Sampling FPS / latency",
+        "f0": "F0",
+        "loudness": "Loudness",
+        "voicing": "Voicing"
+      },
+      "reason": {
+        "pyfeat_unavailable": "Py-Feat extractor unavailable",
+        "opensmile_unavailable": "OpenSMILE extractor unavailable",
+        "face_not_detected": "No face detected in this frame",
+        "no_audio_frames": "No audio frames in this chunk",
+        "low_quality": "Low-quality signal, value not available",
+        "unavailable": "Not available"
+      }
     }
   },
   "clinicalChat": {
@@ -369,6 +405,19 @@
         "visualOrientation": "Visual orientation",
         "headGesturalFeedback": "Head gestural feedback",
         "facialExpressivity": "Facial expressivity"
+      },
+      "integratedLabel": "Integrated label",
+      "labelUnavailableWithReason": "Not available ({{reason}})",
+      "paraverbalUnavailable": "No paraverbal observations for this turn.",
+      "nonverbalUnavailable": "No nonverbal observations for this turn.",
+      "observationStatus": {
+        "unavailable": "not available",
+        "insufficient_reference_data": "insufficient reference data",
+        "feature_unavailable": "feature unavailable",
+        "missing_calibration": "missing calibration",
+        "insufficient_signal": "insufficient signal",
+        "extractor_failure": "extractor failure",
+        "processing_error": "processing error"
       },
       "metrics": {
         "speechRateWpm": "Speech rate",

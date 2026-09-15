@@ -1,14 +1,18 @@
-import {CSSProperties, useEffect, useRef, useState} from 'react';
+import {CSSProperties, useCallback, useEffect, useRef, useState} from 'react';
 import {Navigate, useLocation, useNavigate, useParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {useInterviewMedia} from '../../contexts/interviewMedia';
 import {useTechnicalCalibration} from '../../hooks/useTechnicalCalibration';
-import {getInterview, saveCalibrationResult, startInterview} from '../../services/interviews';
+import {deriveCalibrationBaseline, getInterview, saveCalibrationResult, startInterview} from '../../services/interviews';
 import {createInterview} from '../../services/interviews/createInterview';
-import {CompleteInterviewResponse} from '../../types/interview';
+import {CompleteInterviewResponse, PersonalBaseline} from '../../types/interview';
 import {CalibrationRouteState, interviewPath, ROUTES} from '../../utils/routes';
 import {Camera, Microphone, Warning} from '../../icons';
 import {CalibrationInstructionsModal} from './CalibrationInstructionsModal';
+import {useMultimodalDebug} from '../../hooks/useMultimodalDebug';
+import {FacialLandmarksOverlay} from '../calibration/FacialLandmarksOverlay';
+import {MultimodalDebugPanel} from '../calibration/MultimodalDebugPanel';
+import {isDebugUnavailable} from '../../services/debug';
 
 type CheckState = 'ready' | 'warning' | 'unavailable';
 const WAVEFORM_BAR_COUNT = 80;
@@ -32,6 +36,11 @@ export const InterviewCalibration = () => {
   const interviewId = interviewIdParam ? Number.parseInt(interviewIdParam, 10) : Number.NaN;
   const routeConfig = (location.state as CalibrationRouteState | null) ?? null;
   const videoRef = useRef<HTMLVideoElement>(null);
+  // Tracked in state (not just a ref) so the debug hook re-runs its sampling
+  // effect once the preview <video> is actually mounted; a ref assignment alone
+  // does not trigger a re-render, which previously left the hook with a null
+  // video element and no frames to sample.
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const saveRequestRef = useRef(0);
   const waveformSampleAtRef = useRef(0);
   const [interview, setInterview] = useState<CompleteInterviewResponse | null>(null);
@@ -44,9 +53,23 @@ export const InterviewCalibration = () => {
   const [startError, setStartError] = useState<string | null>(null);
   const [instructionsOpen, setInstructionsOpen] = useState(true);
   const [microphoneWaveform, setMicrophoneWaveform] = useState<number[]>([]);
+  // DEV/DEBUG-ONLY local state. Starts OFF; when OFF the view behaves exactly as
+  // before and no debug sampling/processing happens. No query params or routes.
+  const [debugMode, setDebugMode] = useState(false);
   const media = useInterviewMedia();
   const calibration = useTechnicalCalibration(media.microphoneStream, media.cameraStream);
   const language: 'en' | 'es' = i18n.resolvedLanguage?.startsWith('es') ? 'es' : 'en';
+  // DEV/DEBUG-ONLY: only observes the existing streams; disabled -> no sampling.
+  const multimodalDebug = useMultimodalDebug({
+    enabled: debugMode,
+    cameraStream: media.cameraStream,
+    microphoneStream: media.microphoneStream,
+    videoEl,
+  });
+  const debugPyfeat =
+    multimodalDebug.pyfeat && !isDebugUnavailable(multimodalDebug.pyfeat)
+      ? multimodalDebug.pyfeat
+      : null;
 
   // In the new flow there is no interview to load, but the config must be present.
   const missingConfig = !hasInterviewId && !routeConfig;
@@ -87,7 +110,14 @@ export const InterviewCalibration = () => {
 
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = media.cameraStream;
-  }, [media.cameraStream]);
+  }, [media.cameraStream, videoEl]);
+
+  // Callback ref: keep the imperative ref AND expose the element via state so
+  // the debug sampling hook re-runs once the preview video mounts/unmounts.
+  const setVideoNode = useCallback((node: HTMLVideoElement | null) => {
+    videoRef.current = node;
+    setVideoEl(node);
+  }, []);
 
   useEffect(() => {
     const now = performance.now();
@@ -99,35 +129,70 @@ export const InterviewCalibration = () => {
     ]);
   }, [calibration.audioLevel]);
 
+  // Derives the personal baseline from the recorded calibration media by
+  // uploading it to the baseline endpoint. Best-effort and non-blocking:
+  // returns null when there is no media, when the backend reports the baseline
+  // unavailable, or when the request fails, so technical calibration can always
+  // be saved regardless (Requirement 15.5).
+  const resolveCalibrationBaseline = useCallback(
+    async (targetInterviewId: number): Promise<PersonalBaseline | null> => {
+      const captured = calibration.media;
+      if (!captured) return null;
+      try {
+        const response = await deriveCalibrationBaseline(targetInterviewId, {
+          video: captured.blob,
+        });
+        return response.status === 'ok' ? response.personalBaseline ?? null : null;
+      } catch {
+        return null;
+      }
+    },
+    [calibration.media],
+  );
+
   useEffect(() => {
     if (!calibration.result) return;
-    // New flow: nothing is persisted yet. The result is kept in the hook state
-    // and saved together with interview creation when the simulation starts.
+    // New flow: nothing is persisted yet. The result (and, once assembled, the
+    // recorded media) is kept in the hook state and used together with interview
+    // creation when the simulation starts.
     if (!hasInterviewId) {
       setSaved(true);
       return;
     }
     if (!Number.isFinite(interviewId)) return;
+    // Wait for the recorded media before saving so the personal baseline can be
+    // derived from the same recording. If the media never assembles, the effect
+    // still runs (the media dependency is optional) and saves without a baseline.
     const requestId = ++saveRequestRef.current;
     setSaving(true);
     setSaved(false);
     setSaveError(false);
-    void saveCalibrationResult(interviewId, calibration.result)
-      .then((value) => {
+    void (async () => {
+      // Baseline derivation is best-effort and must not block technical
+      // calibration: any failure or an "unavailable" response leaves the
+      // baseline null (Requirement 15.5).
+      const personalBaseline = await resolveCalibrationBaseline(interviewId);
+      if (requestId !== saveRequestRef.current) return;
+      try {
+        const value = await saveCalibrationResult(interviewId, {
+          ...calibration.result!,
+          personalBaseline,
+        });
         if (requestId !== saveRequestRef.current) return;
         setInterview((current) => current ? {
           ...current,
           interviewMetadata: value.interviewMetadata,
         } : current);
         setSaved(true);
-      })
-      .catch(() => {
+      } catch {
         if (requestId === saveRequestRef.current) setSaveError(true);
-      })
-      .finally(() => {
+      } finally {
         if (requestId === saveRequestRef.current) setSaving(false);
-      });
-  }, [calibration.result, hasInterviewId, interviewId]);
+      }
+    })();
+    // `calibration.media` is intentionally included so the save waits for the
+    // recording; a change to it re-runs derivation with the assembled blob.
+  }, [calibration.result, calibration.media, hasInterviewId, interviewId]);
 
   // New flow reached without configuration (e.g. a direct URL hit): go back.
   if (missingConfig) return <Navigate to={ROUTES.clinicalCases} replace />;
@@ -175,7 +240,11 @@ export const InterviewCalibration = () => {
       });
       if (!created) throw new Error('missing-interview');
       const createdId = Number(created.id);
-      await saveCalibrationResult(createdId, calibration.result);
+      // Derive the baseline before starting: the endpoint only accepts media
+      // while the interview has not started. Best-effort — a null baseline does
+      // not block starting the interview (Requirement 15.5).
+      const personalBaseline = await resolveCalibrationBaseline(createdId);
+      await saveCalibrationResult(createdId, {...calibration.result, personalBaseline});
       await startInterview(createdId);
       // Mark this as a fresh start so the session view does not treat the first
       // entry as a re-entry (which would prompt to resume or force termination).
@@ -198,6 +267,16 @@ export const InterviewCalibration = () => {
         onAccept={() => setInstructionsOpen(false)}
         onCancel={() => navigate(ROUTES.clinicalCases)}
       />
+      {/* DEV/DEBUG-ONLY toggle. Fixed to the viewport top-right, OUTSIDE the
+          calibration card. Exists only in this view; flips local state. */}
+      <button
+        type="button"
+        aria-pressed={debugMode}
+        onClick={() => setDebugMode((value) => !value)}
+        className="fixed right-4 top-4 z-[60] rounded border border-neutral-300 bg-white/90 px-2 py-1 text-[0.7rem] font-medium text-neutral-500 opacity-80 shadow-sm backdrop-blur transition hover:opacity-100 aria-pressed:border-sky-500 aria-pressed:text-sky-600"
+      >
+        {`${t('calibration.debug.label')}: ${debugMode ? t('calibration.debug.on') : t('calibration.debug.off')}`}
+      </button>
       <section className="calibration-page" aria-labelledby="calibration-title">
       <header className="calibration-header">
         <div>
@@ -213,12 +292,21 @@ export const InterviewCalibration = () => {
         <article className="calibration-preview-card">
           <div className="calibration-preview">
             {media.cameraStream && media.cameraState === 'ready' ? (
-              <video ref={videoRef} autoPlay muted playsInline aria-label={t('calibration.cameraPreview')} />
+              <video ref={setVideoNode} autoPlay muted playsInline aria-label={t('calibration.cameraPreview')} />
             ) : (
               <div className="calibration-preview__empty">
                 <Camera color="currentColor" />
                 <span>{t(`calibration.deviceStates.${media.cameraState}`)}</span>
               </div>
+            )}
+            {debugMode && media.cameraStream && media.cameraState === 'ready' && (
+              <FacialLandmarksOverlay
+                landmarks={debugPyfeat?.landmarks ?? null}
+                imageWidth={debugPyfeat?.imageWidth ?? null}
+                imageHeight={debugPyfeat?.imageHeight ?? null}
+                videoEl={videoEl}
+                mirrored
+              />
             )}
             {isRecording && <span className="calibration-recording-badge">{t('calibration.recording')}</span>}
             {(isRecording || !result) && media.cameraState === 'ready' && (
@@ -334,6 +422,15 @@ export const InterviewCalibration = () => {
           </footer>
         </article>
       </div>
+      {debugMode && (
+        <MultimodalDebugPanel
+          pyfeat={multimodalDebug.pyfeat}
+          opensmile={multimodalDebug.opensmile}
+          frameProcessingMs={multimodalDebug.frameProcessingMs}
+          sampleFps={multimodalDebug.sampleFps}
+          onClose={() => setDebugMode(false)}
+        />
+      )}
       </section>
     </>
   );

@@ -1,9 +1,26 @@
-"""Print a compact observation-processing summary for one interview."""
+#!/usr/bin/env python3
+"""Print a compact multimodal observation summary for one interview (read-only).
+
+Summarizes the layered per-turn shape produced by the multimodal pipeline
+(design section 20): per-turn presence of the paraverbal / nonverbal layers,
+each layer's ``status`` / ``reason``, the integrated label per family
+(``temporal`` / ``prosodic_level`` / ``prosodic_modulation`` for paraverbal;
+``visual_orientation`` / ``head_gestural_feedback`` / ``facial_expressivity`` for
+nonverbal), and the ``versions`` / ``config_hash`` provenance.
+
+Legacy flat JSON (pre-refactor rows carrying top-level ``speech_rate_wpm`` or
+``interpretability.*``) is tolerated: it simply has no layered ``status`` /
+``integrated_labels`` and is reported as ``legacy`` without failing. This script
+never writes; it only reads and prints.
+
+CLI: ``python -m scripts.verify_observations <interview_id>``.
+"""
 
 from __future__ import annotations
 
 import argparse
 import json
+from collections import Counter
 from typing import Any
 
 from sqlalchemy import select
@@ -15,6 +32,13 @@ from app.models.medical_interview.interview_recording import (
 )
 from app.routers.interview_recordings import _without_none
 
+_PARAVERBAL_FAMILIES = ("temporal", "prosodic_level", "prosodic_modulation")
+_NONVERBAL_FAMILIES = (
+    "visual_orientation",
+    "head_gestural_feedback",
+    "facial_expressivity",
+)
+
 
 def _contains_none(value: Any) -> bool:
     if isinstance(value, dict):
@@ -24,8 +48,75 @@ def _contains_none(value: Any) -> bool:
     return False
 
 
+def _is_layered(payload: Any) -> bool:
+    """True when the payload is a layered per-turn result (has a ``status``).
+
+    The pipeline always stamps a ``status`` on each persisted modality layer.
+    Legacy flat JSON has no such key, so its absence distinguishes the two shapes
+    without importing the legacy adapter (task 8.2).
+    """
+    return isinstance(payload, dict) and "status" in payload
+
+
+def _family_integrated(payload: dict[str, Any], families: tuple[str, ...]) -> dict[str, Any]:
+    """Extract the integrated label value/status per family from a layered layer."""
+    integrated = payload.get("integrated_labels")
+    if not isinstance(integrated, dict):
+        return {family: None for family in families}
+    summary: dict[str, Any] = {}
+    for family in families:
+        entry = integrated.get(family)
+        if isinstance(entry, dict):
+            summary[family] = entry.get("value") or entry.get("status")
+        else:
+            summary[family] = None
+    return summary
+
+
+def _summarize_layer(
+    payloads: list[dict[str, Any]],
+    families: tuple[str, ...],
+) -> dict[str, Any]:
+    """Summarize one modality across all turns: presence, statuses, families."""
+    layered = [item for item in payloads if _is_layered(item)]
+    legacy = [item for item in payloads if item and not _is_layered(item)]
+
+    status_counts: Counter[str] = Counter()
+    reason_counts: Counter[str] = Counter()
+    family_value_counts: dict[str, Counter[str]] = {family: Counter() for family in families}
+    versions: Any = None
+    config_hash: Any = None
+
+    for item in layered:
+        status_counts[str(item.get("status"))] += 1
+        reason = item.get("reason")
+        if reason is not None:
+            reason_counts[str(reason)] += 1
+        if versions is None:
+            versions = item.get("versions")
+        if config_hash is None:
+            config_hash = item.get("config_hash")
+        for family, value in _family_integrated(item, families).items():
+            family_value_counts[family][str(value)] += 1
+
+    return {
+        "present": len(payloads),
+        "layered": len(layered),
+        "legacy": len(legacy),
+        "statusCounts": dict(status_counts),
+        "reasonCounts": dict(reason_counts),
+        "integratedByFamily": {
+            family: dict(counts) for family, counts in family_value_counts.items()
+        },
+        "versions": versions,
+        "configHash": config_hash,
+    }
+
+
 def main() -> None:
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="Summarize layered multimodal observations for one interview."
+    )
     parser.add_argument("interview_id", type=int)
     args = parser.parse_args()
 
@@ -49,18 +140,10 @@ def main() -> None:
         nonverbal = [
             turn.nonverbal_features for turn in turns if turn.nonverbal_features
         ]
-        interpreted = [
-            item["interpretability"]["acoustic_temporal"]
-            for item in paraverbal
-            if item.get("interpretability", {}).get("acoustic_temporal")
-        ]
         public_payloads = [
             _without_none(payload)
             for turn in turns
-            for payload in (
-                turn.paraverbal,
-                turn.nonverbal_features,
-            )
+            for payload in (turn.paraverbal, turn.nonverbal_features)
             if payload
         ]
 
@@ -70,23 +153,8 @@ def main() -> None:
                 "observation_processing"
             ),
             "turnCount": len(turns),
-            "available": {
-                "paraverbal": len(paraverbal),
-                "nonverbal": len(nonverbal),
-            },
-            "interpretability": {
-                "turnCount": len(interpreted),
-                "labelStatus": interpreted[0]["labels"]["status"]
-                if interpreted
-                else None,
-                "calibrationVersion": interpreted[0]["calibration"]["version"]
-                if interpreted
-                else None,
-                "temporalProfiles": [
-                    item["labels"]["values"].get("temporal_profile")
-                    for item in interpreted
-                ],
-            },
+            "paraverbal": _summarize_layer(paraverbal, _PARAVERBAL_FAMILIES),
+            "nonverbal": _summarize_layer(nonverbal, _NONVERBAL_FAMILIES),
             "publicPayloadContainsNull": any(
                 _contains_none(payload) for payload in public_payloads
             ),

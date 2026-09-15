@@ -1,11 +1,26 @@
 import logging
+import os
+import tempfile
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Literal, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from pathlib import Path
+from typing import Annotated, List, Dict, Any, Literal, Optional
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    UploadFile,
+    status,
+)
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, Field, model_validator
 from app.core.database import get_db
 from app.core.auth import get_current_active_user
+from app.core.config import settings
+from app.multimodal.calibration import derive_personal_baseline
+from app.multimodal.schemas import PersonalBaseline
 from app.models.user import User, UserRole
 from app.models.medical_interview import (
     MedicalInterviewDB, MedicalInterview, MedicalInterviewCreate, MedicalInterviewUpdate,
@@ -34,6 +49,25 @@ router = APIRouter(
     responses={404: {"description": "Interview not found"}},
 )
 
+# Accepted calibration-media content types mapped to a safe temp-file suffix.
+# The calibration upload reuses the same container formats the recording pipeline
+# accepts. The suffix is only used to name the temporary file for the extractors;
+# the media itself is never persisted (Requirement 15.4).
+_CALIBRATION_AUDIO_CONTENT_TYPES = {
+    "audio/webm": ".webm",
+    "audio/ogg": ".ogg",
+    "audio/mp4": ".m4a",
+}
+_CALIBRATION_VIDEO_CONTENT_TYPES = {
+    "video/webm": ".webm",
+    "video/mp4": ".mp4",
+}
+# Provisional cap on a single calibration upload. Calibration is a short clip;
+# this bound protects the temp filesystem from an oversized upload without being
+# a clinical or methodology parameter.
+_CALIBRATION_MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MiB
+_CALIBRATION_UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1 MiB
+
 class InterviewResponse(BaseModel):
     interview: MedicalInterview | None
 
@@ -44,6 +78,46 @@ class CompleteInterviewResponse(BaseModel):
 
 class CompleteInterviewRequest(BaseModel):
     completion_reason: Literal["user_completed"] = "user_completed"
+
+
+# Non-terminal observation_processing statuses reported by the multimodal
+# pipeline (see app/multimodal/pipeline.py STATUS_*). While a run is in one of
+# these states its per-turn result is not yet available.
+_PENDING_OBSERVATION_STATUSES = frozenset({"queued", "processing"})
+
+# Whether the multimodal pipeline result is a REQUIRED input to interview
+# completion. In this feature it is not: Bayona's textual evaluation remains the
+# baseline and the only required input to the final feedback, and no late fusion
+# is implemented (Requirements 17.4, 20.4). Flip this to ``True`` once late
+# fusion makes the multimodal result required for completion.
+_MULTIMODAL_REQUIRED_FOR_COMPLETION = False
+
+
+def _required_multimodal_processing_pending(
+    interview: MedicalInterviewDB,
+) -> bool:
+    """Report whether REQUIRED multimodal processing is still in flight.
+
+    Requirement 20.3 forbids leaving an interview ``COMPLETED`` while required
+    multimodal processing is pending. In this feature the multimodal pipeline is
+    a best-effort, non-blocking hand-off scheduled at recording finalize; its
+    lifecycle stays independently observable in
+    ``recording.capture_config["observation_processing"]`` (written by the
+    pipeline) and is never conflated with the interview status (Requirement
+    20.2). Because the multimodal result is not yet required, a pending or
+    partial run must not block or corrupt the interview lifecycle.
+
+    This helper centralizes the decision so completion can be gated in one place
+    once late fusion makes the multimodal result required. Today, with
+    ``_MULTIMODAL_REQUIRED_FOR_COMPLETION`` false, it always reports ``False``.
+    """
+    if not _MULTIMODAL_REQUIRED_FOR_COMPLETION:
+        return False
+    recording = interview.recording
+    if recording is None:
+        return False
+    observation = (recording.capture_config or {}).get("observation_processing", {})
+    return observation.get("status") in _PENDING_OBSERVATION_STATUSES
 
 
 class CalibrationAudioResult(BaseModel):
@@ -69,7 +143,11 @@ class CalibrationResultRequest(BaseModel):
     recording_supported: bool
     audio: CalibrationAudioResult
     video: CalibrationVideoResult
-    personal_baseline: Dict[str, Any] | None = None
+    # The personal baseline is validated against the strong ``PersonalBaseline``
+    # schema (Requirement 15.5): a non-null payload is no longer rejected, but an
+    # ill-formed one is. Pydantic coerces the incoming JSON object into a
+    # ``PersonalBaseline`` and raises a validation error for a bad shape.
+    personal_baseline: PersonalBaseline | None = None
 
     @model_validator(mode="after")
     def validate_passed_result(self):
@@ -87,8 +165,6 @@ class CalibrationResultRequest(BaseModel):
         )
         if self.status == "passed" and not all(required_checks):
             raise ValueError("A passed calibration must satisfy every required technical check")
-        if self.personal_baseline is not None:
-            raise ValueError("Personal baseline extraction is not implemented")
         return self
 
 def translate_interview_personality(interview_dict: Dict[str, Any], user_language: str) -> None:
@@ -200,6 +276,211 @@ async def save_calibration_result(
     db.commit()
     db.refresh(interview)
     return MedicalInterview.from_orm(interview)
+
+
+class CalibrationBaselineResponse(BaseModel):
+    """Response of the calibration baseline endpoint.
+
+    ``personal_baseline`` carries the derived numeric-only baseline when it could
+    be derived; when it is ``None`` the derivation was ``unavailable`` and
+    ``reason`` explains why. The client uses the returned baseline to populate the
+    subsequent ``PUT /calibration`` payload; the baseline is also persisted
+    server-side per the design flow.
+    """
+
+    status: Literal["ok", "unavailable"]
+    personal_baseline: PersonalBaseline | None = None
+    reason: str | None = None
+
+
+async def _write_calibration_upload_to_temp(
+    upload: UploadFile,
+    allowed_content_types: Dict[str, str],
+    field_name: str,
+) -> Path:
+    """Validate a calibration upload and stream it to a temporary file.
+
+    Rejects an unsupported content type (415) and an oversized upload (413), and
+    caps the bytes read so a mismatched ``Content-Length`` cannot exhaust the
+    temp filesystem. The caller owns deleting the returned path.
+    """
+    content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
+    suffix = allowed_content_types.get(content_type)
+    if suffix is None:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"Unsupported {field_name} content type: {content_type or 'unknown'}",
+        )
+
+    handle = tempfile.NamedTemporaryFile(
+        delete=False, prefix="virtual-patient-calibration-", suffix=suffix
+    )
+    temp_path = Path(handle.name)
+    total_bytes = 0
+    try:
+        await upload.seek(0)
+        while True:
+            chunk = await upload.read(_CALIBRATION_UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                break
+            total_bytes += len(chunk)
+            if total_bytes > _CALIBRATION_MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"Calibration {field_name} exceeds the maximum allowed size",
+                )
+            handle.write(chunk)
+        handle.flush()
+    except HTTPException:
+        handle.close()
+        _delete_calibration_temp(temp_path)
+        raise
+    except Exception:
+        handle.close()
+        _delete_calibration_temp(temp_path)
+        raise
+    finally:
+        if not handle.closed:
+            handle.close()
+
+    if total_bytes == 0:
+        _delete_calibration_temp(temp_path)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Calibration {field_name} upload is empty",
+        )
+    return temp_path
+
+
+def _delete_calibration_temp(path: Optional[Path]) -> None:
+    """Delete a temporary calibration media file, ignoring an already-gone file.
+
+    Calibration media is never persisted (Requirement 15.4); this is always
+    invoked from a ``finally`` block so a derivation failure still removes it.
+    """
+    if path is None:
+        return
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError:
+        logger.warning(
+            "calibration_baseline_event event=temp_delete_failed path=%s", path
+        )
+
+
+@router.post(
+    "/{interview_id}/calibration/baseline",
+    response_model=CalibrationBaselineResponse,
+)
+async def derive_calibration_baseline(
+    interview_id: int,
+    audio: Annotated[Optional[UploadFile], File()] = None,
+    video: Annotated[Optional[UploadFile], File()] = None,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Derive a numeric-only personal baseline from calibration media.
+
+    Authenticated and owner-only. Accepts calibration audio and/or video as
+    multipart uploads, writes each to a temporary server file, runs the OpenSMILE
+    and Py-Feat extractors via ``derive_personal_baseline``, stores the resulting
+    numeric-only :class:`PersonalBaseline` into
+    ``interview_metadata.calibration.personal_baseline``, and always deletes the
+    temporary media. The media is never persisted (Requirement 15.3, 15.4).
+
+    Baseline calibration is only allowed before the interview starts: the request
+    is rejected with 409 once ``start_time`` is set, mirroring the ``PUT
+    /calibration`` guard and preventing arbitrary overwrite once started
+    (Requirement 15.7, 28.8). When the baseline cannot be derived, the endpoint
+    returns an ``unavailable`` status with a reason and does not fabricate a
+    baseline.
+    """
+    if audio is None and video is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one of audio or video calibration media is required",
+        )
+
+    interview = db.query(MedicalInterviewDB).filter(
+        MedicalInterviewDB.id == interview_id,
+        MedicalInterviewDB.user_id == current_user.id,
+    ).first()
+    if not interview:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    if interview.status != "in_progress":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview is not in progress")
+    if interview.start_time is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The interview has already started",
+        )
+
+    audio_path: Optional[Path] = None
+    video_path: Optional[Path] = None
+    try:
+        if audio is not None:
+            audio_path = await _write_calibration_upload_to_temp(
+                audio, _CALIBRATION_AUDIO_CONTENT_TYPES, "audio"
+            )
+        if video is not None:
+            video_path = await _write_calibration_upload_to_temp(
+                video, _CALIBRATION_VIDEO_CONTENT_TYPES, "video"
+            )
+
+        try:
+            baseline = derive_personal_baseline(
+                audio_path=audio_path,
+                video_path=video_path,
+                min_voiced_duration_ms=settings.paraverbal_min_voiced_duration_ms,
+            )
+        except Exception:
+            logger.exception(
+                "calibration_baseline_event event=derivation_error interview_id=%s user_id=%s",
+                interview_id,
+                current_user.id,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Failed to derive a personal baseline from the calibration media",
+            )
+    finally:
+        _delete_calibration_temp(audio_path)
+        _delete_calibration_temp(video_path)
+
+    if baseline is None:
+        logger.info(
+            "calibration_baseline_event event=unavailable interview_id=%s user_id=%s",
+            interview_id,
+            current_user.id,
+        )
+        return CalibrationBaselineResponse(
+            status="unavailable",
+            personal_baseline=None,
+            reason="insufficient_signal",
+        )
+
+    # Persist numeric-only metrics into the existing metadata JSON (no new table,
+    # Requirement 15.8). Follows the design flow step 5: store the derived
+    # baseline under interview_metadata.calibration.personal_baseline.
+    metadata = dict(interview.interview_metadata or {})
+    calibration_block = dict(metadata.get("calibration") or {})
+    calibration_block["personal_baseline"] = baseline.model_dump()
+    calibration_block["baseline_derived_at"] = datetime.now(timezone.utc).isoformat()
+    metadata["calibration"] = calibration_block
+    interview.interview_metadata = metadata
+    flag_modified(interview, "interview_metadata")
+    db.commit()
+
+    logger.info(
+        "calibration_baseline_event event=stored interview_id=%s user_id=%s "
+        "has_gaze=%s",
+        interview_id,
+        current_user.id,
+        baseline.neutral_gaze_yaw is not None,
+    )
+    return CalibrationBaselineResponse(status="ok", personal_baseline=baseline)
 
 
 @router.post("/{interview_id}/start", response_model=MedicalInterview)
@@ -535,6 +816,27 @@ async def complete_interview(
                 print(f"Error storing evaluation: {e}")
                 # Continue even if storage fails
 
+        # Coordinate the interview lifecycle with multimodal processing
+        # (Requirement 20.3). The multimodal pipeline runs as a best-effort
+        # background task scheduled at recording finalize and is not yet a
+        # required input to the final feedback (text evaluation is the baseline;
+        # no late fusion in this feature). If a required multimodal step were
+        # pending, we would keep the interview in PROCESSING rather than
+        # COMPLETED; today no such step gates completion, so we complete after
+        # the (required) text evaluation. The multimodal observation lifecycle
+        # remains independently observable via the recording and is never turned
+        # into a second interview lifecycle (Requirement 20.2).
+        if _required_multimodal_processing_pending(interview_to_complete):
+            logger.info(
+                "complete_interview interview_id=%s event=deferred_completion "
+                "reason=required_multimodal_processing_pending",
+                interview_id,
+            )
+            return CompleteInterviewResponse(
+                interview=MedicalInterview.from_orm(interview_to_complete),
+                evaluation_results=evaluation_results,
+            )
+
         # Processing finished: mark the interview as completed and set its end
         # time. The evaluation and feedback are now available to the student.
         interview = interview_controller.complete_interview(interview_id)
@@ -552,15 +854,18 @@ async def complete_interview(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"Error in complete_interview endpoint: {e}")
-        import traceback
-        traceback.print_exc()
+        logger.exception(
+            "complete_interview interview_id=%s event=failed", interview_id
+        )
         # Processing failed after the interaction ended: leave the interview in a
         # terminal INTERRUPTED state instead of a stuck PROCESSING state.
         try:
             interview_controller.interrupt_processing(interview_id)
-        except Exception as cleanup_error:
-            print(f"Error marking interview as interrupted: {cleanup_error}")
+        except Exception:
+            logger.exception(
+                "complete_interview interview_id=%s event=interrupt_cleanup_failed",
+                interview_id,
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error completing interview: {str(e)}"

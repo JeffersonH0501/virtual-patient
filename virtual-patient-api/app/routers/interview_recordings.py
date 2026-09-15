@@ -24,13 +24,14 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user_from_token
 from app.core.config import settings
-from app.core.database import SessionLocal, get_db
+from app.core.database import get_db
 from app.media import LocalMediaStorage, get_media_storage
+from app.multimodal.legacy_adapter import normalize_observation
+from app.multimodal.pipeline import process_multimodal_interview
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
     InterviewRecapResponse,
@@ -48,8 +49,6 @@ from app.models.medical_interview import (
 )
 from app.models.medical_interview.interview_message import InterviewMessageDB
 from app.models.user import UserDB, UserRole
-from app.paraverbal import StudentTurnAudio, analyze_student_turns
-from app.nonverbal import StudentTurnVideo, analyze_pyfeat_student_turn_videos
 
 
 router = APIRouter(prefix="/medical-interviews", tags=["interview-recordings"])
@@ -324,7 +323,10 @@ async def finalize_recording(
         recording.ended_at = datetime.now(timezone.utc)
         recording.capture_config = {
             **parsed_capture_config,
-            "observation_processing": {"status": "queued", "stage": "waiting"},
+            # Seed the observable lifecycle before the pipeline picks it up. The
+            # stage name matches the pipeline's initial STAGE_QUEUED so the
+            # vocabulary is consistent from finalize through processing.
+            "observation_processing": {"status": "queued", "stage": "queued"},
         }
         recording.failure_code = None
         recording.status = _status_for_asset_count(available_count).value
@@ -342,8 +344,12 @@ async def finalize_recording(
             available_count,
             duration_ms,
         )
+        # The router only schedules the staged multimodal pipeline; it performs
+        # no extraction, preprocessing, thresholding, or labeling inline
+        # (Requirement 19.6). The pipeline owns its own DB session and updates
+        # the observation_processing lifecycle as it advances.
         background_tasks.add_task(
-            _process_recording_observations,
+            process_multimodal_interview,
             interview_id,
             recording.id,
         )
@@ -611,238 +617,19 @@ def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
         input_source=turn.input_source,
         timing_source=turn.timing_source,
         timing_quality=turn.timing_quality,
-        paraverbal=_without_none(turn.paraverbal),
-        nonverbal_features=_without_none(turn.nonverbal_features),
+        # Normalize each stored observation into the layered read shape so the
+        # recap renders both new layered rows and legacy flat rows uniformly
+        # (Requirements 22.1, 22.2, 23.1). This is a read-time transform only:
+        # stored JSON is never rewritten, so there is no destructive migration
+        # (Requirement 22.3). Layered rows pass through unchanged apart from a
+        # ``schema`` marker; legacy rows are wrapped without fabricating labels.
+        paraverbal=_without_none(
+            normalize_observation(turn.paraverbal, modality="paraverbal")
+        ),
+        nonverbal_features=_without_none(
+            normalize_observation(turn.nonverbal_features, modality="nonverbal")
+        ),
     )
-
-
-async def _attach_student_paraverbal_observations(
-    db: Session,
-    storage: LocalMediaStorage,
-    interview_id: int,
-    recording: InterviewRecordingDB,
-) -> None:
-    """Populate observations without making raw-media availability a DB contract."""
-    if not settings.paraverbal_analysis_enabled:
-        return
-    student_audio = db.query(InterviewMediaAssetDB).filter(
-        InterviewMediaAssetDB.recording_id == recording.id,
-        InterviewMediaAssetDB.kind == MediaAssetKind.STUDENT_AUDIO.value,
-        InterviewMediaAssetDB.status == "ready",
-    ).first()
-    if student_audio is None:
-        logger.info(
-            "recording_storage_event interview_id=%s recording_id=%s "
-            "event=paraverbal_skipped reason=student_audio_unavailable",
-            interview_id,
-            recording.id,
-        )
-        return
-    student_turns = db.query(InterviewTurnDB).filter(
-        InterviewTurnDB.medical_interview_id == interview_id,
-        InterviewTurnDB.speaker == "student",
-    ).order_by(InterviewTurnDB.sequence).all()
-    if not student_turns:
-        logger.info(
-            "recording_storage_event interview_id=%s recording_id=%s "
-            "event=paraverbal_skipped reason=student_turns_unavailable",
-            interview_id,
-            recording.id,
-        )
-        return
-    try:
-        audio_path = storage.resolve(student_audio.storage_key)
-        observations = await run_in_threadpool(
-            analyze_student_turns,
-            audio_path,
-            [
-                StudentTurnAudio(
-                    turn_id=turn.id,
-                    start_ms=turn.start_ms,
-                    end_ms=turn.end_ms,
-                    transcript=turn.transcript,
-                )
-                for turn in student_turns
-            ],
-        )
-    except Exception:
-        logger.exception(
-            "Paraverbal extraction failed for interview %s; transcript remains available",
-            interview_id,
-        )
-        return
-    for turn in student_turns:
-        turn.paraverbal = observations.get(turn.id)
-    logger.info(
-        "recording_storage_event interview_id=%s recording_id=%s "
-        "event=paraverbal_completed student_turn_count=%s observation_count=%s",
-        interview_id,
-        recording.id,
-        len(student_turns),
-        len(observations),
-    )
-
-
-async def _attach_student_nonverbal_observations(
-    db: Session,
-    storage: LocalMediaStorage,
-    interview_id: int,
-    recording: InterviewRecordingDB,
-) -> None:
-    """Populate descriptive Py-Feat observations from student video."""
-    if not settings.pyfeat_analysis_enabled:
-        return
-    student_video = db.query(InterviewMediaAssetDB).filter(
-        InterviewMediaAssetDB.recording_id == recording.id,
-        InterviewMediaAssetDB.kind == MediaAssetKind.STUDENT_VIDEO.value,
-        InterviewMediaAssetDB.status == "ready",
-    ).first()
-    if student_video is None:
-        logger.info(
-            "recording_storage_event interview_id=%s recording_id=%s "
-            "event=nonverbal_skipped reason=student_video_unavailable",
-            interview_id,
-            recording.id,
-        )
-        return
-    turn_windows = db.query(InterviewTurnDB).filter(
-        InterviewTurnDB.medical_interview_id == interview_id,
-    ).order_by(InterviewTurnDB.sequence).all()
-    if not turn_windows:
-        logger.info(
-            "recording_storage_event interview_id=%s recording_id=%s "
-            "event=nonverbal_skipped reason=turn_windows_unavailable",
-            interview_id,
-            recording.id,
-        )
-        return
-    try:
-        video_path = storage.resolve(student_video.storage_key)
-        observations = await run_in_threadpool(
-            analyze_pyfeat_student_turn_videos,
-            video_path,
-            [
-                StudentTurnVideo(
-                    turn_id=turn.id,
-                    start_ms=turn.start_ms,
-                    end_ms=turn.end_ms,
-                    conversation_speaker=turn.speaker,
-                )
-                for turn in turn_windows
-            ],
-        )
-    except Exception:
-        logger.exception(
-            "Py-Feat extraction failed for interview %s; transcript remains available",
-            interview_id,
-        )
-        return
-    for turn in turn_windows:
-        turn.nonverbal_features = observations.get(turn.id)
-    logger.info(
-        "recording_storage_event interview_id=%s recording_id=%s "
-        "event=nonverbal_completed turn_window_count=%s observation_count=%s",
-        interview_id,
-        recording.id,
-        len(turn_windows),
-        len(observations),
-    )
-
-
-async def _process_recording_observations(
-    interview_id: int,
-    recording_id: str,
-) -> None:
-    """Extract derived observations after durable media storage has responded."""
-    db = SessionLocal()
-    try:
-        recording = db.query(InterviewRecordingDB).filter(
-            InterviewRecordingDB.id == recording_id,
-            InterviewRecordingDB.medical_interview_id == interview_id,
-        ).first()
-        if recording is None:
-            logger.warning(
-                "recording_processing_event interview_id=%s recording_id=%s "
-                "event=skipped reason=recording_unavailable",
-                interview_id,
-                recording_id,
-            )
-            return
-        logger.info(
-            "recording_processing_event interview_id=%s recording_id=%s event=started",
-            interview_id,
-            recording_id,
-        )
-        _set_observation_processing(recording, "processing", "paraverbal")
-        db.commit()
-        storage = get_media_storage()
-        await _attach_student_paraverbal_observations(
-            db=db,
-            storage=storage,
-            interview_id=interview_id,
-            recording=recording,
-        )
-        db.commit()
-        _set_observation_processing(recording, "processing", "pyfeat")
-        db.commit()
-        await _attach_student_nonverbal_observations(
-            db=db,
-            storage=storage,
-            interview_id=interview_id,
-            recording=recording,
-        )
-        db.commit()
-        turns = db.query(InterviewTurnDB).filter(
-            InterviewTurnDB.medical_interview_id == interview_id,
-        ).all()
-        expected, available = _observation_counts(
-            turns,
-            paraverbal_enabled=settings.paraverbal_analysis_enabled,
-            pyfeat_enabled=settings.pyfeat_analysis_enabled,
-        )
-        _set_observation_processing(
-            recording,
-            "complete" if available == expected else "partial",
-            "finished",
-            expected=expected,
-            available=available,
-        )
-        db.commit()
-        logger.info(
-            "recording_processing_event interview_id=%s recording_id=%s event=completed",
-            interview_id,
-            recording_id,
-        )
-    except Exception:
-        db.rollback()
-        recording = db.query(InterviewRecordingDB).filter(
-            InterviewRecordingDB.id == recording_id,
-        ).first()
-        if recording is not None:
-            _set_observation_processing(recording, "failed", "finished")
-            db.commit()
-        logger.exception(
-            "recording_processing_event interview_id=%s recording_id=%s event=failed",
-            interview_id,
-            recording_id,
-        )
-    finally:
-        db.close()
-
-
-def _set_observation_processing(
-    recording: InterviewRecordingDB,
-    status: str,
-    stage: str,
-    **details: Any,
-) -> None:
-    capture_config = dict(recording.capture_config or {})
-    capture_config["observation_processing"] = {
-        "status": status,
-        "stage": stage,
-        **details,
-    }
-    recording.capture_config = capture_config
 
 
 def _without_none(value: Any) -> Any:
@@ -852,25 +639,6 @@ def _without_none(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_none(item) for item in value if item is not None]
     return value
-
-
-def _observation_counts(
-    turns: list[InterviewTurnDB],
-    *,
-    paraverbal_enabled: bool,
-    pyfeat_enabled: bool,
-) -> tuple[int, int]:
-    """Count only the canonical OpenSMILE and Py-Feat turn observations."""
-    student_turns = [turn for turn in turns if turn.speaker == "student"]
-    expected = (
-        (len(student_turns) if paraverbal_enabled else 0)
-        + (len(turns) if pyfeat_enabled else 0)
-    )
-    available = (
-        sum(turn.paraverbal is not None for turn in student_turns)
-        + sum(turn.nonverbal_features is not None for turn in turns)
-    )
-    return expected, available
 
 
 def _recap_turns(db: Session, interview: MedicalInterviewDB) -> list[RecapTurn]:

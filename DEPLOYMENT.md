@@ -74,19 +74,28 @@ not delete expired files automatically. Nginx streams uploads without request
 buffering and does not expose the media directory as public static content.
 Playback is authorized by the API and supports HTTP Range requests.
 
-Post-interview observations use OpenSMILE for student audio and Py-Feat 2.1.1
-for student video. Py-Feat is enabled by default and stores downloaded model
-resources in the persistent `/app/pyfeat` volume. The optional gaze and AU12
-calibration values remain empty until the research procedure is defined:
+Post-interview observations run through the staged multimodal pipeline, which
+uses OpenSMILE for student audio and Py-Feat 2.1.1 for student video. The
+pipeline is scheduled as a background task when a recording is finalized. Its
+methodology (derivation parameters, threshold bands, and label rules) lives in
+versioned YAML under `app/multimodal/config/`; only infrastructure settings stay
+in `.env`. Py-Feat is enabled by default and stores downloaded model resources
+in the persistent `/app/pyfeat` volume:
 
 ```bash
 PYFEAT_ANALYSIS_ENABLED=true
 PYFEAT_DEVICE=cpu
 PYFEAT_WEIGHTS_ROOT=/app/pyfeat/weights
 PYFEAT_SAMPLE_FPS=2
-PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS=
-PYFEAT_AU12_ACTIVE_THRESHOLD=
 ```
+
+Methodology values such as the gaze alignment tolerance and AU12 active
+threshold are configured in `app/multimodal/config/processing.yaml`, not in
+`.env`. They remain `null` (undecided) until the research procedure defines
+them, and their dependent features are reported as unavailable rather than
+guessed. See `app/multimodal/README.md` for the pipeline flow and the personal-
+baseline calibration endpoint (`POST
+/medical-interviews/{id}/calibration/baseline`).
 
 During an interview, four continuous sources share one browser clock:
 `student_audio`, `student_video`, `patient_audio`, and `patient_video`. Student

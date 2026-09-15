@@ -1,10 +1,11 @@
+# syntax=docker/dockerfile:1
+
 # Multi-stage build for production optimization
 FROM python:3.12-slim AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
 # Install build dependencies
@@ -20,12 +21,24 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
+# Copy requirements before application code so dependency installation
+# remains cached when only source code changes.
 COPY requirements.txt .
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.11.0+cpu torchvision==0.26.0+cpu && \
-    pip install --no-cache-dir -r requirements.txt
+
+# Install Python dependencies using a persistent BuildKit pip cache.
+#
+# IMPORTANT:
+# Do NOT use --no-cache-dir here.
+# The cache mount allows downloaded wheels (PyTorch, OpenCV, Py-Feat, etc.)
+# to be reused when requirements.txt changes and this layer must run again.
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip && \
+    pip install \
+        --index-url https://download.pytorch.org/whl/cpu \
+        torch==2.11.0+cpu \
+        torchvision==0.26.0+cpu && \
+    pip install -r requirements.txt
+
 
 # Production stage
 FROM python:3.12-slim AS production
@@ -42,13 +55,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     libpq5 \
-    # Basic system libraries
     libssl3 \
     libffi8 \
     zlib1g \
     libjpeg62-turbo \
     ffmpeg \
-    # Additional dependencies
     ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
@@ -60,8 +71,13 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 WORKDIR /app
 
 # Copy Python packages from builder stage
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
+COPY --from=builder \
+    /usr/local/lib/python3.12/site-packages \
+    /usr/local/lib/python3.12/site-packages
+
+COPY --from=builder \
+    /usr/local/bin \
+    /usr/local/bin
 
 # Copy application code
 COPY --chown=appuser:appuser . .
@@ -78,7 +94,7 @@ EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=10)" || exit 1
+    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=10).raise_for_status()" || exit 1
 
 # Production command with uvicorn
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]

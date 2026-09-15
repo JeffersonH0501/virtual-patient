@@ -24,6 +24,11 @@ export const useTechnicalCalibration = (
   const [faceDetectionRate, setFaceDetectionRate] = useState(0);
   const [remainingMs, setRemainingMs] = useState(CALIBRATION_DURATION_MS);
   const [result, setResult] = useState<CalibrationResultPayload | null>(null);
+  // The recorded calibration media, assembled once recording finishes. The same
+  // ~20s recording that drives the device checks is reused to derive the
+  // personal baseline; nothing extra is captured. Kept only long enough to be
+  // uploaded, then cleared on reset.
+  const [media, setMedia] = useState<{blob: Blob; mimeType: string} | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationRef = useRef<number | null>(null);
@@ -35,12 +40,18 @@ export const useTechnicalCalibration = (
   const recorderRef = useRef<MediaRecorder | null>(null);
   const temporaryStreamRef = useRef<MediaStream | null>(null);
   const recordingRef = useRef(false);
+  // Buffers the MediaRecorder chunks so the recorded media can be reused for
+  // baseline derivation. Previously discarded in `ondataavailable`.
+  const chunksRef = useRef<Blob[]>([]);
+  const recorderMimeRef = useRef<string>('');
   const samplesRef = useRef({sum: 0, count: 0, peak: 0, voiceDetected: false});
   const faceSamplesRef = useRef({total: 0, detected: 0});
 
   const stopTemporaryRecording = useCallback(() => {
     const recorder = recorderRef.current;
     recorderRef.current = null;
+    // Stopping flushes a final `dataavailable` and then fires `onstop`, where
+    // the buffered chunks are assembled into the reusable calibration blob.
     if (recorder && recorder.state !== 'inactive') recorder.stop();
     temporaryStreamRef.current?.getTracks().forEach((track) => track.stop());
     temporaryStreamRef.current = null;
@@ -197,7 +208,22 @@ export const useTechnicalCalibration = (
       setPhase('error');
       return;
     }
-    recorder.ondataavailable = () => undefined;
+    chunksRef.current = [];
+    recorderMimeRef.current = videoMime;
+    setMedia(null);
+    recorder.ondataavailable = (event) => {
+      if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
+    };
+    recorder.onstop = () => {
+      const chunks = chunksRef.current;
+      chunksRef.current = [];
+      if (chunks.length === 0) return;
+      // The recorder produces a single container with both the microphone and
+      // camera tracks; it is reused as the baseline media (uploaded as `video`
+      // so both extractors can run on it).
+      const mimeType = recorderMimeRef.current || chunks[0].type || 'video/webm';
+      setMedia({blob: new Blob(chunks, {type: mimeType}), mimeType});
+    };
     recorder.onerror = () => {
       recordingRef.current = false;
       setPhase('error');
@@ -250,6 +276,8 @@ export const useTechnicalCalibration = (
     setFaceDetectionRate(0);
     setRemainingMs(CALIBRATION_DURATION_MS);
     setResult(null);
+    chunksRef.current = [];
+    setMedia(null);
     setPhase('idle');
   }, [stopTemporaryRecording]);
 
@@ -268,6 +296,7 @@ export const useTechnicalCalibration = (
     faceDetectionRate,
     remainingMs,
     result,
+    media,
     start,
     reset,
   };

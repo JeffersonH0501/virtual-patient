@@ -51,24 +51,36 @@ checks per-source durations, authorizes owner/teacher/superuser access, and
 streams playback with HTTP Range support. `MEDIA_RETENTION_DAYS` records an
 optional expiry timestamp but does not trigger deletion in this release.
 
-When `PARAVERBAL_ANALYSIS_ENABLED=true`, finalizing a recording extracts an
-OpenSMILE/eGeMAPSv02 summary from each timestamped student turn in the private
-`student_audio` file. It persists only the structured observation in
-`interview_turns.paraverbal`; patient turns remain `null`. FFmpeg is used only
-to create temporary, clock-aligned WAV segments and those segments are deleted
-after extraction. `PARAVERBAL_MIN_PAUSE_MS` and
-`PARAVERBAL_MIN_VOICED_DURATION_MS` are provisional research parameters, not
-clinical thresholds or performance labels.
+Finalizing a recording schedules the staged multimodal pipeline
+(`process_multimodal_interview`) as a background task from the recordings
+router; no processing runs inline. The pipeline coordinates the OpenSMILE
+(paraverbal) and Py-Feat 2.1.1 (nonverbal) extractors, which now perform
+extraction and quality only, then derives features, applies thresholds, and
+produces one integrated label per family. Its methodology (derivation
+parameters, threshold bands, and label rules) lives in versioned YAML under
+`app/multimodal/config/`, loaded via PyYAML; only infrastructure settings
+(extractor enable/disable, device, weights path, sampling infrastructure) stay
+in `.env`. See `app/multimodal/README.md` for the full flow, the six label
+families, and the descriptive-not-clinical disclaimer.
 
-When `PYFEAT_ANALYSIS_ENABLED=true`, which is the default, finalization samples
-private `student_video` frames and runs Py-Feat 2.1.1 `Detectorv2` once for the
-interview. Per-turn results are stored in the canonical
-`interview_turns.nonverbal_features` field. Model resources are downloaded to
-the persistent path configured by `PYFEAT_WEIGHTS_ROOT`.
-`PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS` and
-`PYFEAT_AU12_ACTIVE_THRESHOLD` remain empty until calibrated; dependent values
-are stored as unavailable. Pose values are retained for future validation, but
-nod count and rate remain unavailable until the temporal detector is defined.
+Per-turn results are persisted in a layered shape into the existing
+`interview_turns.paraverbal` (paraverbal; `null` for patient turns) and
+`interview_turns.nonverbal_features` (nonverbal; all turns) JSON columns, each
+carrying `raw`/`processed`/`base_labels`/`integrated_labels`/`quality`/
+`versions`/`config_hash`. FFmpeg still creates temporary, clock-aligned WAV
+segments that are deleted after extraction, and Py-Feat model resources are
+downloaded to `PYFEAT_WEIGHTS_ROOT`. Undecided methodology values (e.g. gaze
+alignment tolerance, AU12 active threshold, nod detector parameters) are `null`
+in `processing.yaml`, and their dependent features are stored as unavailable
+with a reason rather than a fabricated number. All configured thresholds are
+provisional research thresholds, not clinical or psychological cutoffs.
+
+Personal-baseline calibration is implemented. `POST
+/medical-interviews/{id}/calibration/baseline` derives a numeric-only
+`PersonalBaseline` (F0 in semitones, neutral head pose, optional neutral gaze)
+from temporary calibration media via the extractors, stores it in
+`interview_metadata.calibration.personal_baseline`, and deletes the temporary
+media. No calibration media is persisted and no new table is introduced.
 
 ## Recommended execution
 

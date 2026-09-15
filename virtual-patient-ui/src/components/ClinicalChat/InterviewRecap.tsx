@@ -1,7 +1,7 @@
 ﻿import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {getInterviewRecap, resolveRecordingSource} from '../../services/recordings';
-import {InterviewRecap as InterviewRecapData, RecapTurn} from '../../types/recording';
+import {FamilyLabel, InterviewRecap as InterviewRecapData, RecapTurn} from '../../types/recording';
 import {Message} from '../../types/message';
 import {Info, Pause, Play, Speaker, X} from '../../icons';
 import {Modal} from '../common/Modal';
@@ -244,6 +244,38 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     </div>
   );
 
+  // Renders the single integrated label for a family. When the label is present
+  // and "ok", the localized value is shown. Otherwise the family is surfaced as
+  // unavailable with the backend reason/status when known; no label is ever
+  // fabricated for a family the backend did not compute (e.g. legacy payloads
+  // report every family except paraverbal `temporal` as unavailable).
+  const renderFamilyLabel = (label?: FamilyLabel) => {
+    const isOk = label?.status === 'ok' && Boolean(label?.value);
+    const detail = label?.reason ?? label?.status;
+    return (
+      <div className="turn-detail-row turn-detail-row--label">
+        <dt>{t('clinicalChat.recap.integratedLabel')}</dt>
+        <dd>
+          {isOk
+            ? label!.value
+            : detail
+              ? t('clinicalChat.recap.labelUnavailableWithReason', {
+                reason: t(`clinicalChat.recap.observationStatus.${detail}`, {
+                  defaultValue: detail,
+                }),
+              })
+              : t('clinicalChat.recap.observationStatus.unavailable')}
+        </dd>
+        <span />
+      </div>
+    );
+  };
+
+  const paraverbal = detailTurn?.paraverbal?.processed;
+  const paraverbalLabels = detailTurn?.paraverbal?.integratedLabels;
+  const nonverbal = detailTurn?.nonverbalFeatures?.processed;
+  const nonverbalLabels = detailTurn?.nonverbalFeatures?.integratedLabels;
+
   return (
     <section className="flex min-h-0 flex-1 flex-col" aria-label={t('clinicalChat.recap.title')}>
       <header className="flex min-h-12 shrink-0 items-center border-b border-slate-200 bg-white px-4 text-left sm:px-5">
@@ -422,60 +454,74 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
 
               <section className="turn-detail-column">
                 <h4>{t('clinicalChat.recap.paraverbal')}</h4>
-                <div className="turn-detail-groups">
-                  <div className="turn-detail-group">
-                    <h5>{t('clinicalChat.recap.families.temporal')}</h5>
-                    <dl>
-                      {renderMetricRow('clinicalChat.recap.metrics.speechRateWpm', detailTurn.paraverbal?.speechRateWpm, 'clinicalChat.recap.units.wordsPerMinute')}
-                      {renderMetricRow('clinicalChat.recap.metrics.articulationRateWpm', detailTurn.paraverbal?.articulationRateWpm, 'clinicalChat.recap.units.wordsPerMinute')}
-                      {renderMetricRow('clinicalChat.recap.metrics.pauseCount', detailTurn.paraverbal?.pauseCount, 'clinicalChat.recap.units.count')}
-                      {renderMetricRow('clinicalChat.recap.metrics.totalPauseDurationMs', detailTurn.paraverbal?.totalPauseDurationMs, 'clinicalChat.recap.units.milliseconds')}
-                      {renderMetricRow('clinicalChat.recap.metrics.medianPauseDurationMs', detailTurn.paraverbal?.medianPauseDurationMs, 'clinicalChat.recap.units.milliseconds')}
-                      {renderMetricRow('clinicalChat.recap.metrics.pauseTimeRatio', detailTurn.paraverbal?.pauseTimeRatio, 'clinicalChat.recap.units.ratio')}
-                    </dl>
+                {detailTurn.paraverbal ? (
+                  <div className="turn-detail-groups">
+                    <div className="turn-detail-group">
+                      <h5>{t('clinicalChat.recap.families.temporal')}</h5>
+                      <dl>
+                        {renderFamilyLabel(paraverbalLabels?.temporal)}
+                        {renderMetricRow('clinicalChat.recap.metrics.speechRateWpm', paraverbal?.speechRateWpm, 'clinicalChat.recap.units.wordsPerMinute')}
+                        {renderMetricRow('clinicalChat.recap.metrics.articulationRateWpm', paraverbal?.articulationRateWpm, 'clinicalChat.recap.units.wordsPerMinute')}
+                        {renderMetricRow('clinicalChat.recap.metrics.pauseCount', paraverbal?.pauseCount, 'clinicalChat.recap.units.count')}
+                        {renderMetricRow('clinicalChat.recap.metrics.totalPauseDurationMs', paraverbal?.totalPauseDurationMs, 'clinicalChat.recap.units.milliseconds')}
+                        {renderMetricRow('clinicalChat.recap.metrics.medianPauseDurationMs', paraverbal?.medianPauseDurationMs, 'clinicalChat.recap.units.milliseconds')}
+                        {renderMetricRow('clinicalChat.recap.metrics.pauseTimeRatio', paraverbal?.pauseTimeRatio, 'clinicalChat.recap.units.ratio')}
+                      </dl>
+                    </div>
+                    <div className="turn-detail-group">
+                      <h5>{t('clinicalChat.recap.families.prosodicLevel')}</h5>
+                      <dl>
+                        {renderFamilyLabel(paraverbalLabels?.prosodicLevel)}
+                        {renderMetricRow('clinicalChat.recap.metrics.f0MedianSemitones', paraverbal?.f0MedianSemitones, 'clinicalChat.recap.units.semitones')}
+                        {renderMetricRow('clinicalChat.recap.metrics.medianLoudness', paraverbal?.medianLoudness, 'clinicalChat.recap.units.loudness')}
+                      </dl>
+                    </div>
+                    <div className="turn-detail-group">
+                      <h5>{t('clinicalChat.recap.families.prosodicModulation')}</h5>
+                      <dl>
+                        {renderFamilyLabel(paraverbalLabels?.prosodicModulation)}
+                        {renderMetricRow('clinicalChat.recap.metrics.f0P20P80RangeSemitones', paraverbal?.f0P20P80RangeSemitones, 'clinicalChat.recap.units.semitones')}
+                        {renderMetricRow('clinicalChat.recap.metrics.loudnessP20P80Range', paraverbal?.loudnessP20P80Range, 'clinicalChat.recap.units.loudness')}
+                      </dl>
+                    </div>
                   </div>
-                  <div className="turn-detail-group">
-                    <h5>{t('clinicalChat.recap.families.prosodicLevel')}</h5>
-                    <dl>
-                      {renderMetricRow('clinicalChat.recap.metrics.f0MedianSemitones', detailTurn.paraverbal?.f0MedianSemitones, 'clinicalChat.recap.units.semitones')}
-                      {renderMetricRow('clinicalChat.recap.metrics.medianLoudness', detailTurn.paraverbal?.medianLoudness, 'clinicalChat.recap.units.loudness')}
-                    </dl>
-                  </div>
-                  <div className="turn-detail-group">
-                    <h5>{t('clinicalChat.recap.families.prosodicModulation')}</h5>
-                    <dl>
-                      {renderMetricRow('clinicalChat.recap.metrics.f0P20P80RangeSemitones', detailTurn.paraverbal?.f0P20P80RangeSemitones, 'clinicalChat.recap.units.semitones')}
-                      {renderMetricRow('clinicalChat.recap.metrics.loudnessP20P80Range', detailTurn.paraverbal?.loudnessP20P80Range, 'clinicalChat.recap.units.loudness')}
-                    </dl>
-                  </div>
-                </div>
+                ) : (
+                  <p className="turn-detail-empty">{t('clinicalChat.recap.paraverbalUnavailable')}</p>
+                )}
               </section>
 
               <section className="turn-detail-column">
                 <h4>{t('clinicalChat.recap.nonverbal')}</h4>
-                <div className="turn-detail-groups">
-                  <div className="turn-detail-group">
-                    <h5>{t('clinicalChat.recap.families.visualOrientation')}</h5>
-                    <dl>
-                      {renderMetricRow('clinicalChat.recap.metrics.visualAlignmentRatio', detailTurn.nonverbalFeatures?.visualAlignmentRatio, 'clinicalChat.recap.units.ratio')}
-                      {renderMetricRow('clinicalChat.recap.metrics.medianVisualAlignmentDwellMs', detailTurn.nonverbalFeatures?.medianVisualAlignmentDwellMs, 'clinicalChat.recap.units.milliseconds')}
-                    </dl>
+                {detailTurn.nonverbalFeatures ? (
+                  <div className="turn-detail-groups">
+                    <div className="turn-detail-group">
+                      <h5>{t('clinicalChat.recap.families.visualOrientation')}</h5>
+                      <dl>
+                        {renderFamilyLabel(nonverbalLabels?.visualOrientation)}
+                        {renderMetricRow('clinicalChat.recap.metrics.visualAlignmentRatio', nonverbal?.visualAlignmentRatio, 'clinicalChat.recap.units.ratio')}
+                        {renderMetricRow('clinicalChat.recap.metrics.medianVisualAlignmentDwellMs', nonverbal?.medianVisualAlignmentDwellMs, 'clinicalChat.recap.units.milliseconds')}
+                      </dl>
+                    </div>
+                    <div className="turn-detail-group">
+                      <h5>{t('clinicalChat.recap.families.headGesturalFeedback')}</h5>
+                      <dl>
+                        {renderFamilyLabel(nonverbalLabels?.headGesturalFeedback)}
+                        {renderMetricRow('clinicalChat.recap.metrics.nodCount', nonverbal?.nodCount, 'clinicalChat.recap.units.count')}
+                        {renderMetricRow('clinicalChat.recap.metrics.nodRateMin', nonverbal?.nodRateMin, 'clinicalChat.recap.units.eventsPerMinute')}
+                      </dl>
+                    </div>
+                    <div className="turn-detail-group">
+                      <h5>{t('clinicalChat.recap.families.facialExpressivity')}</h5>
+                      <dl>
+                        {renderFamilyLabel(nonverbalLabels?.facialExpressivity)}
+                        {renderMetricRow('clinicalChat.recap.metrics.smileActivityRatio', nonverbal?.smileActivityRatio, 'clinicalChat.recap.units.ratio')}
+                        {renderMetricRow('clinicalChat.recap.metrics.meanSmileActivation', nonverbal?.meanSmileActivation, 'clinicalChat.recap.units.auActivation')}
+                      </dl>
+                    </div>
                   </div>
-                  <div className="turn-detail-group">
-                    <h5>{t('clinicalChat.recap.families.headGesturalFeedback')}</h5>
-                    <dl>
-                      {renderMetricRow('clinicalChat.recap.metrics.nodCount', detailTurn.nonverbalFeatures?.nodCount, 'clinicalChat.recap.units.count')}
-                      {renderMetricRow('clinicalChat.recap.metrics.nodRateMin', detailTurn.nonverbalFeatures?.nodRateMin, 'clinicalChat.recap.units.eventsPerMinute')}
-                    </dl>
-                  </div>
-                  <div className="turn-detail-group">
-                    <h5>{t('clinicalChat.recap.families.facialExpressivity')}</h5>
-                    <dl>
-                      {renderMetricRow('clinicalChat.recap.metrics.smileActivityRatio', detailTurn.nonverbalFeatures?.smileActivityRatio, 'clinicalChat.recap.units.ratio')}
-                      {renderMetricRow('clinicalChat.recap.metrics.meanSmileActivation', detailTurn.nonverbalFeatures?.meanSmileActivation, 'clinicalChat.recap.units.auActivation')}
-                    </dl>
-                  </div>
-                </div>
+                ) : (
+                  <p className="turn-detail-empty">{t('clinicalChat.recap.nonverbalUnavailable')}</p>
+                )}
               </section>
             </div>
           </div>

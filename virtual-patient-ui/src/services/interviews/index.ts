@@ -8,5 +8,5 @@ export {getInterview} from './getInterview';
 export {getInterviews} from './getInterviews';
 export {sendMessage} from './sendMessage';
 export {deleteInterview} from './deleteInterview';
-export {saveCalibrationResult, startInterview} from './calibration';
-export type {CalibrationResultPayload} from './calibration';
+export {saveCalibrationResult, startInterview, deriveCalibrationBaseline} from './calibration';
+export type {CalibrationResultPayload, CalibrationBaselineResponse} from './calibration';

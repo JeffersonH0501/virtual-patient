@@ -28,41 +28,116 @@ export type RecapTurn = {
   nonverbalFeatures?: NonverbalObservation | null;
 };
 
-export type ParaverbalObservation = {
-  extractor?: {name: string; version: string; featureSet: string};
-  wordCount?: number;
-  voicedDurationMs?: number;
-  speechRateWpm?: number | null;
-  articulationRateWpm?: number | null;
-  pauseCount?: number;
-  totalPauseDurationMs?: number;
-  medianPauseDurationMs?: number | null;
-  pauseTimeRatio?: number | null;
-  f0MedianSemitones?: number | null;
-  f0P20P80RangeSemitones?: number | null;
-  medianLoudness?: number | null;
-  loudnessP20P80Range?: number | null;
-  audioQuality?: {validRatio?: number | null; issues?: string[]};
-  interpretability?: {
-    acousticTemporal?: {
-      labels?: {
-        status?: string;
-        values?: Record<string, string>;
-      };
-    };
-  };
+// The backend recap endpoint returns, for each turn's `paraverbal` and
+// `nonverbal_features`, a NORMALIZED read view produced by
+// `app/multimodal/legacy_adapter.normalize_observation`. The API serializes
+// snake_case JSON which the recordings service converts recursively to
+// camelCase (see utils/apiTransform). The types below model that camelCased
+// read view. Two shapes coexist behind a discriminated union on `schema`:
+//   - "layered": the new pipeline output with staged layers.
+//   - "legacy":  a pre-refactor flat payload wrapped into the layered shape by
+//     the backend adapter (raw/baseLabels null, only the temporal integrated
+//     label may carry a genuine value, versions/configHash null).
+// The union keeps legacy payloads renderable without a destructive migration
+// (Requirements 22.1, 22.3, 23.1). Backend `_without_none` strips keys whose
+// value is null, so every layered field is modelled as optional.
+
+export type ObservationSchema = 'layered' | 'legacy';
+
+// Outcome status shared by family labels and modality layers. Mirrors the
+// backend `OutcomeStatus` enum; kept as a widened string so an unforeseen
+// backend value never breaks rendering.
+export type ObservationStatus =
+  | 'ok'
+  | 'unavailable'
+  | 'insufficient_reference_data'
+  | (string & {});
+
+// One integrated label for a family. `value` is present only when `status` is
+// "ok"; otherwise it is absent/null and `reason` explains the gap. `evidence`
+// is a free-form record whose contents differ by family and origin.
+export type FamilyLabel = {
+  status?: ObservationStatus;
+  value?: string | null;
+  reason?: string | null;
+  evidence?: Record<string, unknown>;
 };
 
-export type NonverbalObservation = {
-  extractor?: {name: string; package?: string; version: string; sampleFps?: number};
+// Derived paraverbal metrics (the `processed` layer). Field names match the
+// camelCased backend derivation formulas. All optional: a metric that could
+// not be derived is absent rather than a fabricated number.
+export type ParaverbalProcessed = {
+  speechRateWpm?: number | null;
+  articulationRateWpm?: number | null;
+  pauseCount?: number | null;
+  totalPauseDurationMs?: number | null;
+  medianPauseDurationMs?: number | null;
+  pauseFrequencyPerMin?: number | null;
+  pauseTimeRatio?: number | null;
+  medianLoudness?: number | null;
+  f0MedianSemitones?: number | null;
+  f0P20P80RangeSemitones?: number | null;
+  loudnessP20P80Range?: number | null;
+  relativePitchShiftSt?: number | null;
+};
+
+// Exactly one integrated label per paraverbal family.
+export type ParaverbalIntegratedLabels = {
+  temporal?: FamilyLabel;
+  prosodicLevel?: FamilyLabel;
+  prosodicModulation?: FamilyLabel;
+};
+
+export type ParaverbalObservation = {
+  schema?: ObservationSchema;
+  modality?: 'paraverbal';
+  raw?: Record<string, unknown> | null;
+  processed?: ParaverbalProcessed;
+  baseLabels?: Record<string, unknown> | null;
+  integratedLabels?: ParaverbalIntegratedLabels;
+  quality?: {validRatio?: number | null; issues?: string[]; [key: string]: unknown};
+  versions?: Record<string, string> | null;
+  configHash?: string | null;
+  status?: ObservationStatus;
+  reason?: string | null;
+  // Present only on normalized legacy payloads: the original interpretability
+  // block, kept so a detail view can surface the legacy temporal reasoning.
+  legacyInterpretability?: Record<string, unknown> | null;
+  // Interaction context ("speaking" | "listening") when the backend resolved it.
+  context?: string | null;
+};
+
+// Derived nonverbal metrics (the `processed` layer).
+export type NonverbalProcessed = {
   visualAlignmentRatio?: number | null;
   medianVisualAlignmentDwellMs?: number | null;
   nodCount?: number | null;
   nodRateMin?: number | null;
   smileActivityRatio?: number | null;
   meanSmileActivation?: number | null;
-  videoValidRatio?: number | null;
-  videoQuality?: {sampledFrameCount?: number; validFrameCount?: number; issues?: string[]};
+  context?: string | null;
+};
+
+// Exactly one integrated label per nonverbal family.
+export type NonverbalIntegratedLabels = {
+  visualOrientation?: FamilyLabel;
+  headGesturalFeedback?: FamilyLabel;
+  facialExpressivity?: FamilyLabel;
+};
+
+export type NonverbalObservation = {
+  schema?: ObservationSchema;
+  modality?: 'nonverbal';
+  raw?: Record<string, unknown> | null;
+  processed?: NonverbalProcessed;
+  baseLabels?: Record<string, unknown> | null;
+  integratedLabels?: NonverbalIntegratedLabels;
+  quality?: {sampledFrameCount?: number; validFrameCount?: number; issues?: string[]; [key: string]: unknown};
+  versions?: Record<string, string> | null;
+  configHash?: string | null;
+  status?: ObservationStatus;
+  reason?: string | null;
+  context?: string | null;
 };
 
 export type InterviewRecap = {

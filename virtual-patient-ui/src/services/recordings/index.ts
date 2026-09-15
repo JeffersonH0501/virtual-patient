@@ -4,8 +4,13 @@ import {API_URL} from '../../utils/request';
 import {
   CapturedMedia,
   InterviewRecap,
+  RecapTurn,
   RecordingStatus,
 } from '../../types/recording';
+import {
+  normalizeNonverbalObservation,
+  normalizeParaverbalObservation,
+} from '../recap/normalizeObservation';
 
 type RecordingState = {
   interviewId: number;
@@ -130,12 +135,27 @@ export const markInterviewRecordingUnavailable = async (
   ));
 };
 
+// Route every turn's observations through the frontend compatibility adapter so
+// both the backend-normalized layered shape and any raw legacy flat payload that
+// did not pass through the backend normalizer reach the recap UI in the same
+// layered read view (Requirements 22.2, 23.2). This is read-time only and
+// non-destructive: layered payloads pass through unchanged.
+const normalizeRecapTurn = (turn: RecapTurn): RecapTurn => ({
+  ...turn,
+  paraverbal: normalizeParaverbalObservation(turn.paraverbal),
+  nonverbalFeatures: normalizeNonverbalObservation(turn.nonverbalFeatures),
+});
+
 export const getInterviewRecap = async (interviewId: number): Promise<InterviewRecap> => {
   const response = await requireOk(await fetch(
     `${API_URL}/medical-interviews/${interviewId}/recap`,
     {headers: getAuthHeaders()},
   ));
-  return transformToCamelCase(await response.json()) as InterviewRecap;
+  const recap = transformToCamelCase(await response.json()) as InterviewRecap;
+  return {
+    ...recap,
+    turns: Array.isArray(recap.turns) ? recap.turns.map(normalizeRecapTurn) : recap.turns,
+  };
 };
 
 export const resolveRecordingSource = (source?: string | null): string | null => {

@@ -10,6 +10,22 @@ export type Status = 'in_progress' | 'processing' | 'completed' | 'interrupted';
 
 export type CalibrationInputLevel = 'low' | 'adequate' | 'high';
 
+// Per-participant numeric reference derived from calibration media by the
+// backend `POST /calibration/baseline` endpoint (camelCased from the backend
+// `PersonalBaseline` schema). Fundamental frequency is in semitones only, never
+// Hertz. Gaze neutrals are optional because gaze frames may be absent from the
+// calibration recording; when derivation is unavailable the whole baseline is
+// null and calibration is still allowed to be saved.
+export type PersonalBaseline = {
+  baselineF0Semitones: number;
+  baselineLoudness: number;
+  neutralHeadYaw: number;
+  neutralHeadPitch: number;
+  neutralHeadRoll: number;
+  neutralGazeYaw?: number | null;
+  neutralGazePitch?: number | null;
+};
+
 export type CalibrationResult = {
   version: 'technical_v2';
   status: 'passed' | 'failed';
@@ -30,7 +46,9 @@ export type CalibrationResult = {
     faceDetectionRate: number;
     qualityStatus: 'adequate' | 'inadequate';
   };
-  personalBaseline: null;
+  // Derived from the calibration media by the baseline endpoint. Null when
+  // derivation was unavailable (or not attempted); calibration still saves.
+  personalBaseline?: PersonalBaseline | null;
 };
 
 export type CompleteInterviewResponse = {

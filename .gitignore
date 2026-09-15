@@ -218,3 +218,6 @@ __marimo__/
 
 # Visual check output (Playwright screenshots and layout metrics)
 virtual-patient-ui/scripts/visual-check/output/
+
+# deploy-local.sh dependency-hash state (local dev rebuild detection)
+.deploy-local/

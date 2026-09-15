@@ -7,6 +7,8 @@ python-multipart==0.0.9
 pydantic==2.11.7
 python-dotenv==1.0.1
 requests==2.31.0
+# YAML methodology configuration loading for the multimodal pipeline.
+PyYAML==6.0.2
 sqlalchemy==2.0.27
 alembic==1.13.1
 psycopg2-binary==2.9.9
