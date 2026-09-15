@@ -29,7 +29,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from app.core.config import settings
 from app.multimodal.schemas import ParaverbalRawFeatures
 
 
@@ -40,7 +39,7 @@ FEATURE_SET = "eGeMAPSv02"
 # Provisional default used only for the quality issue flag when the caller does
 # not supply a methodology value. It does not filter or alter the emitted raw
 # signals; it only annotates ``audio_quality.issues``.
-DEFAULT_MIN_VOICED_DURATION_MS = 300
+MIN_VOICED_DURATION_MS = 300
 
 
 @dataclass(frozen=True)
@@ -57,7 +56,7 @@ def analyze_student_turns(
     audio_path: Path,
     turns: Iterable[StudentTurnAudio],
     *,
-    min_voiced_duration_ms: int = DEFAULT_MIN_VOICED_DURATION_MS,
+    min_voiced_duration_ms: int = MIN_VOICED_DURATION_MS,
 ) -> dict[str, ParaverbalRawFeatures]:
     """Extract one raw acoustic feature set for each student turn.
 
@@ -70,8 +69,18 @@ def analyze_student_turns(
     an ``insufficient_voiced_duration`` quality issue; it never filters the
     emitted raw signals.
     """
-    if not settings.paraverbal_analysis_enabled:
+    try:
+        import opensmile
+    except ImportError:
         return {}
+
+    # Constructing the eGeMAPS processing graph has a measurable fixed cost.
+    # One instance can process every sequential turn in this analysis call while
+    # preserving the exact feature set and frame-level output.
+    smile = opensmile.Smile(
+        feature_set=opensmile.FeatureSet.eGeMAPSv02,
+        feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
+    )
 
     extracted: dict[str, ParaverbalRawFeatures] = {}
     with tempfile.TemporaryDirectory(prefix="virtual-patient-paraverbal-") as directory:
@@ -81,6 +90,7 @@ def analyze_student_turns(
                 audio_path,
                 turn,
                 temp_dir,
+                smile=smile,
                 min_voiced_duration_ms=min_voiced_duration_ms,
             )
             if result is not None:
@@ -94,6 +104,7 @@ def _analyze_turn(
     turn: StudentTurnAudio,
     temp_dir: Path,
     *,
+    smile: object,
     min_voiced_duration_ms: int,
 ) -> ParaverbalRawFeatures | None:
     duration_ms = turn.end_ms - turn.start_ms
@@ -110,6 +121,7 @@ def _analyze_turn(
             samples,
             duration_ms,
             turn.transcript,
+            smile=smile,
             min_voiced_duration_ms=min_voiced_duration_ms,
         )
     except (OSError, subprocess.SubprocessError, wave.Error, ValueError):
@@ -163,6 +175,7 @@ def _extract_raw_features(
     turn_duration_ms: int,
     transcript: str,
     *,
+    smile: object,
     min_voiced_duration_ms: int,
 ) -> ParaverbalRawFeatures | None:
     """Run OpenSMILE once and assemble raw signals plus a quality summary.
@@ -171,15 +184,6 @@ def _extract_raw_features(
     every contiguous unvoiced segment as a raw pause duration. No derivation and
     no labels are produced here.
     """
-    try:
-        import opensmile
-    except ImportError:
-        return None
-
-    smile = opensmile.Smile(
-        feature_set=opensmile.FeatureSet.eGeMAPSv02,
-        feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
-    )
     frame = smile.process_file(str(wav_path))
     pitch_column = _find_column(frame.columns, "F0semitoneFrom27.5Hz")
     loudness_column = _find_column(frame.columns, "loudness")

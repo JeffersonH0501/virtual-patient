@@ -40,12 +40,15 @@ mkdir -p "$STATE_DIR"
 API_DEP_FILES=(
   "$ROOT_DIR/virtual-patient-api/requirements.txt"
   "$ROOT_DIR/virtual-patient-api/Dockerfile"
+  "$ROOT_DIR/virtual-patient-api/.dockerignore"
 )
 UI_DEP_FILES=(
   "$ROOT_DIR/virtual-patient-ui/package.json"
   "$ROOT_DIR/virtual-patient-ui/yarn.lock"
   "$ROOT_DIR/virtual-patient-ui/.yarnrc.yml"
+  "$ROOT_DIR/virtual-patient-ui/.yarn/releases/yarn-4.6.0.cjs"
   "$ROOT_DIR/virtual-patient-ui/Dockerfile"
+  "$ROOT_DIR/virtual-patient-ui/.dockerignore"
 )
 
 compose() {
@@ -163,13 +166,13 @@ case "$action" in
     record_all_hashes
 
     # Start database.
-    compose up -d postgres
+    compose up -d db
 
     # Initialize/update database.
     compose --profile tools run --rm setup
 
     # Start application using the already-built images.
-    compose up -d api ui
+    compose up -d --no-build api ui
 
     verify
     ;;
@@ -180,7 +183,7 @@ case "$action" in
     # is a fast start in the common case.
     echo "Starting local development environment..."
     build_if_needed
-    compose up -d api ui
+    compose up -d --no-build api ui
     ;;
 
   build)
@@ -213,13 +216,13 @@ case "$action" in
       compose build ui
       record_service_hash ui "${UI_DEP_FILES[@]}"
     fi
-    compose up -d ui
+    compose up -d --no-build ui
     ;;
 
   database)
     echo "Starting database and running setup..."
 
-    compose up -d postgres
+    compose up -d db
     compose --profile tools run --rm setup
     ;;
 

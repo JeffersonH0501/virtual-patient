@@ -49,10 +49,8 @@ def _valid_processing() -> dict[str, Any]:
         "version": "processing_v1",
         "paraverbal": {
             "min_pause_ms": 250,
-            "min_voiced_duration_ms": 300,
         },
         "nonverbal": {
-            "sample_fps": 2,
             "gaze": {"alignment_tolerance_radians": None},
             "smile": {"au12_active_threshold": None},
             "nod": {"enabled": True, "min_amplitude_deg": None},

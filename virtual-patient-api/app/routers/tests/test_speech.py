@@ -11,7 +11,6 @@ from starlette.datastructures import Headers
 from app.models.medical_interview.enums import SenderType
 from app.routers import speech as speech_router
 from app.speech.contracts import SynthesizedAudio, TranscriptionResult
-from app.speech.vocal_style_policy import VOCAL_STYLE_POLICY_VERSION
 
 
 class SpeechEndpointTests(unittest.IsolatedAsyncioTestCase):
@@ -102,8 +101,10 @@ class SpeechEndpointTests(unittest.IsolatedAsyncioTestCase):
 
     @patch.object(speech_router, "MessageController")
     @patch.object(speech_router, "MedicalInterviewController")
-    async def test_patient_speech_reuses_current_version_stored_audio(
+    @patch.object(speech_router, "SpeechService")
+    async def test_patient_speech_ignores_legacy_stored_audio(
         self,
+        speech_service_type,
         controller_type,
         message_controller_type,
     ) -> None:
@@ -113,15 +114,21 @@ class SpeechEndpointTests(unittest.IsolatedAsyncioTestCase):
             sender_type=SenderType.PATIENT.value,
             content="I feel tired.",
             audio_url="https://storage.example/patient.mp3",
-            message_metadata={
-                "speech_synthesis": {
-                    "style_policy_version": VOCAL_STYLE_POLICY_VERSION,
-                }
-            },
+            message_metadata={},
         )
         self.db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(
             patient_gender="female",
             personality=SimpleNamespace(namespace_key="friendly_polite"),
+        )
+        speech_service_type.return_value.synthesize_patient_message.return_value = (
+            SynthesizedAudio(
+                content=b"fresh-audio",
+                content_type="audio/mpeg",
+                provider="azure_openai",
+                model="tts-model",
+                voice="alloy",
+                style_policy_version="2",
+            )
         )
 
         response = await speech_router.synthesize_patient_message(
@@ -131,8 +138,7 @@ class SpeechEndpointTests(unittest.IsolatedAsyncioTestCase):
             current_user=self.user,
         )
 
-        self.assertEqual(response.status_code, 303)
-        self.assertEqual(response.headers["location"], "https://storage.example/patient.mp3")
+        self.assertEqual(response.body, b"fresh-audio")
 
     @patch.object(speech_router, "SpeechService")
     async def test_transcription_forwards_audio_and_language(

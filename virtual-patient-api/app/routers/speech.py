@@ -13,7 +13,6 @@ from fastapi import (
     UploadFile,
     status,
 )
-from fastapi.responses import RedirectResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -30,7 +29,6 @@ from app.speech.contracts import (
     SpeechTranscriptionRequest,
 )
 from app.speech.service import SpeechService
-from app.speech.vocal_style_policy import VOCAL_STYLE_POLICY_VERSION
 
 
 logger = logging.getLogger(__name__)
@@ -70,7 +68,7 @@ async def synthesize_patient_message(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Synthesize one authorized patient message without requiring GCS."""
+    """Synthesize one authorized patient message with Azure OpenAI."""
     interview_controller = MedicalInterviewController(db)
     if not interview_controller.validate_interview_access(interview_id, current_user.id):
         raise HTTPException(
@@ -99,17 +97,6 @@ async def synthesize_patient_message(
         else None
     )
     gender = interview.patient_gender if interview else None
-
-    synthesis_metadata = (getattr(message, "message_metadata", None) or {}).get(
-        "speech_synthesis",
-        {},
-    )
-    if (
-        getattr(message, "audio_url", None)
-        and synthesis_metadata.get("style_policy_version")
-        == VOCAL_STYLE_POLICY_VERSION
-    ):
-        return RedirectResponse(message.audio_url, status_code=status.HTTP_303_SEE_OTHER)
 
     try:
         audio = SpeechService().synthesize_patient_message(

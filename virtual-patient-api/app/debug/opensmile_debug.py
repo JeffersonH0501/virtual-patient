@@ -23,6 +23,7 @@ from __future__ import annotations
 import math
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 from typing import Any, Iterable
 import time
@@ -39,6 +40,9 @@ LOUDNESS_FRAGMENT = "loudness"
 HNR_FRAGMENT = "HNRdBACF"
 JITTER_FRAGMENT = "jitterLocal"
 
+_smile: Any | None = None
+_smile_lock = threading.Lock()
+
 
 class OpenSmileDebugUnavailable(RuntimeError):
     """Raised when OpenSMILE (or its decode step) cannot run.
@@ -46,6 +50,28 @@ class OpenSmileDebugUnavailable(RuntimeError):
     The router converts this into an HTTP 503 debug-unavailable response instead
     of a 500 stack trace.
     """
+
+
+def _get_smile() -> Any:
+    """Build the eGeMAPS graph once and reuse it across debug chunks."""
+    global _smile
+    if _smile is not None:
+        return _smile
+    with _smile_lock:
+        if _smile is not None:
+            return _smile
+        try:
+            import opensmile
+
+            _smile = opensmile.Smile(
+                feature_set=opensmile.FeatureSet.eGeMAPSv02,
+                feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
+            )
+        except Exception as error:  # noqa: BLE001
+            raise OpenSmileDebugUnavailable(
+                f"OpenSMILE initialization failed: {error}"
+            ) from error
+    return _smile
 
 
 def process_audio_chunk(
@@ -62,11 +88,6 @@ def process_audio_chunk(
     are returned as ``None`` with a reason.
     """
     start = time.perf_counter()
-    try:
-        import opensmile
-    except Exception as error:  # noqa: BLE001 - report any import failure uniformly
-        raise OpenSmileDebugUnavailable(f"OpenSMILE import failed: {error}") from error
-
     with tempfile.TemporaryDirectory(prefix="virtual-patient-debug-audio-") as directory:
         temp_dir = Path(directory)
         source_path = temp_dir / f"chunk{_suffix_for(content_type)}"
@@ -80,11 +101,9 @@ def process_audio_chunk(
             ) from error
 
         try:
-            smile = opensmile.Smile(
-                feature_set=opensmile.FeatureSet.eGeMAPSv02,
-                feature_level=opensmile.FeatureLevel.LowLevelDescriptors,
-            )
-            frame = smile.process_file(str(wav_path))
+            smile = _get_smile()
+            with _smile_lock:
+                frame = smile.process_file(str(wav_path))
         except Exception as error:  # noqa: BLE001 - any analysis failure is unavailable
             raise OpenSmileDebugUnavailable(
                 f"OpenSMILE analysis failed: {error}"
@@ -107,7 +126,13 @@ def process_audio_chunk(
         reasons["f0_semitones"] = "no_audio_frames"
         reasons["loudness"] = "no_audio_frames"
     else:
-        f0_value = _representative_value(frame, f0_column, reasons, "f0_semitones")
+        f0_value = _representative_value(
+            frame,
+            f0_column,
+            reasons,
+            "f0_semitones",
+            positive_only=True,
+        )
         loudness_value = _representative_value(
             frame, loudness_column, reasons, "loudness"
         )
@@ -176,6 +201,8 @@ def _representative_value(
     column: str | None,
     reasons: dict[str, str],
     field: str,
+    *,
+    positive_only: bool = False,
 ) -> float | None:
     """Return the median finite per-frame value for display, or ``None``.
 
@@ -186,8 +213,10 @@ def _representative_value(
         reasons[field] = "column_missing"
         return None
     values = _finite_values(frame[column].tolist())
+    if positive_only:
+        values = [value for value in values if value > 0]
     if not values:
-        reasons[field] = "no_finite_values"
+        reasons[field] = "no_voiced_values" if positive_only else "no_finite_values"
         return None
     ordered = sorted(values)
     middle = len(ordered) // 2

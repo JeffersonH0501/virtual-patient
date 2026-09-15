@@ -1,7 +1,7 @@
 name: virtual-patient-local
 
 x-api-environment: &api-environment
-  POSTGRES_HOST: postgres
+  POSTGRES_HOST: db
   POSTGRES_PORT: 5432
   POSTGRES_DB: ${POSTGRES_DB:-virtual_patient}
   POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -22,31 +22,21 @@ x-api-environment: &api-environment
   AZURE_OPENAI_STT_DEPLOYMENT_NAME: ${AZURE_OPENAI_STT_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:-local-not-configured}
-  SPEECH_TTS_PROVIDER: ${SPEECH_TTS_PROVIDER:-azure_openai}
-  SPEECH_STT_PROVIDER: ${SPEECH_STT_PROVIDER:-azure_openai}
-  GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
-  GCS_CREDENTIALS_PATH: ${GCS_CREDENTIALS_PATH:-}
   MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/app/media}
   MEDIA_RETENTION_DAYS: ${MEDIA_RETENTION_DAYS:-}
   MEDIA_CONSENT_POLICY_VERSION: ${MEDIA_CONSENT_POLICY_VERSION:-institutional-v1}
   MEDIA_DURATION_TOLERANCE_MS: ${MEDIA_DURATION_TOLERANCE_MS:-500}
   MEDIA_MIN_FREE_BYTES: ${MEDIA_MIN_FREE_BYTES:-268435456}
-  PARAVERBAL_ANALYSIS_ENABLED: ${PARAVERBAL_ANALYSIS_ENABLED:-true}
-  PARAVERBAL_MIN_PAUSE_MS: ${PARAVERBAL_MIN_PAUSE_MS:-200}
-  PARAVERBAL_MIN_VOICED_DURATION_MS: ${PARAVERBAL_MIN_VOICED_DURATION_MS:-300}
-  PYFEAT_ANALYSIS_ENABLED: ${PYFEAT_ANALYSIS_ENABLED:-true}
-  PYFEAT_DEVICE: ${PYFEAT_DEVICE:-cpu}
-  PYFEAT_WEIGHTS_ROOT: ${PYFEAT_WEIGHTS_ROOT:-/app/pyfeat/weights}
-  PYFEAT_SAMPLE_FPS: ${PYFEAT_SAMPLE_FPS:-2}
-  PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS: ${PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS:-}
-  PYFEAT_AU12_ACTIVE_THRESHOLD: ${PYFEAT_AU12_ACTIVE_THRESHOLD:-}
 
 x-api-build: &api-build
   context: ./virtual-patient-api
   dockerfile: Dockerfile
+  target: development
+
+x-api-image: &api-image virtual-patient-api:local
 
 services:
-  postgres:
+  db:
     image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-virtual_patient}
@@ -61,33 +51,19 @@ services:
       retries: 20
 
   setup:
+    image: *api-image
     build: *api-build
     environment: *api-environment
     command: ["python", "scripts/setup_db.py"]
     volumes:
       - ./virtual-patient-api:/app
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
     profiles: ["tools"]
 
-  media-init:
-    build: *api-build
-    user: "root"
-    command: ["sh", "-c", "mkdir -p /app/media && chown -R appuser:appuser /app/media"]
-    volumes:
-      - interview_media:/app/media
-    restart: "no"
-
-  pyfeat-init:
-    build: *api-build
-    user: "root"
-    command: ["sh", "-c", "mkdir -p /app/pyfeat/weights && chown -R appuser:appuser /app/pyfeat"]
-    volumes:
-      - pyfeat_models:/app/pyfeat
-    restart: "no"
-
   api:
+    image: *api-image
     build: *api-build
     environment: *api-environment
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
@@ -98,20 +74,17 @@ services:
       - interview_media:/app/media
       - pyfeat_models:/app/pyfeat
     depends_on:
-      postgres:
+      db:
         condition: service_healthy
-      media-init:
-        condition: service_completed_successfully
-      pyfeat-init:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=5).raise_for_status()"]
       interval: 10s
-      timeout: 5s
+      timeout: 10s
       retries: 12
       start_period: 20s
 
   ui:
+    image: virtual-patient-ui:local
     build:
       context: ./virtual-patient-ui
       dockerfile: Dockerfile

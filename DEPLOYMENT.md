@@ -33,30 +33,26 @@ uses placeholders so services that do not invoke AI can still start. The
 application initially uses the mini LLM, while both chat deployments remain
 configured for explicit selection and validation.
 
-Speech provider switches are separate from deployment names:
+The backend uses Azure OpenAI directly for TTS and STT. The browser input mode
+remains a UI choice:
 
 ```bash
-SPEECH_TTS_PROVIDER=azure_openai
-SPEECH_STT_PROVIDER=azure_openai
 VITE_SPEECH_INPUT_PROVIDER=server
 ```
 
-The active provider records provisional utterance segments in the browser and
-uploads each segment to the authenticated provider-neutral endpoint. The API
+The active input mode records provisional utterance segments in the browser and
+uploads each segment to the authenticated speech endpoint. The API
 forwards the in-memory payload to Azure OpenAI. Browser speech recognition
 remains an optional fallback and may use an external browser-vendor service.
 Client-side audio activity only delimits STT requests; its boundaries remain
 provisional interaction timing rather than validated VAD or evaluation evidence.
-Patient TTS can be streamed through the authenticated message speech endpoint,
-so local playback does not require GCS. When GCS is configured, generated URLs
-remain supported as optional durable audio artifacts.
+Patient TTS is streamed through the authenticated message speech endpoint and
+is not uploaded to an external object-storage service.
 
-Patient TTS uses a versioned, provider-neutral vocal-style profile. Azure
-OpenAI maps the profile to `gpt-4o-mini-tts` `instructions`; other providers
-can implement the same contract with their own controls. The profile affects
+Patient TTS uses a versioned vocal-style profile. Azure OpenAI maps the profile
+to `gpt-4o-mini-tts` `instructions`. The profile affects
 delivery only and must not add or rewrite transcript words. Stored audio paths
-and message metadata include the policy version, and the authenticated endpoint
-redirects to durable audio only when that version matches the active policy.
+are not created; message metadata retains the policy version for reproducibility.
 
 Interview recording uses a private filesystem provider and a persistent Docker
 volume. Configure it with:
@@ -78,16 +74,10 @@ Post-interview observations run through the staged multimodal pipeline, which
 uses OpenSMILE for student audio and Py-Feat 2.1.1 for student video. The
 pipeline is scheduled as a background task when a recording is finalized. Its
 methodology (derivation parameters, threshold bands, and label rules) lives in
-versioned YAML under `app/multimodal/config/`; only infrastructure settings stay
-in `.env`. Py-Feat is enabled by default and stores downloaded model resources
-in the persistent `/app/pyfeat` volume:
-
-```bash
-PYFEAT_ANALYSIS_ENABLED=true
-PYFEAT_DEVICE=cpu
-PYFEAT_WEIGHTS_ROOT=/app/pyfeat/weights
-PYFEAT_SAMPLE_FPS=2
-```
+versioned YAML under `app/multimodal/config/`. Extractor runtime constants live
+beside their implementations: OpenSMILE uses eGeMAPSv02 LLDs over mono 16 kHz
+PCM, while Py-Feat uses Detectorv2 on CPU at 10 FPS with batches of 8 and stores
+downloaded resources in the persistent `/app/pyfeat` volume.
 
 Methodology values such as the gaze alignment tolerance and AU12 active
 threshold are configured in `app/multimodal/config/processing.yaml`, not in

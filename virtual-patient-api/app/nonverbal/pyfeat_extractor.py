@@ -26,12 +26,16 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-from app.core.config import settings
 from app.multimodal.schemas import NonverbalRawFeatures
 
 
 EXTRACTOR_NAME = "py-feat"
 EXTRACTOR_VERSION = "2.1.1"
+DEVICE = "cpu"
+WEIGHTS_ROOT = Path("/app/pyfeat/weights")
+SAMPLE_FPS = 10.0
+BATCH_SIZE = 8
+FACE_DETECTION_THRESHOLD = 0.5
 
 # Real Py-Feat 2.1.1 columns consumed downstream. Verified against the current
 # best-face row extraction; the extractor emits these as raw series only.
@@ -76,33 +80,29 @@ def analyze_pyfeat_student_turn_videos(
     ``app/nonverbal/preprocessing.py`` for derivation (task 3.2).
     """
     turn_list = list(turns)
-    if not settings.pyfeat_analysis_enabled or not turn_list:
+    if not turn_list:
         return {}
-    if settings.pyfeat_device not in {"cpu", "cuda", "mps", "auto"}:
-        raise ValueError("PYFEAT_DEVICE must be cpu, cuda, mps, or auto")
-    if settings.pyfeat_sample_fps <= 0:
-        raise ValueError("PYFEAT_SAMPLE_FPS must be greater than zero")
 
     import cv2
     import feat.utils.io as feat_io
     from feat import Detectorv2
 
-    settings.pyfeat_weights_root.mkdir(parents=True, exist_ok=True)
-    feat_io.get_resource_path = lambda: str(settings.pyfeat_weights_root)
+    WEIGHTS_ROOT.mkdir(parents=True, exist_ok=True)
+    feat_io.get_resource_path = lambda: str(WEIGHTS_ROOT)
 
     capture = cv2.VideoCapture(str(video_path))
     source_fps = capture.get(cv2.CAP_PROP_FPS)
     capture.release()
     if not source_fps or not math.isfinite(source_fps) or source_fps <= 0:
         raise RuntimeError("Unable to determine video frame rate for Py-Feat")
-    skip_frames = max(round(source_fps / settings.pyfeat_sample_fps), 1)
-    detector = Detectorv2(device=settings.pyfeat_device)
+    skip_frames = max(round(source_fps / SAMPLE_FPS), 1)
+    detector = Detectorv2(device=DEVICE)
     fex = detector.detect(
         str(video_path),
         data_type="video",
         skip_frames=skip_frames,
-        batch_size=1,
-        face_detection_threshold=0.5,
+        batch_size=BATCH_SIZE,
+        face_detection_threshold=FACE_DETECTION_THRESHOLD,
         progress_bar=False,
     )
     rows = _best_face_rows(fex, source_fps)
@@ -174,13 +174,15 @@ def _raw_features_for_turn(
         head_yaw_samples=[row["head_yaw"] for row in valid_rows if row["head_yaw"] is not None],
         head_roll_samples=[row["head_roll"] for row in valid_rows if row["head_roll"] is not None],
         frame_timestamps_ms=[float(row["timestamp_ms"]) for row in valid_rows],
-        sample_fps=float(settings.pyfeat_sample_fps),
+        sample_fps=SAMPLE_FPS,
         turn_duration_ms=max(turn.end_ms - turn.start_ms, 0),
         extractor={
             "name": EXTRACTOR_NAME,
             "version": EXTRACTOR_VERSION,
             "detector": "Detectorv2",
-            "sample_fps": settings.pyfeat_sample_fps,
+            "sample_fps": SAMPLE_FPS,
+            "batch_size": BATCH_SIZE,
+            "face_detection_threshold": FACE_DETECTION_THRESHOLD,
         },
         video_quality={
             "sampled_frame_count": len(ordered),

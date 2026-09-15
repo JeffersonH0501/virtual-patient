@@ -18,7 +18,6 @@ from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, Field, model_validator
 from app.core.database import get_db
 from app.core.auth import get_current_active_user
-from app.core.config import settings
 from app.multimodal.calibration import derive_personal_baseline
 from app.multimodal.schemas import PersonalBaseline
 from app.models.user import User, UserRole
@@ -430,10 +429,12 @@ async def derive_calibration_baseline(
             )
 
         try:
+            # Browsers record calibration as one WebM container carrying both
+            # tracks. When no separate audio upload is supplied, FFmpeg/openSMILE
+            # can read its audio track directly from the video container.
             baseline = derive_personal_baseline(
-                audio_path=audio_path,
+                audio_path=audio_path or video_path,
                 video_path=video_path,
-                min_voiced_duration_ms=settings.paraverbal_min_voiced_duration_ms,
             )
         except Exception:
             logger.exception(

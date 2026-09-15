@@ -24,8 +24,12 @@ import threading
 import time
 from typing import Any
 
-from app.core.config import settings
 from app.debug.schemas import ExtractorInfo, PyFeatFrameDebug
+from app.nonverbal.pyfeat_extractor import (
+    DEVICE,
+    FACE_DETECTION_THRESHOLD,
+    WEIGHTS_ROOT,
+)
 
 
 EXTRACTOR_NAME = "py-feat"
@@ -55,6 +59,10 @@ class PyFeatDebugUnavailable(RuntimeError):
     """
 
 
+class PyFeatDebugBusy(PyFeatDebugUnavailable):
+    """Raised when another live-debug frame is already using Detectorv2."""
+
+
 _detector: Any | None = None
 # Serialize both detector construction and detection. Detectorv2 is not
 # guaranteed thread-safe, and a low-FPS debug tool is fine running serialized.
@@ -81,9 +89,9 @@ def _get_detector() -> Any:
         except Exception as error:  # noqa: BLE001 - report any import failure uniformly
             raise PyFeatDebugUnavailable(f"Py-Feat import failed: {error}") from error
         try:
-            settings.pyfeat_weights_root.mkdir(parents=True, exist_ok=True)
-            feat_io.get_resource_path = lambda: str(settings.pyfeat_weights_root)
-            _detector = Detectorv2(device=settings.pyfeat_device)
+            WEIGHTS_ROOT.mkdir(parents=True, exist_ok=True)
+            feat_io.get_resource_path = lambda: str(WEIGHTS_ROOT)
+            _detector = Detectorv2(device=DEVICE)
         except Exception as error:  # noqa: BLE001 - construction may fail on missing weights
             raise PyFeatDebugUnavailable(
                 f"Py-Feat detector construction failed: {error}"
@@ -126,8 +134,15 @@ def detect_frame(
     image_height, image_width = int(image.shape[0]), int(image.shape[1])
 
     detector = _get_detector()
-    with _detector_lock:
+    # Never queue live-debug frames behind a running CPU inference. Returning a
+    # transient busy response keeps the most recent observation on screen and
+    # prevents multiple tabs from building an unbounded detector backlog.
+    if not _detector_lock.acquire(blocking=False):
+        raise PyFeatDebugBusy("Py-Feat detector is processing another debug frame")
+    try:
         fex = _detect_single_image(detector, image, cv2)
+    finally:
+        _detector_lock.release()
 
     best_row = _best_face_row(fex)
     if best_row is None:
@@ -204,7 +219,7 @@ def _detect_single_image(detector: Any, image: Any, cv2: Any) -> Any:
                 tmp_path,
                 data_type="image",
                 batch_size=1,
-                face_detection_threshold=0.5,
+                face_detection_threshold=FACE_DETECTION_THRESHOLD,
                 progress_bar=False,
             )
         except Exception as error:  # noqa: BLE001 - any model failure is debug-unavailable

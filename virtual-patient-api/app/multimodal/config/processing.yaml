@@ -5,21 +5,13 @@
 # psychological cutoffs. A value of `null` means the parameter is undecided and
 # the dependent feature MUST be treated as feature_unavailable — the pipeline
 # never invents a number to fill a null.
-version: "processing_v1"
+version: "processing_v2"
 
 paraverbal:
   # Minimum silence duration counted as a pause. Provisional research threshold.
   # Replaces the prior historical value of 200 ms.
   min_pause_ms: 250
-  # Minimum voiced duration for a segment to be usable. Provisional research
-  # threshold (not a clinical cutoff).
-  min_voiced_duration_ms: 300
-
 nonverbal:
-  # Video sampling rate for face/gaze extraction. Provisional and configurable:
-  # 2, 5, 10, 15, and 25 fps are intended to be benchmarked later. This 2 fps
-  # default is a provisional research setting, not a clinical cutoff.
-  sample_fps: 2
   gaze:
     # Angular tolerance (radians) for counting a frame as visually aligned with
     # the calibrated interaction center. Undecided: `null` means visual

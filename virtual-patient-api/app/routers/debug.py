@@ -15,10 +15,11 @@ from typing import Annotated, Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import get_current_active_user
 from app.debug.opensmile_debug import OpenSmileDebugUnavailable, process_audio_chunk
-from app.debug.pyfeat_debug import PyFeatDebugUnavailable, detect_frame
+from app.debug.pyfeat_debug import PyFeatDebugBusy, PyFeatDebugUnavailable, detect_frame
 from app.debug.schemas import DebugUnavailable, OpenSmileFrameDebug, PyFeatFrameDebug
 from app.models.user import User
 
@@ -95,7 +96,13 @@ async def debug_pyfeat_frame(
     """
     image_bytes = await _read_capped(frame, IMAGE_CONTENT_TYPES)
     try:
-        return detect_frame(image_bytes, frame_timestamp_ms=frame_timestamp_ms)
+        return await run_in_threadpool(
+            detect_frame,
+            image_bytes,
+            frame_timestamp_ms=frame_timestamp_ms,
+        )
+    except PyFeatDebugBusy:
+        return _unavailable_response("pyfeat_busy")
     except PyFeatDebugUnavailable as error:
         logger.warning("Py-Feat debug extractor unavailable: %s", error)
         return _unavailable_response("pyfeat_unavailable")
@@ -114,7 +121,8 @@ async def debug_opensmile_audio(
     """
     audio_bytes = await _read_capped(audio, AUDIO_CONTENT_TYPES)
     try:
-        return process_audio_chunk(
+        return await run_in_threadpool(
+            process_audio_chunk,
             audio_bytes,
             content_type=_base_content_type(audio.content_type),
             frame_timestamp_ms=frame_timestamp_ms,

@@ -22,24 +22,11 @@ x-api-environment: &api-environment
   AZURE_OPENAI_STT_DEPLOYMENT_NAME: ${AZURE_OPENAI_STT_DEPLOYMENT_NAME:?Set AZURE_OPENAI_STT_DEPLOYMENT_NAME in .env.full}
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:?Set AZURE_OPENAI_TTS_DEPLOYMENT_NAME in .env.full}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:?Set AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME in .env.full}
-  SPEECH_TTS_PROVIDER: ${SPEECH_TTS_PROVIDER:-azure_openai}
-  SPEECH_STT_PROVIDER: ${SPEECH_STT_PROVIDER:-azure_openai}
-  GCS_BUCKET_NAME: ${GCS_BUCKET_NAME:-}
-  GCS_CREDENTIALS_PATH: ${GCS_CREDENTIALS_PATH:-}
   MEDIA_STORAGE_ROOT: ${MEDIA_STORAGE_ROOT:-/app/media}
   MEDIA_RETENTION_DAYS: ${MEDIA_RETENTION_DAYS:-}
   MEDIA_CONSENT_POLICY_VERSION: ${MEDIA_CONSENT_POLICY_VERSION:-institutional-v1}
   MEDIA_DURATION_TOLERANCE_MS: ${MEDIA_DURATION_TOLERANCE_MS:-500}
   MEDIA_MIN_FREE_BYTES: ${MEDIA_MIN_FREE_BYTES:-268435456}
-  PARAVERBAL_ANALYSIS_ENABLED: ${PARAVERBAL_ANALYSIS_ENABLED:-true}
-  PARAVERBAL_MIN_PAUSE_MS: ${PARAVERBAL_MIN_PAUSE_MS:-200}
-  PARAVERBAL_MIN_VOICED_DURATION_MS: ${PARAVERBAL_MIN_VOICED_DURATION_MS:-300}
-  PYFEAT_ANALYSIS_ENABLED: ${PYFEAT_ANALYSIS_ENABLED:-true}
-  PYFEAT_DEVICE: ${PYFEAT_DEVICE:-cpu}
-  PYFEAT_WEIGHTS_ROOT: ${PYFEAT_WEIGHTS_ROOT:-/app/pyfeat/weights}
-  PYFEAT_SAMPLE_FPS: ${PYFEAT_SAMPLE_FPS:-2}
-  PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS: ${PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS:-}
-  PYFEAT_AU12_ACTIVE_THRESHOLD: ${PYFEAT_AU12_ACTIVE_THRESHOLD:-}
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -71,22 +58,6 @@ services:
     restart: "no"
     profiles: ["tools"]
 
-  media-init:
-    build: *api-build
-    user: "root"
-    command: ["sh", "-c", "mkdir -p /app/media && chown -R appuser:appuser /app/media"]
-    volumes:
-      - interview_media:/app/media
-    restart: "no"
-
-  pyfeat-init:
-    build: *api-build
-    user: "root"
-    command: ["sh", "-c", "mkdir -p /app/pyfeat/weights && chown -R appuser:appuser /app/pyfeat"]
-    volumes:
-      - pyfeat_models:/app/pyfeat
-    restart: "no"
-
   api:
     build: *api-build
     environment: *api-environment
@@ -99,10 +70,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      media-init:
-        condition: service_completed_successfully
-      pyfeat-init:
-        condition: service_completed_successfully
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=10).raise_for_status()"]

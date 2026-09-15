@@ -59,18 +59,6 @@ class Settings:
         "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"
     )
 
-    speech_tts_provider: str = os.getenv(
-        "SPEECH_TTS_PROVIDER",
-        "azure_openai",
-    ).strip().lower()
-    speech_stt_provider: str = os.getenv(
-        "SPEECH_STT_PROVIDER",
-        "disabled",
-    ).strip().lower()
-
-    gcs_bucket_name: str | None = os.getenv("GCS_BUCKET_NAME")
-    gcs_credentials_path: str | None = os.getenv("GCS_CREDENTIALS_PATH")
-
     media_storage_root: Path = Path(os.getenv("MEDIA_STORAGE_ROOT", str(REPOSITORY_ROOT / ".data" / "media")))
     media_retention_days: int | None = (
         int(os.environ["MEDIA_RETENTION_DAYS"])
@@ -91,33 +79,6 @@ class Settings:
         "PATIENT_RESPONSE_TIMING_LOGGING",
         "false",
     ).strip().lower() in {"1", "true", "yes", "on"}
-    paraverbal_analysis_enabled: bool = os.getenv(
-        "PARAVERBAL_ANALYSIS_ENABLED",
-        "true",
-    ).strip().lower() in {"1", "true", "yes", "on"}
-    paraverbal_min_pause_ms: int = int(os.getenv("PARAVERBAL_MIN_PAUSE_MS", "200"))
-    paraverbal_min_voiced_duration_ms: int = int(
-        os.getenv("PARAVERBAL_MIN_VOICED_DURATION_MS", "300")
-    )
-    pyfeat_analysis_enabled: bool = os.getenv(
-        "PYFEAT_ANALYSIS_ENABLED", "true",
-    ).strip().lower() in {"1", "true", "yes", "on"}
-    pyfeat_device: str = os.getenv("PYFEAT_DEVICE", "cpu").strip().lower()
-    pyfeat_weights_root: Path = Path(
-        os.getenv("PYFEAT_WEIGHTS_ROOT", "/app/pyfeat/weights")
-    )
-    pyfeat_sample_fps: float = float(os.getenv("PYFEAT_SAMPLE_FPS", "2"))
-    pyfeat_gaze_alignment_max_radians: float | None = (
-        float(os.environ["PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS"])
-        if os.getenv("PYFEAT_GAZE_ALIGNMENT_MAX_RADIANS", "").strip()
-        else None
-    )
-    pyfeat_au12_active_threshold: float | None = (
-        float(os.environ["PYFEAT_AU12_ACTIVE_THRESHOLD"])
-        if os.getenv("PYFEAT_AU12_ACTIVE_THRESHOLD", "").strip()
-        else None
-    )
-
     @property
     def database_url(self) -> str:
         password = quote_plus(self.postgres_password)

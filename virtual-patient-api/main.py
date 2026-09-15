@@ -122,8 +122,8 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],  # Allows all methods
-    allow_headers=["*"],  # Allows all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Include routers
@@ -151,14 +151,13 @@ async def health_check():
 
 if __name__ == "__main__":
 
-    # Enable auto-reload in development mode
     reload = settings.environment != "production"
     
     uvicorn.run(
-        "main:app",  # Use string to enable reload
+        "main:app",
         host="0.0.0.0", 
         port=8000,
-        reload=reload,  # Auto-reload on file changes
-        reload_dirs=["app", "scripts"],  # Watch these directories
+        reload=reload,
+        reload_dirs=["app", "scripts"],
         log_level="info"
     )

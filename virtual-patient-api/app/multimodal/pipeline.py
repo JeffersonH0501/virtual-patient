@@ -54,7 +54,6 @@ from __future__ import annotations
 import logging
 from typing import Any, Sequence
 
-from app.core.config import settings
 from app.core.database import SessionLocal
 from app.media import get_media_storage
 from app.models.medical_interview import (
@@ -448,21 +447,20 @@ def _extract_paraverbal(
 ) -> dict[str, ParaverbalRawFeatures]:
     """Run OpenSMILE once over the needed student segments (Requirement 19.2).
 
-    Guarded by ``settings.paraverbal_analysis_enabled``. Returns a mapping of
-    ``turn_id -> ParaverbalRawFeatures`` for turns that yielded a usable signal;
+    Returns a mapping of ``turn_id -> ParaverbalRawFeatures`` for turns that yielded a usable signal;
     turns absent from the mapping are treated downstream as unavailable. An
     extractor exception marks the paraverbal modality as an extractor failure
     without failing the whole run (Requirement 24.2).
     """
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_PARAVERBAL_EXTRACTION)
-    if not settings.paraverbal_analysis_enabled or not student_turns:
+    if not student_turns:
         logger.info(
             "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
             "modality=paraverbal result=skipped reason=%s",
             interview_id,
             recording_id,
             STAGE_PARAVERBAL_EXTRACTION,
-            "disabled" if not settings.paraverbal_analysis_enabled else "no_student_turns",
+            "no_student_turns",
         )
         return {}
 
@@ -536,14 +534,14 @@ def _extract_nonverbal(
     conversation speaker from ``observationContext`` to derive the context.
     """
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_NONVERBAL_EXTRACTION)
-    if not settings.pyfeat_analysis_enabled or not turns:
+    if not turns:
         logger.info(
             "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
             "modality=nonverbal result=skipped reason=%s",
             interview_id,
             recording_id,
             STAGE_NONVERBAL_EXTRACTION,
-            "disabled" if not settings.pyfeat_analysis_enabled else "no_turns",
+            "no_turns",
         )
         return {}, {}
 

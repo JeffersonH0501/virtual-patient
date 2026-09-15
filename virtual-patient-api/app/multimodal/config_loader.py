@@ -70,7 +70,6 @@ class _ProcessingParaverbal(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     min_pause_ms: int | None
-    min_voiced_duration_ms: int | None
 
 
 class _ProcessingNonverbal(BaseModel):
@@ -78,7 +77,6 @@ class _ProcessingNonverbal(BaseModel):
 
     # Only the top-level presence of these sub-sections is required; the
     # individual leaf values (tolerances, thresholds, nod params) may be null.
-    sample_fps: float | None
     gaze: dict[str, Any]
     smile: dict[str, Any]
     nod: dict[str, Any]

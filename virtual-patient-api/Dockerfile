@@ -40,8 +40,9 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     pip install -r requirements.txt
 
 
-# Production stage
-FROM python:3.12-slim AS production
+# Shared runtime stage. Local development stops before application source is
+# copied because docker-compose bind-mounts it into /app.
+FROM python:3.12-slim AS runtime
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -79,15 +80,27 @@ COPY --from=builder \
     /usr/local/bin \
     /usr/local/bin
 
-# Copy application code
-COPY --chown=appuser:appuser . .
-
-# Create necessary directories
-RUN mkdir -p /app/logs /app/temp && \
+# Create runtime and named-volume mount points with the ownership required by
+# the non-root API process. New Docker volumes inherit these permissions.
+RUN mkdir -p /app/logs /app/temp /app/media /app/pyfeat/weights && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user
 USER appuser
+
+# Development image: dependencies only. Source is provided by the bind mount,
+# so normal Python edits neither require nor invalidate an image build.
+FROM runtime AS development
+
+ENV ENV=development
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+
+
+# Production image: immutable source is baked into the final image.
+FROM runtime AS production
+
+COPY --chown=appuser:appuser . .
 
 # Expose port
 EXPOSE 8000

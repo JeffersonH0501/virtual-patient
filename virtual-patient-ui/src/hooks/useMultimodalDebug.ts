@@ -35,9 +35,13 @@ export type MultimodalDebugState = {
   sampleFps: number | null;
 };
 
-const DEFAULT_FRAME_FPS = 3;
-const DEFAULT_AUDIO_INTERVAL_MS = 800;
+// Detectorv2 on CPU is an inspection aid rather than a real-time renderer.
+// One frame per second remains useful in calibration while preventing the debug
+// panel from competing with audio extraction and API health checks.
+const DEFAULT_FRAME_FPS = 1;
+const DEFAULT_AUDIO_INTERVAL_MS = 1_500;
 const JPEG_QUALITY = 0.7;
+const MAX_DEBUG_FRAME_EDGE_PX = 640;
 
 // Ordered candidate MIME types for the debug MediaRecorder. The first supported
 // one that ffmpeg can decode is used; each chunk is produced by a start/stop
@@ -65,13 +69,16 @@ export const captureFrameBlob = (
   const width = video.videoWidth;
   const height = video.videoHeight;
   if (!width || !height) return Promise.resolve(null);
-  if (canvas.width !== width) canvas.width = width;
-  if (canvas.height !== height) canvas.height = height;
+  const scale = Math.min(1, MAX_DEBUG_FRAME_EDGE_PX / Math.max(width, height));
+  const sampledWidth = Math.max(1, Math.round(width * scale));
+  const sampledHeight = Math.max(1, Math.round(height * scale));
+  if (canvas.width !== sampledWidth) canvas.width = sampledWidth;
+  if (canvas.height !== sampledHeight) canvas.height = sampledHeight;
   const ctx = canvas.getContext('2d');
   if (!ctx) return Promise.resolve(null);
   // Draw the raw frame (no mirroring) so backend landmark pixel coordinates map
   // to the real image; the overlay handles mirroring for display only.
-  ctx.drawImage(video, 0, 0, width, height);
+  ctx.drawImage(video, 0, 0, sampledWidth, sampledHeight);
   return new Promise((resolve) => {
     canvas.toBlob((blob) => resolve(blob), 'image/jpeg', JPEG_QUALITY);
   });

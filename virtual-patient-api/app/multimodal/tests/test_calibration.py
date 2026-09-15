@@ -27,10 +27,10 @@ stub interview -- the same lightweight-stub approach used by the existing router
 tests -- while mocking :func:`derive_personal_baseline` so no real extractor or
 media processing is required. This exercises the real endpoint logic (auth-scoped
 lookup, ``start_time`` guard, temp-file streaming + ``finally`` deletion, metadata
-persistence) without a live DB or Postgres/Azure/GCS environment.
+persistence) without a live DB or external Azure environment.
 
 These tests deliberately do not spin up a FastAPI ``TestClient`` against a real
-database: that would require Postgres/Azure/LiveKit/GCS configuration that is not
+database: that would require Postgres/Azure configuration that is not
 part of a unit-test environment, per the workspace validation rules. Calling the
 endpoint coroutine directly gives the strongest feasible coverage of the endpoint
 contract without fabricating an environment.
@@ -340,7 +340,7 @@ class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
         # Overwrite guard: calibration is allowed while start_time is None.
         interview = self._interview(start_time=None)
         db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.wav", content_type="audio/wav")
+        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
         video = _make_upload(b"video-bytes", filename="c.mp4", content_type="video/mp4")
 
         derived = _valid_baseline()
@@ -348,9 +348,6 @@ class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
             medical_interviews, "derive_personal_baseline", return_value=derived
         ) as mock_derive, patch.object(
             medical_interviews, "flag_modified"
-        ), patch.object(
-            medical_interviews, "settings",
-            SimpleNamespace(paraverbal_min_voiced_duration_ms=300),
         ):
             response = _run(
                 derive_calibration_baseline(
@@ -382,12 +379,43 @@ class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
         self.assertIsNotNone(kwargs["audio_path"])
         self.assertIsNotNone(kwargs["video_path"])
 
+    def test_combined_video_is_reused_as_audio_source(self):
+        interview = self._interview(start_time=None)
+        db = _Database(interview)
+        video = _make_upload(
+            b"combined-audio-video-bytes",
+            filename="calibration.webm",
+            content_type="video/webm",
+        )
+
+        with patch.object(
+            medical_interviews,
+            "derive_personal_baseline",
+            return_value=_valid_baseline(),
+        ) as mock_derive, patch.object(
+            medical_interviews, "flag_modified"
+        ):
+            response = _run(
+                derive_calibration_baseline(
+                    interview_id=7,
+                    audio=None,
+                    video=video,
+                    current_user=self._current_user(),
+                    db=db,
+                )
+            )
+
+        self.assertEqual(response.status, "ok")
+        _, kwargs = mock_derive.call_args
+        self.assertEqual(kwargs["audio_path"], kwargs["video_path"])
+        self.assertFalse(os.path.exists(kwargs["video_path"]))
+
     def test_media_not_persisted_temp_files_deleted(self):
         # Media is never persisted (Requirement 15.4): the temp files handed to
         # the extractor must not exist once the endpoint returns.
         interview = self._interview()
         db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.wav", content_type="audio/wav")
+        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
         video = _make_upload(b"video-bytes", filename="c.mp4", content_type="video/mp4")
 
         captured = {}
@@ -404,9 +432,6 @@ class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
             medical_interviews, "derive_personal_baseline", side_effect=_capture
         ), patch.object(
             medical_interviews, "flag_modified"
-        ), patch.object(
-            medical_interviews, "settings",
-            SimpleNamespace(paraverbal_min_voiced_duration_ms=300),
         ):
             _run(
                 derive_calibration_baseline(
@@ -427,7 +452,7 @@ class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
     def test_temp_files_deleted_even_when_derivation_fails(self):
         interview = self._interview()
         db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.wav", content_type="audio/wav")
+        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
 
         captured = {}
 
@@ -437,9 +462,6 @@ class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
 
         with patch.object(
             medical_interviews, "derive_personal_baseline", side_effect=_boom
-        ), patch.object(
-            medical_interviews, "settings",
-            SimpleNamespace(paraverbal_min_voiced_duration_ms=300),
         ):
             with self.assertRaises(HTTPException) as ctx:
                 _run(
@@ -461,13 +483,10 @@ class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
     def test_unavailable_baseline_is_not_fabricated(self):
         interview = self._interview()
         db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.wav", content_type="audio/wav")
+        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
 
         with patch.object(
             medical_interviews, "derive_personal_baseline", return_value=None
-        ), patch.object(
-            medical_interviews, "settings",
-            SimpleNamespace(paraverbal_min_voiced_duration_ms=300),
         ):
             response = _run(
                 derive_calibration_baseline(

@@ -1,4 +1,4 @@
-"""Application speech orchestration without provider-specific dependencies."""
+"""Azure OpenAI speech orchestration with injectable test doubles."""
 
 from app.speech.contracts import (
     SpeechSynthesisRequest,
@@ -27,7 +27,7 @@ def create_patient_synthesis_request(
 
 
 class SpeechService:
-    """Coordinate speech requests through replaceable providers."""
+    """Coordinate speech requests through the fixed Azure OpenAI integration."""
 
     def __init__(
         self,

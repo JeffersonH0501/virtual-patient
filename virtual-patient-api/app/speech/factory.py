@@ -1,4 +1,4 @@
-"""Speech provider factories selected through application configuration."""
+"""Azure OpenAI speech provider factories."""
 
 from app.core.config import Settings, settings
 from app.speech.azure_openai import (
@@ -6,7 +6,6 @@ from app.speech.azure_openai import (
     AzureOpenAITextToSpeechProvider,
 )
 from app.speech.contracts import (
-    SpeechConfigurationError,
     SpeechToTextProvider,
     TextToSpeechProvider,
 )
@@ -15,24 +14,12 @@ from app.speech.contracts import (
 def create_tts_provider(
     configuration: Settings = settings,
 ) -> TextToSpeechProvider:
-    """Create the configured text-to-speech provider."""
-    if configuration.speech_tts_provider == "azure_openai":
-        return AzureOpenAITextToSpeechProvider(configuration=configuration)
-    if configuration.speech_tts_provider == "disabled":
-        raise SpeechConfigurationError("Text-to-speech is disabled")
-    raise SpeechConfigurationError(
-        f"Unsupported text-to-speech provider: {configuration.speech_tts_provider}"
-    )
+    """Create the project's fixed Azure OpenAI text-to-speech provider."""
+    return AzureOpenAITextToSpeechProvider(configuration=configuration)
 
 
 def create_stt_provider(
     configuration: Settings = settings,
 ) -> SpeechToTextProvider:
-    """Create the configured speech-to-text provider."""
-    if configuration.speech_stt_provider == "azure_openai":
-        return AzureOpenAISpeechToTextProvider(configuration=configuration)
-    if configuration.speech_stt_provider == "disabled":
-        raise SpeechConfigurationError("Server speech-to-text is disabled")
-    raise SpeechConfigurationError(
-        f"Unsupported speech-to-text provider: {configuration.speech_stt_provider}"
-    )
+    """Create the project's fixed Azure OpenAI speech-to-text provider."""
+    return AzureOpenAISpeechToTextProvider(configuration=configuration)

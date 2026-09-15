@@ -14,7 +14,6 @@ from app.speech.contracts import (
     HesitationFrequency,
     IntonationVariation,
     PauseFrequency,
-    SpeechConfigurationError,
     SpeechSynthesisRequest,
     SpeechTranscriptionRequest,
     SpeakingRate,
@@ -137,10 +136,8 @@ class SpeechProviderTests(unittest.TestCase):
         self.assertEqual(result.style_policy_version, "test-version")
         self.assertEqual(result.synthesis_instructions, arguments["instructions"])
 
-    @patch("app.speech.storage.create_audio_storage", return_value=None)
     def test_synthesis_metadata_is_recorded_without_durable_storage(
         self,
-        _create_storage,
     ) -> None:
         persisted = persist_patient_audio(
             interview_id=11,
@@ -160,13 +157,14 @@ class SpeechProviderTests(unittest.TestCase):
             "moderately_slow",
         )
 
-    def test_disabled_provider_has_clear_configuration_error(self) -> None:
-        configuration = Settings(
-            speech_tts_provider="disabled",
-            speech_stt_provider="disabled",
-        )
+    def test_factories_always_create_azure_openai_providers(self) -> None:
+        configuration = Settings()
 
-        with self.assertRaisesRegex(SpeechConfigurationError, "disabled"):
-            create_tts_provider(configuration)
-        with self.assertRaisesRegex(SpeechConfigurationError, "disabled"):
-            create_stt_provider(configuration)
+        self.assertIsInstance(
+            create_tts_provider(configuration),
+            AzureOpenAITextToSpeechProvider,
+        )
+        self.assertIsInstance(
+            create_stt_provider(configuration),
+            AzureOpenAISpeechToTextProvider,
+        )
