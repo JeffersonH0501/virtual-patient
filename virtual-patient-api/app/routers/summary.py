@@ -130,22 +130,17 @@ async def process_summary(
             localized_versions[target_language] = localized_summary.model_dump()
 
         last_message_id = interview_messages[-1].id if interview_messages else None
-        if existing_summary:
-            progress_summary_controller.update_progress_summary(
-                interview_id,
-                canonical_summary,
-                last_message_id,
-                source_language="en",
-                localized_versions=localized_versions,
-            )
-        else:
-            progress_summary_controller.create_progress_summary(
-                interview_id,
-                canonical_summary,
-                last_message_id,
-                source_language="en",
-                localized_versions=localized_versions,
-            )
+        # Persist idempotently: update_progress_summary creates the row when it
+        # does not exist and updates it otherwise. Branching on the previously
+        # read existing_summary would race concurrent summary requests (the
+        # periodic refresh and the final summary) and hit the unique constraint.
+        progress_summary_controller.update_progress_summary(
+            interview_id,
+            canonical_summary,
+            last_message_id,
+            source_language="en",
+            localized_versions=localized_versions,
+        )
 
         return ProcessSummaryResponse(summary_result=localized_summary)
     except HTTPException:

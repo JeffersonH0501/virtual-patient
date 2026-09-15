@@ -14,6 +14,7 @@ import {
   SpeechTiming,
 } from '../types/recording';
 import {selectAudioMimeType, selectVideoMimeType} from '../utils/mediaRecorder';
+import {MediaAccessState} from '../contexts/interviewMedia';
 
 const VIDEO_WIDTH = 1280;
 const VIDEO_HEIGHT = 720;
@@ -39,6 +40,7 @@ type UseInterviewRecordingOptions = {
   enabled: boolean;
   cameraStream: MediaStream | null;
   microphoneStream: MediaStream | null;
+  microphoneState: MediaAccessState;
   cameraEnabled: boolean;
   microphoneEnabled: boolean;
   patientAudioEnabled: boolean;
@@ -65,6 +67,7 @@ export const useInterviewRecording = ({
   enabled,
   cameraStream,
   microphoneStream,
+  microphoneState,
   cameraEnabled,
   microphoneEnabled,
   patientAudioEnabled,
@@ -395,8 +398,19 @@ export const useInterviewRecording = ({
   }, [enabled, interviewId, releaseResources]);
 
   useEffect(() => {
-    if (enabled) void start();
-  }, [enabled, start]);
+    if (!enabled) return;
+    // Defer the capture start until the student microphone is settled. Starting
+    // while it is still coming up (idle/loading) races the stream becoming
+    // active and would wrongly flag the student audio as unavailable even
+    // though it works. Once the mic is active we start with it; if it is
+    // definitively unavailable we still start and record the other sources.
+    const microphoneReady = Boolean(microphoneStream?.active);
+    const microphoneSettledUnavailable =
+      microphoneState === 'permission-denied'
+      || microphoneState === 'unavailable'
+      || microphoneState === 'unsupported';
+    if (microphoneReady || microphoneSettledUnavailable) void start();
+  }, [enabled, microphoneState, microphoneStream, start]);
 
   const pause = useCallback(() => {
     if (status !== 'recording') return;

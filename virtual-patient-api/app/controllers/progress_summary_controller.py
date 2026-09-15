@@ -93,8 +93,17 @@ class ProgressSummaryController:
             return ProgressSummary.model_validate(db_summary)
             
         except IntegrityError:
+            # A concurrent request already created the summary for this
+            # interview (medical_interview_id is unique). Recover by updating the
+            # existing row instead of failing, keeping the operation idempotent.
             self.db.rollback()
-            raise ValueError(f"Progress summary already exists for interview {interview_id}")
+            return self.update_progress_summary(
+                interview_id,
+                summary_data,
+                message_id,
+                source_language,
+                localized_versions,
+            )
     
     def update_progress_summary(
         self, 

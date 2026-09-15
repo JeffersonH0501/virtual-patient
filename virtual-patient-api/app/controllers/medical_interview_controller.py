@@ -50,7 +50,7 @@ class MedicalInterviewController:
         interview = MedicalInterviewDB(
             user_id=user_id,
             clinical_case_id=clinical_case_id,
-            status=InterviewStatus.ACTIVE,
+            status=InterviewStatus.IN_PROGRESS,
             interview_metadata=interview_metadata or {},
             start_time=None,
             patient_name=final_patient_name,
@@ -87,6 +87,19 @@ class MedicalInterviewController:
         
         interviews = query.order_by(MedicalInterviewDB.start_time.desc()).all()
         return [MedicalInterview.from_orm(interview) for interview in interviews]
+
+    def get_active_started_interview(self, user_id: int) -> Optional[MedicalInterviewDB]:
+        """Return the user's in-progress interview, if any.
+
+        An interview is considered in progress once it has started (start_time is
+        set after calibration) and has not been completed or interrupted. A
+        student may only have one such interview at a time.
+        """
+        return self.db.query(MedicalInterviewDB).filter(
+            MedicalInterviewDB.user_id == user_id,
+            MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS,
+            MedicalInterviewDB.start_time.isnot(None),
+        ).order_by(MedicalInterviewDB.start_time.desc()).first()
     
     def get_user_interviews_with_scores(self, user_id: int, status: Optional[InterviewStatus] = None, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
         """Get all interviews for a user with evaluation scores"""
@@ -94,7 +107,13 @@ class MedicalInterviewController:
         
         query = self.db.query(MedicalInterviewDB).options(
             joinedload(MedicalInterviewDB.interview_evaluation)
-        ).filter(MedicalInterviewDB.user_id == user_id)
+        ).filter(
+            MedicalInterviewDB.user_id == user_id,
+            # Only interviews that actually started (passed calibration) are kept in
+            # the history. Interviews created but abandoned during calibration have
+            # no start_time and must never appear.
+            MedicalInterviewDB.start_time.isnot(None),
+        )
         
         if status:
             query = query.filter(MedicalInterviewDB.status == status)
@@ -151,6 +170,36 @@ class MedicalInterviewController:
         
         return MedicalInterview.from_orm(interview)
     
+    def mark_processing(self, interview_id: int) -> Optional[MedicalInterview]:
+        """Mark an interview as processing its evaluation and feedback.
+
+        The interaction with the virtual patient has ended and the collected
+        information is being processed. This is the transient state between
+        IN_PROGRESS and COMPLETED.
+        """
+        interview = self.db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id).first()
+        if not interview:
+            return None
+        if interview.start_time is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="The interview has not started",
+            )
+        return self.update_interview(
+            interview_id,
+            MedicalInterviewUpdate(status=InterviewStatus.PROCESSING),
+        )
+
+    def interrupt_processing(self, interview_id: int) -> Optional[MedicalInterview]:
+        """Mark an interview as interrupted after a processing failure."""
+        return self.update_interview(
+            interview_id,
+            MedicalInterviewUpdate(
+                status=InterviewStatus.INTERRUPTED,
+                end_time=datetime.now(timezone.utc),
+            ),
+        )
+
     def complete_interview(self, interview_id: int) -> Optional[MedicalInterview]:
         """Complete an interview"""
         interview = self.db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id).first()
@@ -162,20 +211,30 @@ class MedicalInterviewController:
                 detail="The interview has not started",
             )
         
-        # Calculate total duration
         end_time = datetime.now(timezone.utc)
-        if interview.start_time:
-            duration_seconds = int((end_time - interview.start_time).total_seconds())
-        else:
-            duration_seconds = None
-        
-        return self.update_interview(
-            interview_id, 
+
+        completed = self.update_interview(
+            interview_id,
             MedicalInterviewUpdate(
                 status=InterviewStatus.COMPLETED,
                 end_time=end_time
             )
         )
+
+        # Align the stored duration with the per-turn analysis timeline. Turns and
+        # the recap are timed against the recording clock (recording.duration_ms,
+        # measured by the browser and pause-adjusted), so prefer it as the single
+        # source of truth. Fall back to the server wall-clock span only when no
+        # recording duration is available.
+        recording = interview.recording
+        if recording is not None and recording.duration_ms:
+            interview.total_duration = int(round(recording.duration_ms / 1000))
+            self.db.commit()
+            self.db.refresh(interview)
+            if completed is not None:
+                completed.total_duration = interview.total_duration
+
+        return completed
 
     def start_interview(self, interview_id: int) -> Optional[MedicalInterview]:
         """Start a calibrated interview and establish its official clock."""
@@ -184,10 +243,10 @@ class MedicalInterviewController:
         ).first()
         if not interview:
             return None
-        if interview.status != InterviewStatus.ACTIVE:
+        if interview.status != InterviewStatus.IN_PROGRESS:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Only active interviews can be started",
+                detail="Only in-progress interviews can be started",
             )
         if interview.start_time is not None:
             return MedicalInterview.from_orm(interview)
@@ -205,11 +264,11 @@ class MedicalInterviewController:
         return MedicalInterview.from_orm(interview)
     
     def abandon_interview(self, interview_id: int) -> Optional[MedicalInterview]:
-        """Abandon an interview"""
+        """Mark an interview as interrupted (student abandoned the session)."""
         return self.update_interview(
             interview_id,
             MedicalInterviewUpdate(
-                status=InterviewStatus.ABANDONED,
+                status=InterviewStatus.INTERRUPTED,
                 end_time=datetime.now(timezone.utc)
             )
         )
@@ -248,7 +307,7 @@ class MedicalInterviewController:
                 detail="Access denied to this interview"
             )
 
-        # Validate interview exists and is active
+        # Validate interview exists and is in progress
         interview = self.get_interview(interview_id)
         if not interview:
             raise HTTPException(
@@ -256,10 +315,10 @@ class MedicalInterviewController:
                 detail="Interview not found"
             )
         
-        if interview.status != "active":
+        if interview.status != InterviewStatus.IN_PROGRESS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Interview is not active"
+                detail="Interview is not in progress"
             )
         if interview.start_time is None:
             raise HTTPException(
@@ -534,7 +593,7 @@ class MedicalInterviewController:
         count = self.db.query(distinct(MedicalInterviewDB.user_id)).join(
             UserDB, MedicalInterviewDB.user_id == UserDB.id
         ).filter(
-            MedicalInterviewDB.status == InterviewStatus.ACTIVE,
+            MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS,
             MedicalInterviewDB.start_time.isnot(None),
             UserDB.role == UserRole.STUDENT.value
         ).count()
@@ -562,7 +621,10 @@ class MedicalInterviewController:
         from app.models.medical_interview.interview_evaluation import InterviewEvaluationDB
         from app.models.user import UserDB, UserRole
         
-        # Query to get average score for student interviews only (ignoring organization_id parameter)
+        # Query to get average score for student interviews only (ignoring
+        # organization_id parameter). Only completed interviews count:
+        # interrupted interviews carry no evaluation and must never contribute
+        # to the overall score.
         result = self.db.query(
             func.avg(InterviewEvaluationDB.overall_score).label('average_score'),
             func.count(InterviewEvaluationDB.id).label('total_evaluations')
@@ -571,6 +633,7 @@ class MedicalInterviewController:
         ).join(
             UserDB, MedicalInterviewDB.user_id == UserDB.id
         ).filter(
+            MedicalInterviewDB.status == InterviewStatus.COMPLETED,
             InterviewEvaluationDB.overall_score.isnot(None),
             UserDB.role == UserRole.STUDENT.value
         ).first()
@@ -636,10 +699,13 @@ class MedicalInterviewController:
 
     def get_average_score_for_user(self, user_id: int) -> Dict[str, Any]:
         """Get the average evaluation score for a specific user's conversations"""
+        from app.models.medical_interview.enums import InterviewStatus
         from sqlalchemy import func
         from app.models.medical_interview.interview_evaluation import InterviewEvaluationDB
         
-        # Query to get average score for user's interviews
+        # Query to get average score for user's interviews. Only completed
+        # interviews count: interrupted interviews carry no evaluation and must
+        # never contribute to the overall score.
         result = self.db.query(
             func.avg(InterviewEvaluationDB.overall_score).label('average_score'),
             func.count(InterviewEvaluationDB.id).label('total_evaluations')
@@ -647,6 +713,7 @@ class MedicalInterviewController:
             MedicalInterviewDB, InterviewEvaluationDB.medical_interview_id == MedicalInterviewDB.id
         ).filter(
             MedicalInterviewDB.user_id == user_id,
+            MedicalInterviewDB.status == InterviewStatus.COMPLETED,
             InterviewEvaluationDB.overall_score.isnot(None)
         ).first()
         

@@ -215,3 +215,6 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Visual check output (Playwright screenshots and layout metrics)
+virtual-patient-ui/scripts/visual-check/output/

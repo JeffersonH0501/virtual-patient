@@ -25,14 +25,21 @@ class HypothesisController:
         return UserHypothesis.from_orm(hypothesis)
     
     def create_hypotheses_batch(self, interview_id: int, hypotheses_data: List[UserHypothesisCreate]) -> List[UserHypothesis]:
-        """Create or update multiple hypotheses at once"""
-        if len(hypotheses_data) != 3:
-            raise ValueError("Exactly 3 hypotheses are required")
-        
-        # Validate hypothesis orders
+        """Create or update multiple hypotheses at once.
+
+        Up to three hypotheses may be submitted. The student is not required to
+        fill all three, so between one and three are accepted. Each hypothesis
+        must have a distinct order within 1..3.
+        """
+        if not 1 <= len(hypotheses_data) <= 3:
+            raise ValueError("Between 1 and 3 hypotheses are required")
+
+        # Validate hypothesis orders: distinct values within the 1..3 range.
         orders = [h.hypothesis_order for h in hypotheses_data]
-        if set(orders) != {1, 2, 3}:
-            raise ValueError("Hypothesis orders must be 1, 2, and 3")
+        if len(set(orders)) != len(orders):
+            raise ValueError("Hypothesis orders must be distinct")
+        if any(order < 1 or order > 3 for order in orders):
+            raise ValueError("Hypothesis orders must be between 1 and 3")
         
         # Check if hypotheses already exist
         existing_hypotheses = self.get_interview_hypotheses(interview_id)
@@ -150,7 +157,7 @@ class HypothesisController:
         interview = self.db.query(MedicalInterviewDB).filter(
             and_(
                 MedicalInterviewDB.id == interview_id,
-                MedicalInterviewDB.status == InterviewStatus.ACTIVE
+                MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS
             )
         ).first()
         return interview is not None 

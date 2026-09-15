@@ -13,6 +13,7 @@ export * from './LanguageSwitcher';
 export * from './Modal';
 export * from './NonIdealState';
 export * from './Portal';
+export * from './Skeleton';
 export * from './StatusIndicator';
 export * from './Tooltip';
 export * from './ShowMore';

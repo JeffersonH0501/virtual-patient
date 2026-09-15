@@ -26,7 +26,7 @@ class MedicalInterviewDB(Base):
     clinical_case_id = Column(Integer, ForeignKey("clinical_cases.id"), nullable=False, index=True)
     start_time = Column(DateTime(timezone=True), nullable=True)
     end_time = Column(DateTime(timezone=True), nullable=True)
-    status = Column(Enum(InterviewStatus, name='interview_status'), nullable=False, default=InterviewStatus.ACTIVE)
+    status = Column(Enum(InterviewStatus, name='interview_status'), nullable=False, default=InterviewStatus.IN_PROGRESS)
     interview_metadata = Column(JSON, nullable=True)  # Additional interview-level information
     total_duration = Column(Integer, nullable=True)
     patient_name = Column(String, nullable=True)
@@ -61,7 +61,7 @@ class MedicalInterviewDB(Base):
 # Pydantic Models
 class MedicalInterviewBase(BaseModel):
     clinical_case_id: int = Field(..., description="ID of the clinical case for this interview")
-    status: InterviewStatus = InterviewStatus.ACTIVE
+    status: InterviewStatus = InterviewStatus.IN_PROGRESS
     interview_metadata: Optional[Dict[str, Any]] = None
     patient_name: Optional[str] = None
     patient_photo: Optional[str] = None

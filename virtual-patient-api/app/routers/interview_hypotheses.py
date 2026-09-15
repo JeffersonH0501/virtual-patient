@@ -66,10 +66,10 @@ async def submit_hypotheses(
 
     print(f"Interview found: {interview}")
     
-    if interview.status != "active":
+    if interview.status != "in_progress":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Interview is not active"
+            detail="Interview is not in progress"
         )
     if interview.start_time is None:
         raise HTTPException(

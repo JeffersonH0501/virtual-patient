@@ -129,8 +129,8 @@ def start_recording(
 ):
     interview = _get_interview(db, interview_id)
     _require_owner(interview, user)
-    if getattr(interview.status, "value", interview.status) != "active":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only active interviews can start recording")
+    if getattr(interview.status, "value", interview.status) != "in_progress":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only in-progress interviews can start recording")
     if interview.start_time is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The interview has not started")
 

@@ -25,9 +25,9 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
     return interview.teacherFeedback.some((feedback) => feedback.reviewedByYou);
   }, [user, interview.teacherFeedback]);
 
-  // Calculate live duration for active interviews
+  // Calculate live duration for in-progress interviews
   const liveDuration = useMemo(() => {
-    if (interview.status === 'active' && interview.startTime) {
+    if (interview.status === 'in_progress' && interview.startTime) {
       const now = new Date().getTime();
       const start = new Date(interview.startTime).getTime();
       return Math.floor((now - start) / 1000);
@@ -36,7 +36,8 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
   }, [interview.status, interview.startTime]);
 
   const handleRowClick = () => {
-    navigate(interviewPath(interview.id, interview.status === 'completed' ? 'review' : 'session'));
+    const isTerminal = interview.status === 'completed' || interview.status === 'interrupted';
+    navigate(interviewPath(interview.id, isTerminal ? 'review' : 'session'));
   };
 
   return (
@@ -81,7 +82,7 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
 
       {/* Duration Column */}
       <td className="flex-1 px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
-        {interview.status === 'active' && interview.startTime ? formatDuration(liveDuration, t('conversations.min')) : formatDuration(interview.totalDuration, t('conversations.min'))}
+        {interview.status === 'in_progress' && interview.startTime ? formatDuration(liveDuration, t('conversations.min')) : formatDuration(interview.totalDuration, t('conversations.min'))}
       </td>
 
       {/* Score Column */}
@@ -93,7 +94,15 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
 
       {/* Status Column */}
       <td className="flex flex-1 items-center px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
-        <Badge variant={interview.status === 'completed' ? 'orange' : 'green'}>
+        <Badge
+          variant={
+            interview.status === 'completed'
+              ? 'orange'
+              : interview.status === 'interrupted'
+                ? 'red'
+                : 'green'
+          }
+        >
           {t(`clinicalChat.${interview.status}`)}
         </Badge>
       </td>

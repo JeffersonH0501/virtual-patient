@@ -1,6 +1,7 @@
 import {FC, useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {StatCard} from './StatCard';
+import {PersonalStatisticsCardsSkeleton} from './PersonalStatisticsCardsSkeleton';
 import {getPersonalStatistics, PersonalStatistics} from '../../services/statistics/getPersonalStatistics';
 import {EvaluationScore} from '../common';
 
@@ -56,13 +57,7 @@ export const PersonalStatisticsCards: FC = () => {
   };
 
   if (isLoading) {
-    return (
-      <div className="grid gap-2 md:grid-cols-3">
-        <StatCard title={t('conversations.completedCases')} value={t('common.loading')} />
-        <StatCard title={t('conversations.averageDuration')} value={t('common.loading')} />
-        <StatCard title={t('conversations.overallScore')} value={t('common.loading')} />
-      </div>
-    );
+    return <PersonalStatisticsCardsSkeleton />;
   }
 
   if (error) {
@@ -84,17 +79,14 @@ export const PersonalStatisticsCards: FC = () => {
       <StatCard
         title={t('conversations.completedCases')}
         value={statistics.completedCases.toString()}
-        change={t('conversations.totalCompleted')}
       />
       <StatCard
         title={t('conversations.averageDuration')}
         value={statistics.hasDurationData ? formatDuration(statistics.averageDurationSeconds) : 'N/A'}
-        change={statistics.hasDurationData ? `${statistics.totalCompletedCases} ${t('conversations.cases')}` : t('conversations.noData')}
       />
       <StatCard
         title={t('conversations.overallScore')}
         value={statistics.hasScoreData ? <EvaluationScore score={statistics.averageScore} size="large" /> : 'N/A'}
-        change={statistics.hasScoreData ? `${statistics.totalEvaluations} ${t('conversations.evaluations')}` : t('conversations.noData')}
       />
     </div>
   );

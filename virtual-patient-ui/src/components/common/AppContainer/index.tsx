@@ -14,10 +14,12 @@ export type AppContainerOutletContext = {
 export const AppContainer = () => {
   const { isTokenExpired } = useAuthError();
   const {pathname} = useLocation();
-  const calibrationMatch = matchPath(ROUTES.interviewCalibration, pathname);
+  const legacyCalibrationMatch = matchPath(ROUTES.interviewCalibration, pathname);
+  const preInterviewCalibrationMatch = matchPath(ROUTES.calibration, pathname);
+  const calibrationMatch = legacyCalibrationMatch || preInterviewCalibrationMatch;
   const sessionMatch = matchPath(ROUTES.interviewSession, pathname);
   const reviewMatch = matchPath(ROUTES.interviewReview, pathname);
-  const interviewId = calibrationMatch?.params.interviewId || sessionMatch?.params.interviewId;
+  const interviewId = legacyCalibrationMatch?.params.interviewId || sessionMatch?.params.interviewId;
   const isClinicalChat = Boolean(sessionMatch || reviewMatch);
   const isInterviewFlow = Boolean(calibrationMatch || sessionMatch || reviewMatch);
   const [clinicalSimulationActive, setClinicalSimulationActive] = useState(false);

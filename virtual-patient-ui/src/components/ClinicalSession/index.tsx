@@ -2,9 +2,8 @@ import {FC, useEffect, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {ActionButtons} from './ActionButtons';
-import {interviewPath} from '../../utils/routes';
+import {ROUTES, type CalibrationRouteState} from '../../utils/routes';
 import type {ClinicalCaseSimplified} from '../../services/clinicalCases';
-import {createInterview} from '../../services/interviews/createInterview';
 import {getPersonalities} from '../../services/personalities';
 import {CustomSelect} from '../common';
 import {Personality} from '../../types';
@@ -32,7 +31,8 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
   const {t} = useTranslation();
   const [personalityId, setPersonalityId] = useState<number | null>(null);
   const [gender, setGender] = useState<string>('');
-  const [patientResponseLanguage, setPatientResponseLanguage] = useState<'en' | 'es' | ''>('');
+  // The patient response language is fixed to Spanish and cannot be changed.
+  const patientResponseLanguage = 'es';
   const [personalities, setPersonalities] = useState<Personality[]>([]);
   const [isLoadingPersonalities, setIsLoadingPersonalities] = useState(true);
   const navigate = useNavigate();
@@ -57,23 +57,24 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
   const patientAge = clinicalCase.age
     ? t('clinicalCases.ageValue', {age: clinicalCase.age})
     : t('clinicalCases.notSpecified');
-  const isFormValid =
-    personalityId !== null && gender !== '' && patientResponseLanguage !== '';
+  const isFormValid = personalityId !== null && gender !== '';
 
-  const onStartSession = async () => {
+  const onStartSession = () => {
     if (!isFormValid) {
       return;
     }
 
-    const interview = await createInterview({
-      clinical_case_id: clinicalCase.id.toString(),
-      patient_response_language: patientResponseLanguage || 'en',
-      patient_gender: gender || undefined,
-      personality_id: personalityId || undefined,
-    });
-    if (!interview) return;
-
-    navigate(interviewPath(interview.id, 'calibration'));
+    // The interview is not created here: it is only persisted once the
+    // simulation actually starts, after calibration. Carry the configuration to
+    // the calibration screen via location.state.
+    const state: CalibrationRouteState = {
+      clinicalCaseId: clinicalCase.id,
+      clinicalCaseTitle: clinicalCase.title,
+      gender: gender || undefined,
+      personalityId: personalityId || undefined,
+      patientResponseLanguage,
+    };
+    navigate(ROUTES.calibration, {state});
   };
 
   return (
@@ -82,6 +83,11 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
         {t('clinicalSession.patientInformation')}
       </h4>
       <div className="grid min-w-0 gap-x-4 gap-y-4 sm:grid-cols-2">
+        <ReadOnlyField
+          label={t('clinicalSession.patientResponseLanguage')}
+          value={t('clinicalSession.spanish')}
+        />
+
         <ReadOnlyField label={t('clinicalCases.patientAge')} value={patientAge} />
 
         <div className="min-w-0">
@@ -133,28 +139,6 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
               setGender(genderValue);
             }}
             options={genderOptions}
-            margin={false}
-          />
-        </div>
-
-        <div className="min-w-0">
-          <CustomSelect
-            label={t('clinicalSession.patientResponseLanguage')}
-            id={`patient-response-language-${clinicalCase.id}`}
-            placeholder={t('clinicalSession.selectPatientResponseLanguage')}
-            value={
-              patientResponseLanguage === 'en'
-                ? t('clinicalSession.english')
-                : patientResponseLanguage === 'es'
-                  ? t('clinicalSession.spanish')
-                  : ''
-            }
-            onChange={(value) => {
-              setPatientResponseLanguage(
-                value === t('clinicalSession.spanish') ? 'es' : 'en',
-              );
-            }}
-            options={[t('clinicalSession.english'), t('clinicalSession.spanish')]}
             margin={false}
           />
         </div>

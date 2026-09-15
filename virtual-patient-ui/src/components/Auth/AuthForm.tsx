@@ -17,8 +17,7 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
   const {setUser} = useUser();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
+  const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<'student' | 'teacher'>('student');
   const [captcha, setCaptcha] = useState<string | null>(null);
@@ -27,7 +26,7 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
   const captchaRef = useRef<ReCAPTCHA>(null);
   const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const valid = email.trim() && password.trim() && captcha
-    && (!registering || (firstName.trim() && lastName.trim()));
+    && (!registering || name.trim());
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -36,8 +35,7 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
     setError('');
     try {
       const result = registering
-        ? await createUser({email: email.trim(), first_name: firstName.trim(),
-          last_name: lastName.trim(), password, role})
+        ? await createUser({email: email.trim(), first_name: name.trim(), password, role})
         : await signIn({email: email.trim(), password});
       if (!result.access_token) throw new Error(t('errors.noAccessToken'));
       Cookies.set('access_token', result.access_token, getAuthCookieOptions());
@@ -55,18 +53,22 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
   return (
     <div className="auth-form-container">
       <header className="auth-form-heading">
-        <p className="auth-eyebrow">{t('auth.accountAccess')}</p>
         <h2>{t(registering ? 'auth.createAccount' : 'auth.welcome')}</h2>
         <p>{t(registering ? 'auth.signupMessage' : 'auth.loginMessage')}</p>
       </header>
       <form className="auth-form" onSubmit={submit} aria-busy={busy}>
-        <div className={registering ? 'auth-fields-grid' : 'auth-fields-stack'}>
+        <div className="auth-fields-stack">
           {registering && (
             <>
-              <AuthField label={t('auth.firstName')} id="first-name" name="given-name" autoComplete="given-name"
-                value={firstName} onChange={(event) => setFirstName(event.target.value)} required />
-              <AuthField label={t('auth.lastName')} id="last-name" name="family-name" autoComplete="family-name"
-                value={lastName} onChange={(event) => setLastName(event.target.value)} required />
+              <AuthField label={t('auth.name')} id="name" name="name" autoComplete="name"
+                value={name} onChange={(event) => setName(event.target.value)} required />
+              <div className="auth-field">
+                <label htmlFor="role">{t('auth.role')}</label>
+                <select id="role" value={role} onChange={(event) => setRole(event.target.value as 'student' | 'teacher')}>
+                  <option value="student">{t('auth.student')}</option>
+                  <option value="teacher">{t('auth.teacher')}</option>
+                </select>
+              </div>
             </>
           )}
           <div className="auth-field-wide">
@@ -77,15 +79,6 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
           <AuthField label={t('auth.password')} id="password" name="password" type="password"
             autoComplete={registering ? 'new-password' : 'current-password'}
             value={password} onChange={(event) => setPassword(event.target.value)} required />
-          {registering && (
-            <div className="auth-field">
-              <label htmlFor="role">{t('auth.role')}</label>
-              <select id="role" value={role} onChange={(event) => setRole(event.target.value as 'student' | 'teacher')}>
-                <option value="student">{t('auth.student')}</option>
-                <option value="teacher">{t('auth.teacher')}</option>
-              </select>
-            </div>
-          )}
         </div>
         {!registering && <Link className="auth-forgot" to={ROUTES.resetPassword}>{t('auth.forgotPassword')}</Link>}
         {error && <p className="auth-error" role="alert">{error}</p>}

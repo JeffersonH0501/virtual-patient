@@ -28,7 +28,12 @@ export const createInterview = async (payload: CreateInterviewPayload) => {
   });
 
   if (!response.ok) {
-    throw new Error(`HTTP error! status: ${response.status}`);
+    // Surface the backend detail (e.g. an already in-progress interview) so the
+    // caller can show a meaningful message instead of a generic HTTP error.
+    const errorBody = (await response.json().catch(() => null)) as {detail?: string} | null;
+    const error = new Error(errorBody?.detail || `HTTP error! status: ${response.status}`);
+    (error as Error & {status?: number}).status = response.status;
+    throw error;
   }
 
   const {interview} = (await response.json()) as Response;

@@ -127,6 +127,16 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
             </div>
           ))}
         </div>
+        {isSubmitting && (
+          <div
+            className="mt-4 flex items-center gap-3 rounded-lg bg-blue-50 px-4 py-3 text-left text-sm text-blue-700"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" aria-hidden="true" />
+            <span>{t('clinicalChat.savingInterview')}</span>
+          </div>
+        )}
       </div>
 
       <footer className="flex shrink-0 justify-end bg-surface px-5 py-3.5">
@@ -144,7 +154,7 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
             disabled={!hasHypothesis || isSubmitting}
             className="dialog-action dialog-action--primary"
           >
-            {isSubmitting ? t('common.loading') : t('clinicalChat.submit')}
+            {isSubmitting ? t('clinicalChat.saving') : t('clinicalChat.submit')}
           </button>
         </div>
       </footer>

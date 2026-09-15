@@ -7,13 +7,15 @@ export const WelcomeSection = () => {
   return (
     <aside className="auth-welcome">
       <img className="auth-logo" src={logoDisc} alt={t('footer.department')} />
-      <div>
-        <p className="auth-eyebrow">{t('auth.practiceLabel')}</p>
-        <h1>{t('auth.appTitle')}</h1>
-        <p className="auth-description">{t('auth.appDescription')}</p>
+      <div className="auth-welcome-main">
+        <div className="auth-welcome-intro">
+          <p className="auth-eyebrow">{t('auth.practiceLabel')}</p>
+          <h1>{t('auth.appTitle')}</h1>
+          <p className="auth-description">{t('auth.appDescription')}</p>
+          <img className="auth-illustration" src={loginImage} alt="" />
+        </div>
       </div>
-      <img className="auth-illustration" src={loginImage} alt="" />
-      <p className="auth-institution">{t('footer.university')}</p>
+      <p className="auth-copyright">{t('footer.copyright')}</p>
     </aside>
   );
 };

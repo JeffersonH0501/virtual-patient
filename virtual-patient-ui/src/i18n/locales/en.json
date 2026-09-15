@@ -38,6 +38,7 @@
   "auth": {
     "firstName": "First name",
     "lastName": "Last name",
+    "name": "Name",
     "accountAccess": "Your learning space",
     "practiceLabel": "Learn through conversation",
     "showPassword": "Show password",
@@ -122,7 +123,9 @@
     "nameFrancisco": "Francisco",
     "yearsOld": "years old",
     "cancel": "Cancel",
-    "startSession": "Continue"
+    "startSession": "Continue",
+    "interviewInProgress": "You already have an interview in progress. Finish it before starting a new one.",
+    "startFailed": "The interview could not be started. Please try again."
   },
   "calibration": {
     "instructions": {
@@ -136,14 +139,13 @@
     },
     "eyebrow": "Technical preparation",
     "title": "Check your camera and microphone",
-    "description": "Make sure we can hear and see you before the clinical interview begins.",
+    "description": "",
     "cameraPreview": "Camera preview",
     "video": "Video",
     "audio": "Audio",
     "audioLevel": "Microphone level",
     "recording": "Calibrating",
-    "instruction": "Speak naturally for a few seconds so we can check that we can hear and see you correctly.",
-    "duration": "The test lasts 20 seconds",
+    "instruction": "Speak naturally during the test and keep your attention mainly on the counter that will appear on screen. This lets us check that we can hear and see you correctly.",
     "remaining": "{{seconds}} s remaining",
     "deviceError": "We could not access one of the required devices. Check its permissions and try again.",
     "retryDevices": "Try again",
@@ -159,7 +161,6 @@
     "pending": "Calibration pending",
     "resultReady": "Equipment ready",
     "resultReadyDescription": "The camera, face, microphone, and voice signal passed every required check.",
-    "resultProblem": "Calibration must be repeated",
     "resultProblemDescription": "Review the audio and video indicators, correct those shown in red, and repeat the test.",
     "quality": {
       "low": "The signal is low. Move closer to the microphone and repeat the test.",
@@ -224,9 +225,10 @@
     "interviewInProgress": "Interview In Progress",
     "duration": "Duration",
     "status": "Status",
+    "in_progress": "In progress",
+    "processing": "Processing",
     "completed": "Completed",
-    "abandoned": "Abandoned",
-    "active": "Active",
+    "interrupted": "Interrupted",
     "clinicalInterview": "Clinical Interview",
     "minutes": "minutes",
     "addNotesHere": "Add your notes here...",
@@ -262,21 +264,24 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "submitting": "Submitting...",
+    "saving": "Saving...",
+    "savingInterview": "Saving your interview. Please wait a moment while we take you to the evaluation...",
     "summary": "Summary",
     "messageSendError": "The message could not be sent. Please try again.",
     "feedbackDescription": "Provide feedback about the clinical case, interview process, or any other observations about the session.",
     "reportObservation": "Report observation",
     "observationDescription": "Record an observation about the clinical case, interview process, or session.",
     "observationPlaceholder": "Write your observation here...",
-    "durationLimit": {
-      "title": "Duration limit reached",
-      "hypothesesUnavailable": "The simulation stopped automatically after reaching the maximum 1-hour duration. The hypotheses could not be consolidated because the interview duration limit was exceeded.",
-      "finalizing": "Saving the recording and completing the interview...",
-      "completionFailed": "The interview could not be completed automatically. Recording has stopped; reload the page to review its status."
+    "resumeSession": {
+      "title": "Unfinished session",
+      "description": "You have an interview in progress that was not finished. You can resume it and continue where you left off, or force its termination to mark it as interrupted (no evaluation is generated).",
+      "forceTermination": "Force termination",
+      "resume": "Resume",
+      "forceError": "The interview could not be forcibly terminated. Please try again."
     },
     "call": {
       "videoArea": "Video call area",
-      "patient": "Patient",
+      "patient": "Virtual patient",
       "student": "Student",
       "speaking": "Speaking",
       "listening": "Listening",
@@ -355,7 +360,7 @@
       "end": "End",
       "speakers": {
         "student": "Student",
-        "patient": "Patient"
+        "patient": "Virtual patient"
       },
       "families": {
         "temporal": "Temporal",
@@ -649,7 +654,7 @@
     "confidenceScore": "Confidence Score"
   },
   "footer": {
-    "copyright": "© 2025 VPMedChat. All rights reserved.",
+    "copyright": "© 2026 VPMedChat. All rights reserved.",
     "university": "Universidad de los Andes | Vigilada Mineducación",
     "recognition": "Reconocimiento como Universidad: Decreto 1297 del 30 de mayo de 1964.",
     "legalRecognition": "Reconocimiento personería jurídica: Resolución 28 del 23 de febrero de 1949 Minjusticia",

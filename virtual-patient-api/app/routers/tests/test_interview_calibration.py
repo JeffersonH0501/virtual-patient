@@ -108,7 +108,7 @@ class InterviewStartTests(unittest.TestCase):
     def test_uncalibrated_interview_cannot_start(self):
         interview = SimpleNamespace(
             id=7,
-            status=InterviewStatus.ACTIVE,
+            status=InterviewStatus.IN_PROGRESS,
             start_time=None,
             interview_metadata={},
         )
@@ -122,7 +122,7 @@ class InterviewStartTests(unittest.TestCase):
     def test_start_sets_clock_once_and_is_idempotent(self):
         interview = SimpleNamespace(
             id=7,
-            status=InterviewStatus.ACTIVE,
+            status=InterviewStatus.IN_PROGRESS,
             start_time=None,
             interview_metadata={"calibration": {"status": "passed"}},
         )

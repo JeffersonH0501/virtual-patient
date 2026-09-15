@@ -43,7 +43,7 @@ class CompleteInterviewResponse(BaseModel):
 
 
 class CompleteInterviewRequest(BaseModel):
-    completion_reason: Literal["user_completed", "duration_limit_exceeded"] = "user_completed"
+    completion_reason: Literal["user_completed"] = "user_completed"
 
 
 class CalibrationAudioResult(BaseModel):
@@ -144,6 +144,16 @@ async def create_interview(
         )
 
     service = MedicalInterviewController(db)
+
+    # A student may only run one interview at a time: block creation while an
+    # already started (in-progress) interview exists.
+    active_interview = service.get_active_started_interview(current_user.id)
+    if active_interview is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="You already have an interview in progress",
+        )
+
     interview_metadata = with_patient_response_language(
         interview_data.interview_metadata,
         interview_data.patient_response_language,
@@ -177,8 +187,8 @@ async def save_calibration_result(
     ).first()
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
-    if interview.status != "active":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview is not active")
+    if interview.status != "in_progress":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview is not in progress")
     if interview.start_time is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The interview has already started")
 
@@ -430,6 +440,21 @@ async def complete_interview(
             detail="The interview has not started",
         )
 
+    # An interview without a durable recording cannot be evaluated. Its
+    # conversation transcript is still preserved, but the interview is marked as
+    # interrupted and receives no evaluation.
+    if interview_to_complete.recording is None:
+        interrupted = interview_controller.interrupt_processing(interview_id)
+        if interrupted is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Interview not found",
+            )
+        return CompleteInterviewResponse(
+            interview=interrupted,
+            evaluation_results=[],
+        )
+
     print(f"Interview ID: {interview_id}")    
     
     try:
@@ -444,15 +469,14 @@ async def complete_interview(
         if interview_record:
             metadata = dict(interview_record.interview_metadata or {})
             metadata["completion_reason"] = completion_reason
-            if completion_reason == "duration_limit_exceeded":
-                metadata["hypotheses_status"] = "not_consolidated_duration_limit"
-                metadata["duration_limit_seconds"] = 3600
             interview_record.interview_metadata = metadata
             db.commit()
 
-        # Complete the interview
-        interview = interview_controller.complete_interview(interview_id)
-        if not interview:
+        # The interaction with the virtual patient has ended: mark the interview
+        # as processing while the evaluation and feedback are generated. The
+        # evaluation runs synchronously below, so this window is short, but the
+        # state is still recorded so the lifecycle is observable and consistent.
+        if interview_controller.mark_processing(interview_id) is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Interview not found"
@@ -469,7 +493,7 @@ async def complete_interview(
         # Initialize evaluation agent with user's preferred language and patient gender
         user_language_code = current_user.preferred_language or "en"
         user_language_name = convert_language_code_to_name(user_language_code)
-        patient_gender = interview.patient_gender
+        patient_gender = interview_to_complete.patient_gender
         evaluation_agent = EvaluationAgent(target_language=user_language_name, patient_gender=patient_gender)
         
         # Run all evaluations in parallel (includes completeness + conversation aspects)
@@ -510,16 +534,33 @@ async def complete_interview(
             except Exception as e:
                 print(f"Error storing evaluation: {e}")
                 # Continue even if storage fails
-        
+
+        # Processing finished: mark the interview as completed and set its end
+        # time. The evaluation and feedback are now available to the student.
+        interview = interview_controller.complete_interview(interview_id)
+        if not interview:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Interview not found"
+            )
+
         return CompleteInterviewResponse(
             interview=interview,
             evaluation_results=evaluation_results
         )
-        
+
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"Error in complete_interview endpoint: {e}")
         import traceback
         traceback.print_exc()
+        # Processing failed after the interaction ended: leave the interview in a
+        # terminal INTERRUPTED state instead of a stuck PROCESSING state.
+        try:
+            interview_controller.interrupt_processing(interview_id)
+        except Exception as cleanup_error:
+            print(f"Error marking interview as interrupted: {cleanup_error}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error completing interview: {str(e)}"
@@ -660,6 +701,26 @@ async def get_average_score_by_organization(
         organization_id=organization_id
     )
     return result
+
+
+@router.get("/my/active", response_model=Optional[MedicalInterview])
+async def get_my_active_interview(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user)
+):
+    """
+    Get the current user's in-progress interview, if any.
+
+    An interview is in progress once it has started (start_time is set after
+    calibration) and has not been completed or interrupted. A student may only
+    have one such interview at a time. Returns null when there is none, so the
+    client can offer to resume it or force its termination on re-entry.
+    """
+    interview_controller = MedicalInterviewController(db)
+    active = interview_controller.get_active_started_interview(current_user.id)
+    if active is None:
+        return None
+    return MedicalInterview.from_orm(active)
 
 
 @router.get("/my/completed-cases")

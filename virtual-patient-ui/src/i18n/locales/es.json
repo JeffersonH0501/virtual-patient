@@ -38,6 +38,7 @@
   "auth": {
     "firstName": "Nombre",
     "lastName": "Apellido",
+    "name": "Nombre",
     "accountAccess": "Tu espacio de aprendizaje",
     "practiceLabel": "Aprende conversando",
     "showPassword": "Mostrar contraseña",
@@ -122,7 +123,9 @@
     "nameFrancisco": "Francisco",
     "yearsOld": "años",
     "cancel": "Cancelar",
-    "startSession": "Continuar"
+    "startSession": "Continuar",
+    "interviewInProgress": "Ya tienes una entrevista en curso. Termínala antes de iniciar una nueva.",
+    "startFailed": "No se pudo iniciar la entrevista. Inténtalo de nuevo."
   },
   "calibration": {
     "instructions": {
@@ -136,14 +139,13 @@
     },
     "eyebrow": "Preparación técnica",
     "title": "Comprueba tu cámara y micrófono",
-    "description": "Verifica que podamos escucharte y verte antes de comenzar la entrevista clínica.",
+    "description": "",
     "cameraPreview": "Vista previa de la cámara",
     "video": "Video",
     "audio": "Audio",
     "audioLevel": "Nivel del micrófono",
     "recording": "Calibrando",
-    "instruction": "Habla de forma natural durante unos segundos para comprobar que podemos escucharte y verte correctamente.",
-    "duration": "La prueba dura 20 segundos",
+    "instruction": "Habla de forma natural durante la prueba y mantén tu atención principalmente en el contador que aparecerá en pantalla. Esto nos permitirá comprobar que podemos escucharte y verte correctamente.",
     "remaining": "{{seconds}} s restantes",
     "deviceError": "No pudimos acceder a uno de los dispositivos requeridos. Revisa los permisos y vuelve a intentarlo.",
     "retryDevices": "Reintentar",
@@ -159,7 +161,6 @@
     "pending": "Calibración pendiente",
     "resultReady": "Equipo listo",
     "resultReadyDescription": "La cámara, el rostro, el micrófono y la señal de voz cumplen todas las comprobaciones necesarias.",
-    "resultProblem": "Debes repetir la calibración",
     "resultProblemDescription": "Revisa los indicadores de audio y video, corrige los que aparecen en rojo y repite la prueba.",
     "quality": {
       "low": "La señal se escucha baja. Acércate al micrófono y repite la prueba.",
@@ -224,9 +225,10 @@
     "interviewInProgress": "Entrevista en Progreso",
     "duration": "Duración",
     "status": "Estado",
+    "in_progress": "En progreso",
+    "processing": "Procesando",
     "completed": "Completado",
-    "abandoned": "Abandonado",
-    "active": "Activo",
+    "interrupted": "Interrumpida",
     "clinicalInterview": "Entrevista Clínica",
     "minutes": "minutos",
     "addNotesHere": "Agrega tus notas aquí...",
@@ -262,21 +264,24 @@
     "cancel": "Cancelar",
     "confirm": "Confirmar",
     "submitting": "Enviando...",
+    "saving": "Guardando...",
+    "savingInterview": "Guardando tu entrevista. Espera un momento mientras te llevamos a la evaluación...",
     "summary": "Resumen",
     "messageSendError": "No se pudo enviar el mensaje. Por favor, inténtalo de nuevo.",
     "feedbackDescription": "Proporciona retroalimentación sobre el caso clínico, el proceso de entrevista, o cualquier otra observación sobre la sesión.",
     "reportObservation": "Reportar observación",
     "observationDescription": "Registra una observación sobre el caso clínico, el proceso de entrevista o la sesión.",
     "observationPlaceholder": "Escribe tu observación aquí...",
-    "durationLimit": {
-      "title": "Límite de duración alcanzado",
-      "hypothesesUnavailable": "La simulación se detuvo automáticamente al alcanzar el límite máximo de 1 hora. Las hipótesis no pudieron consolidarse debido a que se superó el límite de duración de la entrevista.",
-      "finalizing": "Guardando la grabación y finalizando la entrevista...",
-      "completionFailed": "No se pudo completar automáticamente la entrevista. La grabación dejó de capturarse; recarga la página para revisar su estado."
+    "resumeSession": {
+      "title": "Sesión sin terminar",
+      "description": "Tienes una entrevista en progreso que no finalizó. Puedes reanudarla y continuar donde la dejaste, o forzar su finalización para marcarla como interrumpida (no genera evaluación).",
+      "forceTermination": "Forzar finalización",
+      "resume": "Reanudar",
+      "forceError": "No se pudo forzar la finalización de la entrevista. Inténtalo nuevamente."
     },
     "call": {
       "videoArea": "Área de videollamada",
-      "patient": "Paciente",
+      "patient": "Paciente virtual",
       "student": "Estudiante",
       "speaking": "Hablando",
       "listening": "Escuchando",
@@ -355,7 +360,7 @@
       "end": "Fin",
       "speakers": {
         "student": "Estudiante",
-        "patient": "Paciente"
+        "patient": "Paciente virtual"
       },
       "families": {
         "temporal": "Temporal",
@@ -649,7 +654,7 @@
     "confidenceScore": "Puntuación de confianza"
   },
   "footer": {
-    "copyright": "© 2025 VPMedChat. Todos los derechos reservados.",
+    "copyright": "© 2026 VPMedChat. All rights reserved.",
     "university": "Universidad de los Andes | Vigilada Mineducación",
     "recognition": "Reconocimiento como Universidad: Decreto 1297 del 30 de mayo de 1964.",
     "legalRecognition": "Reconocimiento personería jurídica: Resolución 28 del 23 de febrero de 1949 Minjusticia",

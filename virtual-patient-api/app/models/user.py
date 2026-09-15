@@ -31,6 +31,9 @@ class UserDB(Base):
     organization = relationship("OrganizationDB")
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+# The registration form collects a single "Name" value, stored in first_name.
+# last_name is kept in the schema for backward compatibility but may be empty.
+OptionalName = Annotated[str, StringConstraints(strip_whitespace=True)]
 
 
 class EmailIdentity(BaseModel):
@@ -57,7 +60,7 @@ class UserCreate(EmailIdentity):
 
     email: EmailStr
     first_name: Name
-    last_name: Name
+    last_name: OptionalName = ""
     preferred_language: Optional[str] = "en"
     role: Literal[UserRole.TEACHER, UserRole.STUDENT] = UserRole.STUDENT
     password: str

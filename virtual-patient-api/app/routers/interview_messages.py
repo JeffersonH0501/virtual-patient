@@ -2,7 +2,6 @@
 
 import logging
 import time
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -14,7 +13,7 @@ from app.controllers.message_controller import MessageController
 from app.controllers.virtual_patient_controller import VirtualPatientController
 from app.core.auth import get_current_active_user
 from app.core.database import get_db
-from app.models.medical_interview import InterviewMessage, InterviewStatus
+from app.models.medical_interview import InterviewMessage
 from app.models.medical_interview.medical_interview import MedicalInterviewDB
 from app.models.user import User
 from app.speech.storage import persist_patient_audio
@@ -72,23 +71,6 @@ async def send_message(
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="The interview has not started",
-            )
-        elapsed_seconds = (datetime.now(timezone.utc) - interview.start_time).total_seconds()
-        if elapsed_seconds >= 3600:
-            metadata = dict(interview.interview_metadata or {})
-            metadata.update({
-                "completion_reason": "duration_limit_exceeded",
-                "hypotheses_status": "not_consolidated_duration_limit",
-                "duration_limit_seconds": 3600,
-            })
-            interview.interview_metadata = metadata
-            interview.status = InterviewStatus.COMPLETED
-            interview.end_time = datetime.now(timezone.utc)
-            interview.total_duration = 3600
-            db.commit()
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Interview duration limit exceeded",
             )
         response_started_at = time.perf_counter()
         result = await VirtualPatientController().process_user_message(

@@ -3,6 +3,7 @@ import {useTranslation} from 'react-i18next';
 import {useLocation} from 'react-router-dom';
 import {CaseCard} from './CaseCard';
 import {CustomCaseCard} from './CustomCaseCard';
+import {ClinicalCasesSkeleton} from './ClinicalCasesSkeleton';
 import {
   getDefaultCases,
   getCasesByOrganization,
@@ -46,11 +47,7 @@ export const ClinicalCases: FC = () => {
   }, [location.key]); // Re-fetch when location.key changes (navigation occurs)
 
   if (isLoading) {
-    return (
-      <div className="flex justify-center items-center min-h-loading-state">
-        <div className="text-lg text-gray-600">{t('clinicalCases.loadingCases')}</div>
-      </div>
-    );
+    return <ClinicalCasesSkeleton />;
   }
 
   if (error) {

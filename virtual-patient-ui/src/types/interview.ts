@@ -6,7 +6,7 @@ import { ClinicalCaseWithTranslations, ClinicalCase } from './clinicalCase';
 import { SessionNote } from './sessionNote';
 import { TeacherFeedback } from './teacherFeedback';
 
-export type Status = 'active' | 'completed' | 'abandoned';
+export type Status = 'in_progress' | 'processing' | 'completed' | 'interrupted';
 
 export type CalibrationInputLevel = 'low' | 'adequate' | 'high';
 

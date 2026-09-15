@@ -11,7 +11,7 @@ export const ActionButtons: FC<ActionButtonsProps> = ({onCancel, onStartSession,
   const {t} = useTranslation();
 
   return (
-    <div className="mt-4 flex w-full justify-end border-t border-slate-200 pt-4">
+    <div className="mt-4 flex w-full justify-end pt-4">
       <div className="dialog-actions">
         <button
           type="button"

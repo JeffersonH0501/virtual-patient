@@ -3,7 +3,7 @@ import { getAuthHeaders } from '../auth/authHeaders';
 import { transformToCamelCase } from '../../utils/apiTransform';
 import { InterviewEvaluationResponse } from '../../types/evaluation';
 
-export type InterviewCompletionReason = 'user_completed' | 'duration_limit_exceeded';
+export type InterviewCompletionReason = 'user_completed';
 
 export const completeInterview = async (
   interviewId: string,

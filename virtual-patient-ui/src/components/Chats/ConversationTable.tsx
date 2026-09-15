@@ -4,6 +4,7 @@ import {Modal} from '../common';
 import {TableHeader} from '../common/Table/TableHeader';
 import {getInterviews} from '../../services/interviews/getInterviews';
 import {ConversationTableRow} from './ConversationTableRow';
+import {ConversationTableSkeleton} from './ConversationTableSkeleton';
 import {InterviewListItem} from '../../types/interview';
 import {deleteInterview} from '../../services/interviews';
 import {CaretLeft, CaretRight} from '../../icons';
@@ -160,11 +161,7 @@ export const ConversationTable = () => {
             <TableHeader columns={COLUMN_HEADERS} columnClassNames={COLUMN_CLASS_NAMES} />
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                    {t('common.loading')}
-                  </td>
-                </tr>
+                <ConversationTableSkeleton />
               ) : interviews.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-6 py-8 text-center text-gray-500">

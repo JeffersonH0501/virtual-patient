@@ -4,7 +4,7 @@ import {getAuthLanguage} from '../../utils/languageDetection';
 import {WelcomeSection} from '../Login/WelcomeSection';
 
 export const AuthLayout = ({children}: {children: ReactNode}) => {
-  const {t, i18n} = useTranslation();
+  const {i18n} = useTranslation();
 
   useEffect(() => {
     const language = getAuthLanguage();
@@ -17,12 +17,6 @@ export const AuthLayout = ({children}: {children: ReactNode}) => {
         <WelcomeSection />
         <section className="auth-content">{children}</section>
       </main>
-      <footer className="auth-footer">
-        <span>{t('footer.copyright')}</span>
-        <a href="https://sistemas.uniandes.edu.co/es/" target="_blank" rel="noopener noreferrer">
-          {t('footer.department')}
-        </a>
-      </footer>
     </div>
   );
 };

@@ -10,7 +10,6 @@ export const ResetPassword = () => {
     <AuthLayout>
       <div className="auth-form-container">
         <header className="auth-form-heading">
-          <p className="auth-eyebrow">{t('auth.accountAccess')}</p>
           <h2>{t('auth.resetTitle')}</h2>
           <p>{t('auth.resetDescription')}</p>
         </header>

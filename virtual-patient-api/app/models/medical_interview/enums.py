@@ -1,9 +1,23 @@
 import enum
 
 class InterviewStatus(str, enum.Enum):
-    ACTIVE = "active"
+    """Lifecycle states of a medical interview.
+
+    IN_PROGRESS: the student started the simulation and has not finished the
+        interaction with the virtual patient yet.
+    PROCESSING: the interaction ended and the system is processing the collected
+        information to generate the evaluation and feedback.
+    COMPLETED: the interview and its processing finished successfully; the
+        evaluation and feedback are available to the student.
+    INTERRUPTED: the interview did not complete its flow successfully, whether
+        because the student abandoned it, the session was interrupted, or an
+        error occurred during processing.
+    """
+
+    IN_PROGRESS = "in_progress"
+    PROCESSING = "processing"
     COMPLETED = "completed"
-    ABANDONED = "abandoned"
+    INTERRUPTED = "interrupted"
 
 class SenderType(str, enum.Enum):
     USER = "user"

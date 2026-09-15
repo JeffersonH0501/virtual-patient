@@ -49,7 +49,6 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
   const [duration, setDuration] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
-  const [selectedTurnId, setSelectedTurnId] = useState<string | null>(null);
   const [detailTurn, setDetailTurn] = useState<RecapTurn | null>(null);
   const studentVideoRef = useRef<HTMLVideoElement>(null);
   const patientVideoRef = useRef<HTMLVideoElement>(null);
@@ -205,25 +204,21 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     void audioContextRef.current?.close();
   }, [mediaElements, stopClock]);
 
+  const currentMs = currentTime * 1000;
   const timedTurns = turns.filter((turn) => typeof turn.startMs === 'number');
   const visibleTurns = hasMedia && timedTurns.length > 0
     ? turns.filter(
-      (turn) => typeof turn.startMs !== 'number' || turn.startMs <= currentTime * 1000,
+      (turn) => typeof turn.startMs !== 'number' || (turn.startMs ?? 0) <= currentMs,
     )
     : turns;
-  const activeTurnIds = new Set(
-    timedTurns
-      .filter(
-        (turn) => (turn.startMs ?? Number.MAX_SAFE_INTEGER) <= currentTime * 1000
-          && (turn.endMs ?? -1) >= currentTime * 1000,
-      )
-      .map((turn) => turn.turnId),
-  );
-
-  const selectTurn = (turn: RecapTurn) => {
-    setSelectedTurnId(turn.turnId);
-    if (hasMedia && typeof turn.startMs === 'number') seek(turn.startMs / 1000);
-  };
+  // A single active turn: the most recent one that has already started at the
+  // current playback time. Relying only on startMs (not the [start, end]
+  // interval) guarantees at most one highlighted bubble even if timing windows
+  // overlap.
+  const startedTurns = timedTurns.filter((turn) => (turn.startMs ?? 0) <= currentMs);
+  const activeTurnId = hasMedia && startedTurns.length > 0
+    ? startedTurns.reduce((latest, turn) => ((turn.startMs ?? 0) >= (latest.startMs ?? 0) ? turn : latest)).turnId
+    : null;
 
   const updateDuration = () => {
     const mediaDuration = Math.max(
@@ -346,7 +341,7 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
               <div className="flex flex-col gap-3 pb-1">
               {visibleTurns.map((turn) => {
                 const isStudent = turn.speaker === 'student';
-                const active = activeTurnIds.has(turn.turnId) || selectedTurnId === turn.turnId;
+                const active = turn.turnId === activeTurnId;
                 return (
                   <div
                     key={turn.turnId}
@@ -357,16 +352,14 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                     <button
                       type="button"
                       onClick={() => setDetailTurn(turn)}
-                      className="mt-2 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-blue-700 [&_svg]:h-4 [&_svg]:w-4"
+                      className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-blue-700 [&_svg]:h-4 [&_svg]:w-4"
                       aria-label={t('clinicalChat.recap.turnInfo')}
                       title={t('clinicalChat.recap.turnInfo')}
                     >
                       <Info color="currentColor" />
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => selectTurn(turn)}
-                      className={`min-w-0 flex-1 rounded-xl border px-3 py-2.5 text-left transition-colors ${
+                    <div
+                      className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${
                         isStudent
                           ? 'border-blue-100 bg-blue-50'
                           : 'border-slate-200 bg-slate-100'
@@ -374,9 +367,9 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                     >
                       <p className="whitespace-pre-wrap text-sm leading-5 text-slate-800">{turn.transcript}</p>
                       {typeof turn.startMs === 'number' && (
-                        <span className="mt-1 block text-right text-timestamp text-slate-400">{formatElapsed(turn.startMs / 1000)}</span>
+                        <span className="block text-right text-timestamp leading-none text-slate-400">{formatElapsed(turn.startMs / 1000)}</span>
                       )}
-                    </button>
+                    </div>
                   </div>
                 );
               })}
@@ -405,9 +398,9 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
               </button>
             </header>
             <div className="dialog-content turn-detail-content scrollbar-hidden">
-              <section className="turn-detail-section turn-detail-section--general">
+              <section className="turn-detail-column">
                 <h4>{t('clinicalChat.recap.generalInformation')}</h4>
-                <dl className="turn-detail-general-grid">
+                <dl className="turn-detail-general">
                   <div className="turn-detail-general-item">
                     <dt>{t('clinicalChat.recap.speaker')}</dt>
                     <dd>{t(`clinicalChat.recap.speakers.${detailTurn.speaker}`)}</dd>
@@ -420,17 +413,17 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                     <dt>{t('clinicalChat.recap.end')}</dt>
                     <dd>{formatTimestamp(detailTurn.endMs) ?? t('clinicalChat.recap.notAvailable')}</dd>
                   </div>
-                  <div className="turn-detail-general-item turn-detail-general-item--transcript">
+                  <div className="turn-detail-general-item">
                     <dt>{t('clinicalChat.recap.transcript')}</dt>
                     <dd>{detailTurn.transcript || t('clinicalChat.recap.notAvailable')}</dd>
                   </div>
                 </dl>
               </section>
 
-              <section className="turn-detail-section">
+              <section className="turn-detail-column">
                 <h4>{t('clinicalChat.recap.paraverbal')}</h4>
-                <div className="turn-detail-families">
-                  <div className="turn-detail-family">
+                <div className="turn-detail-groups">
+                  <div className="turn-detail-group">
                     <h5>{t('clinicalChat.recap.families.temporal')}</h5>
                     <dl>
                       {renderMetricRow('clinicalChat.recap.metrics.speechRateWpm', detailTurn.paraverbal?.speechRateWpm, 'clinicalChat.recap.units.wordsPerMinute')}
@@ -441,14 +434,14 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                       {renderMetricRow('clinicalChat.recap.metrics.pauseTimeRatio', detailTurn.paraverbal?.pauseTimeRatio, 'clinicalChat.recap.units.ratio')}
                     </dl>
                   </div>
-                  <div className="turn-detail-family">
+                  <div className="turn-detail-group">
                     <h5>{t('clinicalChat.recap.families.prosodicLevel')}</h5>
                     <dl>
                       {renderMetricRow('clinicalChat.recap.metrics.f0MedianSemitones', detailTurn.paraverbal?.f0MedianSemitones, 'clinicalChat.recap.units.semitones')}
                       {renderMetricRow('clinicalChat.recap.metrics.medianLoudness', detailTurn.paraverbal?.medianLoudness, 'clinicalChat.recap.units.loudness')}
                     </dl>
                   </div>
-                  <div className="turn-detail-family">
+                  <div className="turn-detail-group">
                     <h5>{t('clinicalChat.recap.families.prosodicModulation')}</h5>
                     <dl>
                       {renderMetricRow('clinicalChat.recap.metrics.f0P20P80RangeSemitones', detailTurn.paraverbal?.f0P20P80RangeSemitones, 'clinicalChat.recap.units.semitones')}
@@ -458,24 +451,24 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                 </div>
               </section>
 
-              <section className="turn-detail-section">
+              <section className="turn-detail-column">
                 <h4>{t('clinicalChat.recap.nonverbal')}</h4>
-                <div className="turn-detail-families">
-                  <div className="turn-detail-family">
+                <div className="turn-detail-groups">
+                  <div className="turn-detail-group">
                     <h5>{t('clinicalChat.recap.families.visualOrientation')}</h5>
                     <dl>
                       {renderMetricRow('clinicalChat.recap.metrics.visualAlignmentRatio', detailTurn.nonverbalFeatures?.visualAlignmentRatio, 'clinicalChat.recap.units.ratio')}
                       {renderMetricRow('clinicalChat.recap.metrics.medianVisualAlignmentDwellMs', detailTurn.nonverbalFeatures?.medianVisualAlignmentDwellMs, 'clinicalChat.recap.units.milliseconds')}
                     </dl>
                   </div>
-                  <div className="turn-detail-family">
+                  <div className="turn-detail-group">
                     <h5>{t('clinicalChat.recap.families.headGesturalFeedback')}</h5>
                     <dl>
                       {renderMetricRow('clinicalChat.recap.metrics.nodCount', detailTurn.nonverbalFeatures?.nodCount, 'clinicalChat.recap.units.count')}
                       {renderMetricRow('clinicalChat.recap.metrics.nodRateMin', detailTurn.nonverbalFeatures?.nodRateMin, 'clinicalChat.recap.units.eventsPerMinute')}
                     </dl>
                   </div>
-                  <div className="turn-detail-family">
+                  <div className="turn-detail-group">
                     <h5>{t('clinicalChat.recap.families.facialExpressivity')}</h5>
                     <dl>
                       {renderMetricRow('clinicalChat.recap.metrics.smileActivityRatio', detailTurn.nonverbalFeatures?.smileActivityRatio, 'clinicalChat.recap.units.ratio')}

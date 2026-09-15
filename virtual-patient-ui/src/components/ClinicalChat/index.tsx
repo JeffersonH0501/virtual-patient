@@ -1,7 +1,7 @@
 ﻿import {FC, useCallback, useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {useTranslation} from 'react-i18next';
-import {Navigate, useNavigate, useOutletContext, useParams} from 'react-router-dom';
+import {Navigate, useLocation, useNavigate, useOutletContext, useParams} from 'react-router-dom';
 import {PatientProfile} from './PatientProfile';
 import {Modal} from '../common';
 import {ClinicalHypotheses} from './ClinicalHypotheses';
@@ -12,7 +12,7 @@ import {CallToolbar} from './CallToolbar';
 import {ConversationTranscript} from './ConversationTranscript';
 import {InterviewRecap} from './InterviewRecap';
 import {ActiveSimulationLayout, SimulationResultsLayout} from './InterviewLayouts';
-import {completeInterview, createSummary, sendMessage, startInterview} from '../../services/interviews';
+import {createSummary, interruptInterview, sendMessage, startInterview} from '../../services/interviews';
 import {getInterview} from '../../services/interviews/getInterview';
 import {getSessionNote, updateSessionNote} from '../../services/sessionNote';
 import {CompleteInterviewResponse} from '../../types/interview';
@@ -55,11 +55,10 @@ const EMPTY_PATIENT: Patient = {
   summary: '',
 };
 
-const INTERVIEW_DURATION_LIMIT_SECONDS = 60 * 60;
-
 export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const {t, i18n} = useTranslation();
   const navigate = useNavigate();
+  const location = useLocation();
   const {user} = useUser();
   const {setClinicalSimulationActive} = useOutletContext<AppContainerOutletContext>();
   const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
@@ -73,6 +72,9 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const [openObservationDialog, setOpenObservationDialog] = useState(false);
   const [isSavingObservation, setIsSavingObservation] = useState(false);
   const [openWelcomeModal, setOpenWelcomeModal] = useState(false);
+  const [resumePromptOpen, setResumePromptOpen] = useState(false);
+  const [forcingTermination, setForcingTermination] = useState(false);
+  const [forceTerminationError, setForceTerminationError] = useState(false);
   const [simulationAccepted, setSimulationAccepted] = useState(false);
   const [contextPanelOpen, setContextPanelOpen] = useState(false);
   const [evaluationData, setEvaluationData] = useState<InterviewEvaluationResponse | null>(null);
@@ -90,13 +92,11 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const [patient, setPatient] = useState<Patient>(EMPTY_PATIENT);
   const [headerControlsTarget, setHeaderControlsTarget] = useState<HTMLElement | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [durationLimitExceeded, setDurationLimitExceeded] = useState(false);
-  const [durationLimitCompletionError, setDurationLimitCompletionError] = useState(false);
 
   const interviewRequestRef = useRef(0);
   const summaryRequestRef = useRef(0);
   const welcomeShownRef = useRef(false);
-  const durationLimitHandledRef = useRef(false);
+  const resumePromptShownRef = useRef(false);
   const observationSnapshotRef = useRef('');
   const recordingRef = useRef<{
     pause: () => void;
@@ -109,7 +109,10 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
 
   const isOwner = interview?.isOwner ?? false;
   const isCompleted = interview?.status === 'completed';
-  const isInterviewOpen = Boolean(interview) && !isCompleted && mode === 'session';
+  // Terminal interviews (completed or interrupted) can no longer be continued;
+  // they are shown in review with whatever transcript was preserved.
+  const isTerminal = isCompleted || interview?.status === 'interrupted';
+  const isInterviewOpen = Boolean(interview) && !isTerminal && mode === 'session';
   const isSimulationActive = isInterviewOpen && simulationAccepted;
   const studentName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || t('clinicalChat.call.student');
 
@@ -117,6 +120,34 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setClinicalSimulationActive(isInterviewOpen);
     return () => setClinicalSimulationActive(false);
   }, [isInterviewOpen, setClinicalSimulationActive]);
+
+  // While an interview is in progress the student is locked into the session
+  // view: the only way out is to finish the interview (which saves it). The app
+  // uses a declarative BrowserRouter (not a data router), so useBlocker is not
+  // available; instead we pin the history entry to intercept the back button and
+  // warn on tab close/reload.
+  const shouldLockSession = isSimulationActive && isOwner;
+  useEffect(() => {
+    if (!shouldLockSession) return undefined;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    // Push a sentinel entry so the first Back press lands here instead of leaving.
+    window.history.pushState(null, '', window.location.href);
+    const handlePopState = () => {
+      // Re-anchor: cancel the attempted navigation away from the session.
+      window.history.pushState(null, '', window.location.href);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    window.addEventListener('popstate', handlePopState);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      window.removeEventListener('popstate', handlePopState);
+    };
+  }, [shouldLockSession]);
 
   useEffect(() => {
     setHeaderControlsTarget(null);
@@ -209,9 +240,21 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       return;
     }
 
+    const isTerminalStatus =
+      interviewData.status === 'completed' || interviewData.status === 'interrupted';
+    const justStarted = Boolean((location.state as {justStarted?: boolean} | null)?.justStarted);
+    // A re-entry is a session that already started (has a clock) reached without
+    // the fresh-start flag: the tab was closed or the user navigated back in.
+    const isReentry =
+      mode === 'session' &&
+      !isTerminalStatus &&
+      interviewData.isOwner &&
+      Boolean(interviewData.startTime) &&
+      !justStarted;
+
     if (
       mode === 'session' &&
-      interviewData.status !== 'completed' &&
+      !isTerminalStatus &&
       interviewData.messages?.length === 0 &&
       interviewData.isOwner &&
       (!interviewData.startTime || !calibrationPassed) &&
@@ -219,10 +262,15 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     ) {
       welcomeShownRef.current = true;
       setOpenWelcomeModal(true);
-    } else if (interviewData.startTime || interviewData.messages?.length || interviewData.status === 'completed') {
+    } else if (isReentry && !resumePromptShownRef.current) {
+      // Do not auto-resume: ask the student whether to resume or force
+      // termination of the unfinished session.
+      resumePromptShownRef.current = true;
+      setResumePromptOpen(true);
+    } else if (interviewData.startTime || interviewData.messages?.length || isTerminalStatus) {
       setSimulationAccepted(true);
     }
-  }, [interfaceLanguage, interviewId, media.cameraState, media.microphoneState, mode, navigate, t]);
+  }, [interfaceLanguage, interviewId, location.state, media.cameraState, media.microphoneState, mode, navigate, t]);
 
   const fetchAndProcessSummary = useCallback(
     async (context: string = 'summary') => {
@@ -385,6 +433,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     enabled: Boolean(isSimulationActive && isOwner),
     cameraStream: media.cameraStream,
     microphoneStream: media.microphoneStream,
+    microphoneState: media.microphoneState,
     cameraEnabled: media.cameraState === 'ready',
     microphoneEnabled: speech.isEnabled && !patientHasFloor,
     patientAudioEnabled: audioAutoPlayEnabled,
@@ -423,6 +472,27 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setEnding(true);
     void fetchAndProcessSummary('final summary');
   };
+  // Resume the unfinished session: close the prompt and let the simulation
+  // reactivate (media and clock resume as usual).
+  const handleResumeSession = () => {
+    setResumePromptOpen(false);
+    setSimulationAccepted(true);
+  };
+  // Force termination: mark the interview as interrupted (no evaluation) and go
+  // to the read-only review with whatever transcript was preserved.
+  const handleForceTermination = async () => {
+    if (!interviewId || forcingTermination) return;
+    setForcingTermination(true);
+    setForceTerminationError(false);
+    try {
+      await interruptInterview(String(interviewId));
+      navigate(interviewPath(interviewId, 'review'), {replace: true});
+    } catch (error) {
+      console.error('Failed to force interview termination:', error);
+      setForceTerminationError(true);
+      setForcingTermination(false);
+    }
+  };
   const cancelHypotheses = () => {
     recording.resume();
     setEnding(false);
@@ -436,52 +506,12 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     await fetchInterview();
   };
 
-  useEffect(() => {
-    if (
-      elapsedSeconds < INTERVIEW_DURATION_LIMIT_SECONDS
-      || !isSimulationActive
-      || !isOwner
-      || durationLimitHandledRef.current
-    ) return;
-
-    durationLimitHandledRef.current = true;
-    setDurationLimitExceeded(true);
-    setDurationLimitCompletionError(false);
-    setOpenObservationDialog(false);
-    setEnding(true);
-    recording.pause();
-    media.stopAll();
-    setIsPatientSpeaking(false);
-
-    void (async () => {
-      try {
-        await fetchAndProcessSummary('duration limit summary');
-        await recording.finalize();
-        const nextEvaluationData = await completeInterview(
-          String(interviewId),
-          'duration_limit_exceeded',
-        );
-        await handleHypothesesSubmitted(nextEvaluationData);
-      } catch (error) {
-        console.error('Failed to complete interview after duration limit:', error);
-        setDurationLimitCompletionError(true);
-      }
-    })();
-  }, [
-    media.stopAll,
-    elapsedSeconds,
-    fetchAndProcessSummary,
-    interviewId,
-    isOwner,
-    isSimulationActive,
-    recording,
-  ]);
   if (!interviewId || !interview) return null;
 
-  if (mode === 'session' && isCompleted) {
+  if (mode === 'session' && isTerminal) {
     return <Navigate to={interviewPath(interviewId, 'review')} replace />;
   }
-  if (mode === 'review' && !isCompleted) {
+  if (mode === 'review' && !isTerminal) {
     return <Navigate to={interviewPath(interviewId, 'session')} replace />;
   }
 
@@ -527,7 +557,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       <section className={`flex min-h-0 min-w-0 flex-col overflow-hidden rounded-xl bg-white shadow-transcript xl:row-start-1 ${
         isInterviewOpen ? 'xl:col-start-3' : 'xl:col-start-2'
       }`}>
-        {isCompleted ? (
+        {isTerminal ? (
           <InterviewRecap interviewId={interviewId} messages={messages} />
         ) : (
           <>
@@ -560,11 +590,6 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
             {recording.errorCode && (
               <div className="mx-3 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800" role="alert">
                 {t(`clinicalChat.recording.errors.${recording.errorCode}`)}
-              </div>
-            )}
-            {recording.status === 'finalizing' && (
-              <div className="mx-3 mb-2 rounded-lg bg-blue-50 px-3 py-2 text-left text-xs text-blue-800" role="status">
-                {t('clinicalChat.recording.uploading', {progress: Math.round(recording.uploadProgress * 100)})}
               </div>
             )}
             {!isOwner && (
@@ -630,40 +655,18 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       <Modal
         size="large"
         open={ending && !hypothesesSubmitted}
-        closeAction={durationLimitExceeded ? () => undefined : cancelHypotheses}
+        closeAction={cancelHypotheses}
         closeOnOutsideClick={false}
-        hasActions={!durationLimitExceeded}
+        hasActions
         ariaLabel={t('clinicalChat.clinicalHypotheses')}
       >
-        {durationLimitExceeded ? (
-          <div className="flex h-full flex-col justify-center p-6 text-left sm:p-8">
-            <header className="pb-4">
-              <h2 className="dialog-title">
-                {t('clinicalChat.durationLimit.title')}
-              </h2>
-            </header>
-            <p className="mt-3 text-sm leading-6 text-slate-600">
-              {t('clinicalChat.durationLimit.hypothesesUnavailable')}
-            </p>
-            <p className={`mt-4 rounded-lg px-4 py-3 text-sm ${
-              durationLimitCompletionError
-                ? 'bg-red-50 text-red-700'
-                : 'bg-blue-50 text-blue-700'
-            }`} role={durationLimitCompletionError ? 'alert' : 'status'}>
-              {durationLimitCompletionError
-                ? t('clinicalChat.durationLimit.completionFailed')
-                : t('clinicalChat.durationLimit.finalizing')}
-            </p>
-          </div>
-        ) : (
-          <ClinicalHypotheses
-            onCancel={cancelHypotheses}
-            beforeComplete={async () => {
-              await recording.finalize();
-            }}
-            onHypothesesSubmitted={handleHypothesesSubmitted}
-          />
-        )}
+        <ClinicalHypotheses
+          onCancel={cancelHypotheses}
+          beforeComplete={async () => {
+            await recording.finalize();
+          }}
+          onHypothesesSubmitted={handleHypothesesSubmitted}
+        />
       </Modal>
       <Modal
         size="medium"
@@ -728,6 +731,52 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         }}
         onCancel={() => navigate(interviewPath(interviewId, 'calibration'), {replace: true})}
       />
+      <Modal
+        size="medium"
+        open={resumePromptOpen}
+        closeAction={() => undefined}
+        closeOnOutsideClick={false}
+        hasActions
+        ariaLabel={t('clinicalChat.resumeSession.title')}
+      >
+        <div className="dialog-shell">
+          <header className="dialog-header">
+            <h2 className="dialog-title">{t('clinicalChat.resumeSession.title')}</h2>
+          </header>
+          <div className="dialog-content">
+            <p className="text-sm leading-6 text-slate-600">
+              {t('clinicalChat.resumeSession.description')}
+            </p>
+            {forceTerminationError && (
+              <p className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">
+                {t('clinicalChat.resumeSession.forceError')}
+              </p>
+            )}
+          </div>
+          <footer className="dialog-footer">
+            <div className="dialog-actions">
+              <button
+                type="button"
+                onClick={() => void handleForceTermination()}
+                disabled={forcingTermination}
+                className="dialog-action dialog-action--secondary"
+              >
+                {forcingTermination
+                  ? t('common.loading')
+                  : t('clinicalChat.resumeSession.forceTermination')}
+              </button>
+              <button
+                type="button"
+                onClick={handleResumeSession}
+                disabled={forcingTermination}
+                className="dialog-action dialog-action--primary"
+              >
+                {t('clinicalChat.resumeSession.resume')}
+              </button>
+            </div>
+          </footer>
+        </div>
+      </Modal>
     </InterviewLayout>
   );
 };
