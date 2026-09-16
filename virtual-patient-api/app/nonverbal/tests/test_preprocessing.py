@@ -70,8 +70,8 @@ def _raw(
 
 def _calibrated_baseline(
     *,
-    neutral_gaze_yaw: float | None = 0.30,
-    neutral_gaze_pitch: float | None = -0.20,
+    neutral_gaze_yaw: float = 0.30,
+    neutral_gaze_pitch: float = -0.20,
 ) -> PersonalBaseline:
     """A baseline whose neutral gaze is deliberately offset from the origin."""
     return PersonalBaseline(
@@ -262,28 +262,6 @@ def test_missing_baseline_marks_visual_features_missing_calibration():
         result.reasons["median_visual_alignment_dwell_ms"]
         == UnavailableReason.MISSING_CALIBRATION
     )
-
-
-def test_partial_baseline_gaze_marks_visual_features_missing_calibration():
-    """A baseline with only one gaze axis yields no calibrated center."""
-    baseline = _calibrated_baseline(neutral_gaze_yaw=0.30, neutral_gaze_pitch=None)
-    raw = _raw(
-        gaze_yaw_samples=[0.30],
-        gaze_pitch_samples=[0.0],
-        frame_timestamps_ms=[0.0],
-    )
-
-    result = preprocess_nonverbal_turn(
-        raw,
-        "speaking",
-        baseline=baseline,
-        alignment_tolerance_radians=0.05,
-        au12_active_threshold=None,
-        nod_params=_UNCONFIGURED_NOD,
-    )
-
-    assert result.processed.visual_alignment_ratio is None
-    assert result.reasons["visual_alignment_ratio"] == UnavailableReason.MISSING_CALIBRATION
 
 
 def test_missing_tolerance_marks_visual_features_feature_unavailable():

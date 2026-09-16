@@ -13,17 +13,16 @@ export type CalibrationInputLevel = 'low' | 'adequate' | 'high';
 // Per-participant numeric reference derived from calibration media by the
 // backend `POST /calibration/baseline` endpoint (camelCased from the backend
 // `PersonalBaseline` schema). Fundamental frequency is in semitones only, never
-// Hertz. Gaze neutrals are optional because gaze frames may be absent from the
-// calibration recording; when derivation is unavailable the whole baseline is
-// null and calibration is still allowed to be saved.
+// Hertz. Both gaze axes are required; when any required metric is unavailable,
+// the whole baseline is null and calibration is still allowed to be saved.
 export type PersonalBaseline = {
   baselineF0Semitones: number;
   baselineLoudness: number;
   neutralHeadYaw: number;
   neutralHeadPitch: number;
   neutralHeadRoll: number;
-  neutralGazeYaw?: number | null;
-  neutralGazePitch?: number | null;
+  neutralGazeYaw: number;
+  neutralGazePitch: number;
 };
 
 export type CalibrationResult = {

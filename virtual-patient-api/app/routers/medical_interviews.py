@@ -369,6 +369,66 @@ def _delete_calibration_temp(path: Optional[Path]) -> None:
         )
 
 
+async def _derive_uploaded_personal_baseline(
+    audio: Optional[UploadFile],
+    video: Optional[UploadFile],
+) -> PersonalBaseline | None:
+    """Derive a baseline from temporary uploads and always delete the media."""
+    audio_path: Optional[Path] = None
+    video_path: Optional[Path] = None
+    try:
+        if audio is not None:
+            audio_path = await _write_calibration_upload_to_temp(
+                audio, _CALIBRATION_AUDIO_CONTENT_TYPES, "audio"
+            )
+        if video is not None:
+            video_path = await _write_calibration_upload_to_temp(
+                video, _CALIBRATION_VIDEO_CONTENT_TYPES, "video"
+            )
+        # Browser calibration uses one WebM container carrying both tracks.
+        return derive_personal_baseline(
+            audio_path=audio_path or video_path,
+            video_path=video_path,
+        )
+    finally:
+        _delete_calibration_temp(audio_path)
+        _delete_calibration_temp(video_path)
+
+
+@router.post("/calibration/baseline", response_model=CalibrationBaselineResponse)
+async def derive_unbound_calibration_baseline(
+    audio: Annotated[Optional[UploadFile], File()] = None,
+    video: Annotated[Optional[UploadFile], File()] = None,
+    current_user: User = Depends(get_current_active_user),
+):
+    """Derive an authenticated baseline without creating an interview."""
+    if audio is None and video is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one of audio or video calibration media is required",
+        )
+    try:
+        baseline = await _derive_uploaded_personal_baseline(audio, video)
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "calibration_baseline_event event=derivation_error user_id=%s",
+            current_user.id,
+        )
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Failed to derive a personal baseline from the calibration media",
+        )
+    if baseline is None:
+        return CalibrationBaselineResponse(
+            status="unavailable",
+            personal_baseline=None,
+            reason="insufficient_signal",
+        )
+    return CalibrationBaselineResponse(status="ok", personal_baseline=baseline)
+
+
 @router.post(
     "/{interview_id}/calibration/baseline",
     response_model=CalibrationBaselineResponse,
@@ -475,11 +535,9 @@ async def derive_calibration_baseline(
     db.commit()
 
     logger.info(
-        "calibration_baseline_event event=stored interview_id=%s user_id=%s "
-        "has_gaze=%s",
+        "calibration_baseline_event event=stored interview_id=%s user_id=%s",
         interview_id,
         current_user.id,
-        baseline.neutral_gaze_yaw is not None,
     )
     return CalibrationBaselineResponse(status="ok", personal_baseline=baseline)
 

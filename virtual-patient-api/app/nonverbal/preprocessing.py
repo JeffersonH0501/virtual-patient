@@ -241,13 +241,9 @@ def _calibrated_center(
 ) -> tuple[float, float] | None:
     """Return the calibrated ``(yaw, pitch)`` interaction center, or ``None``.
 
-    The center is the baseline neutral gaze. It is available only when both
-    ``neutral_gaze_yaw`` and ``neutral_gaze_pitch`` are present; a partial
-    baseline yields no center rather than a fabricated one.
+    The center is the required neutral gaze stored in a valid personal baseline.
     """
     if baseline is None:
-        return None
-    if baseline.neutral_gaze_yaw is None or baseline.neutral_gaze_pitch is None:
         return None
     return baseline.neutral_gaze_yaw, baseline.neutral_gaze_pitch
 

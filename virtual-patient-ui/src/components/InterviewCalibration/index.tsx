@@ -3,7 +3,7 @@ import {Navigate, useLocation, useNavigate, useParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {useInterviewMedia} from '../../contexts/interviewMedia';
 import {useTechnicalCalibration} from '../../hooks/useTechnicalCalibration';
-import {deriveCalibrationBaseline, getInterview, saveCalibrationResult, startInterview} from '../../services/interviews';
+import {deriveStandaloneCalibrationBaseline, getInterview, saveCalibrationResult, startInterview} from '../../services/interviews';
 import {createInterview} from '../../services/interviews/createInterview';
 import {CompleteInterviewResponse, PersonalBaseline} from '../../types/interview';
 import {CalibrationRouteState, interviewPath, ROUTES} from '../../utils/routes';
@@ -16,6 +16,18 @@ import {isDebugUnavailable} from '../../services/debug';
 
 type CheckState = 'ready' | 'warning' | 'unavailable';
 const WAVEFORM_BAR_COUNT = 80;
+
+const hasCompletePersonalBaseline = (baseline: PersonalBaseline | null): baseline is PersonalBaseline => Boolean(
+  baseline && [
+    baseline.baselineF0Semitones,
+    baseline.baselineLoudness,
+    baseline.neutralHeadYaw,
+    baseline.neutralHeadPitch,
+    baseline.neutralHeadRoll,
+    baseline.neutralGazeYaw,
+    baseline.neutralGazePitch,
+  ].every(Number.isFinite),
+);
 
 const CalibrationCheck = ({label, state}: {label: string; state: CheckState}) => (
   <li className="calibration-check">
@@ -31,7 +43,7 @@ export const InterviewCalibration = () => {
   const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
   // Legacy flow: the interview already exists and its id is in the URL.
   // New flow (/cases/calibration): no id yet; the case configuration arrives via
-  // location.state and the interview is created only when the simulation starts.
+  // location.state; baseline derivation remains stateless until the user starts.
   const hasInterviewId = Boolean(interviewIdParam);
   const interviewId = interviewIdParam ? Number.parseInt(interviewIdParam, 10) : Number.NaN;
   const routeConfig = (location.state as CalibrationRouteState | null) ?? null;
@@ -47,8 +59,10 @@ export const InterviewCalibration = () => {
   const [loading, setLoading] = useState(hasInterviewId);
   const [loadError, setLoadError] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(!hasInterviewId);
+  const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState(false);
+  const [baselineError, setBaselineError] = useState(false);
+  const [personalBaseline, setPersonalBaseline] = useState<PersonalBaseline | null>(null);
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [instructionsOpen, setInstructionsOpen] = useState(true);
@@ -129,17 +143,15 @@ export const InterviewCalibration = () => {
     ]);
   }, [calibration.audioLevel]);
 
-  // Derives the personal baseline from the recorded calibration media by
-  // uploading it to the baseline endpoint. Best-effort and non-blocking:
-  // returns null when there is no media, when the backend reports the baseline
-  // unavailable, or when the request fails, so technical calibration can always
-  // be saved regardless (Requirement 15.5).
+  // Derives the personal baseline from temporary calibration media without
+  // creating an interview. The numbers remain in memory until the user starts
+  // the simulation; a missing or incomplete baseline makes calibration fail.
   const resolveCalibrationBaseline = useCallback(
-    async (targetInterviewId: number): Promise<PersonalBaseline | null> => {
+    async (): Promise<PersonalBaseline | null> => {
       const captured = calibration.media;
       if (!captured) return null;
       try {
-        const response = await deriveCalibrationBaseline(targetInterviewId, {
+        const response = await deriveStandaloneCalibrationBaseline({
           video: captured.blob,
         });
         return response.status === 'ok' ? response.personalBaseline ?? null : null;
@@ -151,32 +163,31 @@ export const InterviewCalibration = () => {
   );
 
   useEffect(() => {
-    if (!calibration.result) return;
-    // New flow: nothing is persisted yet. The result (and, once assembled, the
-    // recorded media) is kept in the hook state and used together with interview
-    // creation when the simulation starts.
-    if (!hasInterviewId) {
-      setSaved(true);
-      return;
-    }
-    if (!Number.isFinite(interviewId)) return;
-    // Wait for the recorded media before saving so the personal baseline can be
-    // derived from the same recording. If the media never assembles, the effect
-    // still runs (the media dependency is optional) and saves without a baseline.
+    const result = calibration.result;
+    if (!result || result.status !== 'passed' || !calibration.media) return;
+    if (hasInterviewId && !Number.isFinite(interviewId)) return;
     const requestId = ++saveRequestRef.current;
     setSaving(true);
     setSaved(false);
     setSaveError(false);
+    setBaselineError(false);
+    setPersonalBaseline(null);
     void (async () => {
-      // Baseline derivation is best-effort and must not block technical
-      // calibration: any failure or an "unavailable" response leaves the
-      // baseline null (Requirement 15.5).
-      const personalBaseline = await resolveCalibrationBaseline(interviewId);
-      if (requestId !== saveRequestRef.current) return;
       try {
+        const derivedBaseline = await resolveCalibrationBaseline();
+        if (requestId !== saveRequestRef.current) return;
+        if (!hasCompletePersonalBaseline(derivedBaseline)) {
+          setBaselineError(true);
+          return;
+        }
+        setPersonalBaseline(derivedBaseline);
+        if (!hasInterviewId) {
+          setSaved(true);
+          return;
+        }
         const value = await saveCalibrationResult(interviewId, {
-          ...calibration.result!,
-          personalBaseline,
+          ...result,
+          personalBaseline: derivedBaseline,
         });
         if (requestId !== saveRequestRef.current) return;
         setInterview((current) => current ? {
@@ -190,9 +201,7 @@ export const InterviewCalibration = () => {
         if (requestId === saveRequestRef.current) setSaving(false);
       }
     })();
-    // `calibration.media` is intentionally included so the save waits for the
-    // recording; a change to it re-runs derivation with the assembled blob.
-  }, [calibration.result, calibration.media, hasInterviewId, interviewId]);
+  }, [calibration.result, calibration.media, hasInterviewId, interviewId, resolveCalibrationBaseline]);
 
   // New flow reached without configuration (e.g. a direct URL hit): go back.
   if (missingConfig) return <Navigate to={ROUTES.clinicalCases} replace />;
@@ -209,6 +218,9 @@ export const InterviewCalibration = () => {
   const isRecording = calibration.phase === 'recording';
   const result = calibration.result;
   const canContinue = Boolean(result?.status === 'passed' && saved && !saving && !starting);
+  const baselinePending = Boolean(
+    result?.status === 'passed' && !saved && !baselineError && !saveError,
+  );
   const secondsRemaining = Math.ceil(calibration.remainingMs / 1_000);
   const mediaError = [media.cameraState, media.microphoneState].some(
     (state) => state === 'permission-denied' || state === 'unavailable' || state === 'unsupported',
@@ -225,10 +237,8 @@ export const InterviewCalibration = () => {
       navigate(interviewPath(interview.id, 'session'), {state: {justStarted: true}});
       return;
     }
-    // New flow: create the interview now, persist the calibration result, start
-    // it, and only then move to the session. This is the first time anything is
-    // written for this interview.
-    if (!routeConfig || !calibration.result || starting) return;
+    // New flow: create and persist only after the user explicitly confirms.
+    if (!routeConfig || !calibration.result || !personalBaseline || !saved || starting) return;
     setStarting(true);
     setStartError(null);
     try {
@@ -240,10 +250,6 @@ export const InterviewCalibration = () => {
       });
       if (!created) throw new Error('missing-interview');
       const createdId = Number(created.id);
-      // Derive the baseline before starting: the endpoint only accepts media
-      // while the interview has not started. Best-effort — a null baseline does
-      // not block starting the interview (Requirement 15.5).
-      const personalBaseline = await resolveCalibrationBaseline(createdId);
       await saveCalibrationResult(createdId, {...calibration.result, personalBaseline});
       await startInterview(createdId);
       // Mark this as a fresh start so the session view does not treat the first
@@ -397,6 +403,8 @@ export const InterviewCalibration = () => {
           {result && (
             <div className={`calibration-result calibration-result--${result.status}`} role="status">
               <p>{t(result.status === 'passed' ? 'calibration.resultReadyDescription' : 'calibration.resultProblemDescription')}</p>
+              {baselinePending && <p>{t('calibration.baselineProcessing')}</p>}
+              {saved && result.status === 'passed' && <p>{t('calibration.baselineReady')}</p>}
               {result.audio.inputLevel !== 'adequate' && <p className="calibration-result__warning">{t(`calibration.quality.${result.audio.inputLevel}`)}</p>}
               {result.audio.clippingDetected && <p className="calibration-result__warning">{t('calibration.quality.clipping')}</p>}
             </div>
@@ -406,16 +414,20 @@ export const InterviewCalibration = () => {
             <p className="calibration-message calibration-message--error" role="alert">{t(saveError ? 'calibration.saveError' : 'calibration.recordingError')}</p>
           )}
 
+          {baselineError && (
+            <p className="calibration-message calibration-message--error" role="alert">{t('calibration.baselineUnavailable')}</p>
+          )}
+
           {startError && (
             <p className="calibration-message calibration-message--error" role="alert">{startError}</p>
           )}
 
           <footer className="calibration-actions">
-            <button type="button" className="dialog-action dialog-action--secondary" onClick={() => navigate(ROUTES.clinicalCases)} disabled={isRecording || saving || starting}>{t('common.cancel')}</button>
+            <button type="button" className="dialog-action dialog-action--secondary" onClick={() => navigate(ROUTES.clinicalCases)} disabled={isRecording || baselinePending || saving || starting}>{t('common.cancel')}</button>
             {canContinue ? (
               <button type="button" className="dialog-action dialog-action--primary" onClick={() => void onStartInterview()} disabled={starting}>{t(starting ? 'calibration.saving' : 'calibration.startInterview')}</button>
             ) : result ? (
-              <button type="button" className="dialog-action dialog-action--primary" onClick={() => void calibration.start()} disabled={saving || !devicesReady || isRecording}>{t(saving ? 'calibration.saving' : 'calibration.repeat')}</button>
+              <button type="button" className="dialog-action dialog-action--primary" onClick={() => void calibration.start()} disabled={baselinePending || saving || !devicesReady || isRecording}>{t(baselinePending || saving ? 'calibration.processingBaseline' : 'calibration.repeat')}</button>
             ) : (
               <button type="button" className="dialog-action dialog-action--primary" onClick={() => void calibration.start()} disabled={!devicesReady || isRecording}>{isRecording ? t('calibration.calibrating') : t('calibration.startCalibration')}</button>
             )}

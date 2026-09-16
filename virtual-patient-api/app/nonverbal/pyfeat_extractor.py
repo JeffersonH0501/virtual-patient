@@ -21,6 +21,7 @@ empathy, attention, warmth, or any psychological state.
 
 from __future__ import annotations
 
+import logging
 import math
 from dataclasses import dataclass
 from pathlib import Path
@@ -31,11 +32,32 @@ from app.multimodal.schemas import NonverbalRawFeatures
 
 EXTRACTOR_NAME = "py-feat"
 EXTRACTOR_VERSION = "2.1.1"
-DEVICE = "cpu"
 WEIGHTS_ROOT = Path("/app/pyfeat/weights")
 SAMPLE_FPS = 10.0
-BATCH_SIZE = 8
+CPU_BATCH_SIZE = 8
+CUDA_BATCH_SIZE = 8
+CUDA_BATCH_CANDIDATES = (CUDA_BATCH_SIZE, 4, 2, 1)
 FACE_DETECTION_THRESHOLD = 0.5
+
+logger = logging.getLogger(__name__)
+
+
+def _resolve_device(cuda_available: bool) -> str:
+    """Use CUDA when Docker exposes it, otherwise retain the CPU fallback."""
+    return "cuda" if cuda_available else "cpu"
+
+
+def _prepare_torch_device(torch_module: Any) -> str:
+    """Select the device and keep Pascal GPUs on compatible CUDA kernels.
+
+    Current cuDNN wheels cannot select a convolution engine for the GTX 1050's
+    compute capability 6.1. Native PyTorch CUDA convolutions work correctly, so
+    cuDNN is disabled only for pre-Volta devices while newer GPUs retain it.
+    """
+    device = _resolve_device(torch_module.cuda.is_available())
+    if device == "cuda" and torch_module.cuda.get_device_capability(0)[0] < 7:
+        torch_module.backends.cudnn.enabled = False
+    return device
 
 # Real Py-Feat 2.1.1 columns consumed downstream. Verified against the current
 # best-face row extraction; the extractor emits these as raw series only.
@@ -84,6 +106,7 @@ def analyze_pyfeat_student_turn_videos(
         return {}
 
     import cv2
+    import torch
     import feat.utils.io as feat_io
     from feat import Detectorv2
 
@@ -96,14 +119,11 @@ def analyze_pyfeat_student_turn_videos(
     if not source_fps or not math.isfinite(source_fps) or source_fps <= 0:
         raise RuntimeError("Unable to determine video frame rate for Py-Feat")
     skip_frames = max(round(source_fps / SAMPLE_FPS), 1)
-    detector = Detectorv2(device=DEVICE)
-    fex = detector.detect(
-        str(video_path),
-        data_type="video",
+    fex, device, batch_size = _detect_video_with_fallback(
+        Detectorv2=Detectorv2,
+        torch_module=torch,
+        video_path=video_path,
         skip_frames=skip_frames,
-        batch_size=BATCH_SIZE,
-        face_detection_threshold=FACE_DETECTION_THRESHOLD,
-        progress_bar=False,
     )
     rows = _best_face_rows(fex, source_fps)
     return {
@@ -111,6 +131,8 @@ def analyze_pyfeat_student_turn_videos(
             **_raw_features_for_turn(
                 [row for row in rows if turn.start_ms <= row["timestamp_ms"] <= turn.end_ms],
                 turn,
+                device=device,
+                batch_size=batch_size,
             ).model_dump(),
             "observationContext": {
                 "observedParticipant": "student",
@@ -119,6 +141,77 @@ def analyze_pyfeat_student_turn_videos(
         }
         for turn in turn_list
     }
+
+
+def _detect_video_with_fallback(
+    *,
+    Detectorv2: Any,
+    torch_module: Any,
+    video_path: Path,
+    skip_frames: int,
+) -> tuple[Any, str, int]:
+    """Run Detectorv2 on the best available device with bounded fallbacks.
+
+    CUDA starts at batch 8, backs off through 4, 2 and 1 for low-memory or
+    driver-specific failures, then retries once on CPU. This keeps deployment
+    portable without hiding the final failure if CPU inference also fails.
+    """
+    device = _prepare_torch_device(torch_module)
+    batches = CUDA_BATCH_CANDIDATES if device == "cuda" else (CPU_BATCH_SIZE,)
+    try:
+        detector = Detectorv2(device=device)
+    except RuntimeError as error:
+        if device != "cuda":
+            raise
+        logger.warning(
+            "pyfeat_cuda_initialization_failed error=%s",
+            str(error).splitlines()[0],
+        )
+        torch_module.cuda.empty_cache()
+        device = "cpu"
+        batches = (CPU_BATCH_SIZE,)
+        detector = Detectorv2(device=device)
+
+    for batch_size in batches:
+        try:
+            return (
+                detector.detect(
+                    str(video_path),
+                    data_type="video",
+                    skip_frames=skip_frames,
+                    batch_size=batch_size,
+                    face_detection_threshold=FACE_DETECTION_THRESHOLD,
+                    progress_bar=False,
+                ),
+                device,
+                batch_size,
+            )
+        except RuntimeError as error:
+            if device != "cuda":
+                raise
+            logger.warning(
+                "pyfeat_cuda_retry batch_size=%s error=%s",
+                batch_size,
+                str(error).splitlines()[0],
+            )
+            torch_module.cuda.empty_cache()
+
+    logger.warning("pyfeat_cuda_fallback device=cpu")
+    del detector
+    torch_module.cuda.empty_cache()
+    cpu_detector = Detectorv2(device="cpu")
+    return (
+        cpu_detector.detect(
+            str(video_path),
+            data_type="video",
+            skip_frames=skip_frames,
+            batch_size=CPU_BATCH_SIZE,
+            face_detection_threshold=FACE_DETECTION_THRESHOLD,
+            progress_bar=False,
+        ),
+        "cpu",
+        CPU_BATCH_SIZE,
+    )
 
 
 def _best_face_rows(fex: Any, source_fps: float) -> list[dict[str, Any]]:
@@ -147,6 +240,9 @@ def _best_face_rows(fex: Any, source_fps: float) -> list[dict[str, Any]]:
 def _raw_features_for_turn(
     rows: list[dict[str, Any]],
     turn: StudentTurnVideo,
+    *,
+    device: str,
+    batch_size: int,
 ) -> NonverbalRawFeatures:
     """Assemble raw per-frame series and frame-level quality for one turn.
 
@@ -181,7 +277,8 @@ def _raw_features_for_turn(
             "version": EXTRACTOR_VERSION,
             "detector": "Detectorv2",
             "sample_fps": SAMPLE_FPS,
-            "batch_size": BATCH_SIZE,
+            "batch_size": batch_size,
+            "device": device,
             "face_detection_threshold": FACE_DETECTION_THRESHOLD,
         },
         video_quality={

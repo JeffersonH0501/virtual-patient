@@ -73,6 +73,7 @@ services:
       - ./virtual-patient-api:/app
       - interview_media:/app/media
       - pyfeat_models:/app/pyfeat
+    gpus: all
     depends_on:
       db:
         condition: service_healthy

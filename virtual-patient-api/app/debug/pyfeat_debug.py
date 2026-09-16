@@ -26,9 +26,9 @@ from typing import Any
 
 from app.debug.schemas import ExtractorInfo, PyFeatFrameDebug
 from app.nonverbal.pyfeat_extractor import (
-    DEVICE,
     FACE_DETECTION_THRESHOLD,
     WEIGHTS_ROOT,
+    _prepare_torch_device,
 )
 
 
@@ -85,13 +85,14 @@ def _get_detector() -> Any:
             return _detector
         try:
             import feat.utils.io as feat_io
+            import torch
             from feat import Detectorv2
         except Exception as error:  # noqa: BLE001 - report any import failure uniformly
             raise PyFeatDebugUnavailable(f"Py-Feat import failed: {error}") from error
         try:
             WEIGHTS_ROOT.mkdir(parents=True, exist_ok=True)
             feat_io.get_resource_path = lambda: str(WEIGHTS_ROOT)
-            _detector = Detectorv2(device=DEVICE)
+            _detector = Detectorv2(device=_prepare_torch_device(torch))
         except Exception as error:  # noqa: BLE001 - construction may fail on missing weights
             raise PyFeatDebugUnavailable(
                 f"Py-Feat detector construction failed: {error}"

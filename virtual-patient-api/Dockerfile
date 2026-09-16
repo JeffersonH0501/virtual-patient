@@ -33,10 +33,13 @@ COPY requirements.txt .
 # to be reused when requirements.txt changes and this layer must run again.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip && \
+    # CUDA 12.6 wheels retain a CPU fallback while allowing NVIDIA GPUs exposed
+    # to the container to accelerate Py-Feat. The host driver supplies the CUDA
+    # driver; no host-side Python or CUDA toolkit installation is required.
     pip install \
-        --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.11.0+cpu \
-        torchvision==0.26.0+cpu && \
+        --index-url https://download.pytorch.org/whl/cu126 \
+        torch==2.11.0 \
+        torchvision==0.26.0 && \
     pip install -r requirements.txt
 
 

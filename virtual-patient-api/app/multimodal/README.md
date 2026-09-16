@@ -156,23 +156,29 @@ Fixed-band families are unaffected by the guard.
 
 ## Personal-baseline calibration flow
 
-1. `POST /medical-interviews/{id}/calibration/baseline` (authenticated,
-   owner-only) receives the calibration media upload.
+1. `POST /medical-interviews/calibration/baseline` (authenticated) receives the
+   calibration media upload without requiring or creating an interview.
 2. The upload is written to a **temporary** server file.
 3. `calibration.derive_personal_baseline(...)` runs the OpenSMILE and Py-Feat
    extractors over the media and computes numeric-only metrics:
    `baseline_f0_semitones` (median voiced F0 **in semitones, never Hertz**),
-   `baseline_loudness`, `neutral_head_yaw/pitch/roll`, and optional
-   `neutral_gaze_yaw/pitch` when gaze frames are present.
-4. The result is validated against the `PersonalBaseline` schema and stored
-   **numeric-only** in `interview_metadata.calibration.personal_baseline`.
+   `baseline_loudness`, `neutral_head_yaw/pitch/roll`, and required
+   `neutral_gaze_yaw/pitch`; if either gaze axis is unavailable, the
+   complete personal baseline is unavailable rather than partially populated.
+4. The result is validated against the `PersonalBaseline` schema and returned
+   **numeric-only** to the UI, which holds it in memory.
 5. The **temporary media is deleted**; no calibration media is persisted, and no
    new database table is introduced.
+6. Only after the user confirms starting the simulation does the UI create the
+   interview and save the technical result and complete baseline together in
+   `interview_metadata.calibration` before starting it.
 
-Baseline calibration is allowed while the interview has not started; once
-started, an arbitrary overwrite is rejected. The existing `PUT /calibration`
-device-check behavior is preserved. `calibration.read_personal_baseline(...)` is
-the single accessor the pipeline uses to read the stored baseline.
+Cancelling before confirmation therefore leaves no interview record. The legacy
+`POST /medical-interviews/{id}/calibration/baseline` endpoint remains compatible
+with existing unstarted interviews and rejects overwrites after start. The
+existing `PUT /calibration` device-check behavior is preserved.
+`calibration.read_personal_baseline(...)` is the single accessor the pipeline
+uses to read the stored baseline.
 
 ## Relabeling without re-extraction
 

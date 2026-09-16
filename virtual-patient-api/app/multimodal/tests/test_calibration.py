@@ -5,7 +5,8 @@ These tests exercise three layers of the calibration feature:
 * the pure helpers in ``app.multimodal.calibration``
   (:func:`read_personal_baseline`, :func:`derive_personal_baseline`),
 * the relaxed :class:`CalibrationResultRequest` schema guard, and
-* the ``POST /{interview_id}/calibration/baseline`` endpoint logic.
+* the stateless ``POST /calibration/baseline`` endpoint logic, and
+* the legacy ``POST /{interview_id}/calibration/baseline`` endpoint logic.
 
 Unit vs endpoint coverage
 -------------------------
@@ -58,6 +59,7 @@ from app.routers import medical_interviews
 from app.routers.medical_interviews import (
     CalibrationResultRequest,
     derive_calibration_baseline,
+    derive_unbound_calibration_baseline,
 )
 
 
@@ -225,18 +227,16 @@ class CalibrationResultRequestBaselineTests(unittest.TestCase):
         self.assertIsInstance(result.personal_baseline, PersonalBaseline)
         self.assertEqual(result.personal_baseline.baseline_f0_semitones, 4.5)
 
-    def test_accepts_baseline_without_optional_gaze(self):
+    def test_rejects_baseline_without_required_gaze(self):
         metrics = {
             k: v
             for k, v in _VALID_BASELINE_METRICS.items()
             if k not in {"neutral_gaze_yaw", "neutral_gaze_pitch"}
         }
-        result = CalibrationResultRequest.model_validate(
-            calibration_payload(personal_baseline=metrics)
-        )
-
-        self.assertIsNone(result.personal_baseline.neutral_gaze_yaw)
-        self.assertIsNone(result.personal_baseline.neutral_gaze_pitch)
+        with self.assertRaises(ValidationError):
+            CalibrationResultRequest.model_validate(
+                calibration_payload(personal_baseline=metrics)
+            )
 
     def test_none_baseline_is_still_accepted(self):
         result = CalibrationResultRequest.model_validate(
@@ -280,6 +280,63 @@ class DerivePersonalBaselineTests(unittest.TestCase):
         # No PersonalBaseline object is fabricated when media is unavailable.
         self.assertNotIsInstance(result, PersonalBaseline)
         self.assertIsNone(result)
+
+
+# ---------------------------------------------------------------------------
+# POST /calibration/baseline -- stateless endpoint logic
+# ---------------------------------------------------------------------------
+
+
+class DeriveUnboundCalibrationBaselineEndpointTests(unittest.TestCase):
+    def test_derives_complete_baseline_without_an_interview_or_database(self):
+        video = _make_upload(
+            b"combined-audio-video-bytes",
+            filename="calibration.webm",
+            content_type="video/webm",
+        )
+        derived = _valid_baseline()
+
+        with patch.object(
+            medical_interviews,
+            "derive_personal_baseline",
+            return_value=derived,
+        ) as mock_derive:
+            response = _run(
+                derive_unbound_calibration_baseline(
+                    audio=None,
+                    video=video,
+                    current_user=SimpleNamespace(id=42),
+                )
+            )
+
+        self.assertEqual(response.status, "ok")
+        self.assertEqual(response.personal_baseline, derived)
+        _, kwargs = mock_derive.call_args
+        self.assertEqual(kwargs["audio_path"], kwargs["video_path"])
+        self.assertFalse(os.path.exists(kwargs["video_path"]))
+
+    def test_unavailable_signal_returns_no_fabricated_baseline(self):
+        audio = _make_upload(
+            b"audio-bytes",
+            filename="calibration.webm",
+            content_type="audio/webm",
+        )
+
+        with patch.object(
+            medical_interviews,
+            "derive_personal_baseline",
+            return_value=None,
+        ):
+            response = _run(
+                derive_unbound_calibration_baseline(
+                    audio=audio,
+                    video=None,
+                    current_user=SimpleNamespace(id=42),
+                )
+            )
+
+        self.assertEqual(response.status, "unavailable")
+        self.assertIsNone(response.personal_baseline)
 
 
 # ---------------------------------------------------------------------------

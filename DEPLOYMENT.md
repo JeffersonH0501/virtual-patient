@@ -76,8 +76,14 @@ pipeline is scheduled as a background task when a recording is finalized. Its
 methodology (derivation parameters, threshold bands, and label rules) lives in
 versioned YAML under `app/multimodal/config/`. Extractor runtime constants live
 beside their implementations: OpenSMILE uses eGeMAPSv02 LLDs over mono 16 kHz
-PCM, while Py-Feat uses Detectorv2 on CPU at 10 FPS with batches of 8 and stores
-downloaded resources in the persistent `/app/pyfeat` volume.
+PCM, while Py-Feat uses Detectorv2 at 10 FPS with batches of 8 and stores
+downloaded resources in the persistent `/app/pyfeat` volume. The API image uses
+the official PyTorch CUDA 12.6 runtime and both Compose modes expose the NVIDIA
+GPU to the API. Py-Feat selects CUDA automatically, reduces its batch through
+`8, 4, 2, 1` if the device rejects the initial batch, and finally retries on CPU.
+Pascal GPU use native CUDA convolution kernels; newer GPU retain cuDNN. A GPU
+deployment therefore requires an NVIDIA driver and Docker GPU support, but no
+host-side Python or CUDA toolkit installation.
 
 Methodology values such as the gaze alignment tolerance and AU12 active
 threshold are configured in `app/multimodal/config/processing.yaml`, not in
@@ -85,7 +91,9 @@ threshold are configured in `app/multimodal/config/processing.yaml`, not in
 them, and their dependent features are reported as unavailable rather than
 guessed. See `app/multimodal/README.md` for the pipeline flow and the personal-
 baseline calibration endpoint (`POST
-/medical-interviews/{id}/calibration/baseline`).
+/medical-interviews/calibration/baseline`). This endpoint processes temporary
+media before an interview exists; the interview and its numeric baseline are
+persisted only when the user confirms that the simulation should start.
 
 During an interview, four continuous sources share one browser clock:
 `student_audio`, `student_video`, `patient_audio`, and `patient_video`. Student

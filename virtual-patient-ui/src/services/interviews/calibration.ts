@@ -43,22 +43,17 @@ export const startInterview = async (
   {method: 'POST', headers: getAuthHeaders()},
 ));
 
-// Sends the ~20s technical-calibration media to the backend so it can derive a
-// numeric-only personal baseline (POST /calibration/baseline, multipart). Reuses
-// the calibration recording rather than capturing anything extra; the media is
-// only used for the upload and is not stored locally. Requires the interview to
-// exist and not yet be started (the backend rejects an already-started
-// interview with 409). Returns the derived baseline, or an "unavailable"
-// response the caller must handle gracefully without blocking calibration.
-export const deriveCalibrationBaseline = async (
-  interviewId: number,
+// Derives the same numeric baseline without creating or mutating an interview.
+// The backend uses temporary media only; the caller keeps the returned numbers
+// in memory until the user explicitly starts the simulation.
+export const deriveStandaloneCalibrationBaseline = async (
   media: {audio?: Blob | null; video?: Blob | null},
 ): Promise<CalibrationBaselineResponse> => {
   const form = new FormData();
   if (media.audio) form.append('audio', media.audio, 'calibration-audio');
   if (media.video) form.append('video', media.video, 'calibration-video');
   const response = await apiFetch(
-    `${API_URL}/medical-interviews/${interviewId}/calibration/baseline`,
+    `${API_URL}/medical-interviews/calibration/baseline`,
     {method: 'POST', headers: getAuthHeaders(), body: form},
   );
   if (!response.ok) {

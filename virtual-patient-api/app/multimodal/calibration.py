@@ -7,9 +7,8 @@ things and nothing else:
 1. :func:`derive_personal_baseline` computes numeric-only baseline metrics from
    already-provided temporary calibration media (audio and/or video), reusing the
    existing extractors. It never persists media and never fabricates a value:
-   anything that cannot be derived is represented as ``None`` (for optional gaze
-   neutrals) or causes the whole baseline to be reported as unavailable (for the
-   required metrics), rather than being invented.
+   anything that cannot be derived causes the whole baseline to be reported as
+   unavailable rather than being invented.
 2. :func:`read_personal_baseline` is THE single accessor the pipeline uses to read
    the stored baseline from ``interview_metadata.calibration.personal_baseline``,
    validating it against the :class:`PersonalBaseline` schema. No other code path
@@ -39,9 +38,8 @@ Baseline derivation methods
   the Py-Feat head-pose series (Yaw/Pitch/Roll) over the whole calibration video.
   Pitch was already emitted by the extractor; yaw and roll were added there as
   raw series specifically for this calibration use.
-* ``neutral_gaze_yaw`` / ``neutral_gaze_pitch``: median gaze when reliably
-  available, otherwise ``None`` (Requirement 15.2). Gaze is optional; its absence
-  never blocks the baseline.
+* ``neutral_gaze_yaw`` / ``neutral_gaze_pitch``: median gaze on both axes. Both
+  are required; missing gaze makes the baseline unavailable.
 
 Unavailable paths
 -----------------
@@ -51,7 +49,7 @@ Unavailable paths
 * If the calibration video is missing, disabled, or yields no head-pose samples
   on all three axes, the required head metrics cannot be derived and the whole
   baseline is reported as ``None``.
-* Optional gaze neutrals are ``None`` whenever gaze samples are absent.
+* If either gaze axis has no samples, the whole baseline is unavailable.
 """
 
 from __future__ import annotations
@@ -111,7 +109,7 @@ def derive_personal_baseline(
     )
     head_metrics, gaze_metrics = _derive_video_metrics(video_path)
 
-    if audio_metrics is None or head_metrics is None:
+    if audio_metrics is None or head_metrics is None or gaze_metrics is None:
         # A required metric group could not be derived; do not fabricate.
         return None
 
@@ -198,17 +196,17 @@ def _derive_audio_metrics(
 
 def _derive_video_metrics(
     video_path: Path | None,
-) -> tuple[tuple[float, float, float] | None, tuple[float | None, float | None]]:
+) -> tuple[tuple[float, float, float] | None, tuple[float, float] | None]:
     """Return ``(head_metrics, gaze_metrics)`` from the calibration video.
 
     ``head_metrics`` is ``(neutral_head_yaw, neutral_head_pitch,
     neutral_head_roll)`` when all three head-pose axes have samples, otherwise
     ``None`` (the required head baseline is then unavailable). ``gaze_metrics`` is
     ``(neutral_gaze_yaw, neutral_gaze_pitch)`` where each element is the median
-    gaze when reliably available and ``None`` otherwise (gaze is optional).
+    gaze when both axes are available; otherwise the gaze group is ``None``.
     """
     if video_path is None:
-        return None, (None, None)
+        return None, None
 
     from app.nonverbal.pyfeat_extractor import (
         StudentTurnVideo,
@@ -224,7 +222,7 @@ def _derive_video_metrics(
     extracted = analyze_pyfeat_student_turn_videos(video_path, [window])
     raw = extracted.get(_CALIBRATION_WINDOW_TURN_ID)
     if raw is None:
-        return None, (None, None)
+        return None, None
 
     head_yaw_samples = raw.get("head_yaw_samples") or []
     head_pitch_samples = raw.get("head_pitch_samples") or []
@@ -242,7 +240,8 @@ def _derive_video_metrics(
         head_metrics = None
 
     gaze_metrics = (
-        float(median(gaze_yaw_samples)) if gaze_yaw_samples else None,
-        float(median(gaze_pitch_samples)) if gaze_pitch_samples else None,
+        (float(median(gaze_yaw_samples)), float(median(gaze_pitch_samples)))
+        if gaze_yaw_samples and gaze_pitch_samples
+        else None
     )
     return head_metrics, gaze_metrics

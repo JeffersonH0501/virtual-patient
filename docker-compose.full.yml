@@ -67,6 +67,7 @@ services:
       - ./virtual-patient-api/logs:/app/logs
       - interview_media:/app/media
       - pyfeat_models:/app/pyfeat
+    gpus: all
     depends_on:
       postgres:
         condition: service_healthy

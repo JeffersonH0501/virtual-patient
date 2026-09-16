@@ -61,8 +61,8 @@ class PersonalBaseline(BaseModel):
     """Per-participant numeric reference derived from calibration media.
 
     Fundamental frequency is stored in semitones only, never in Hertz
-    (Requirement 7.6, 15.6). Gaze neutrals are optional because gaze frames may
-    be absent from the calibration recording (Requirement 15.2).
+    (Requirement 7.6, 15.6). Both gaze axes are required so every valid baseline
+    supports participant-relative visual alignment.
     """
 
     baseline_f0_semitones: float
@@ -70,8 +70,8 @@ class PersonalBaseline(BaseModel):
     neutral_head_yaw: float
     neutral_head_pitch: float
     neutral_head_roll: float
-    neutral_gaze_yaw: float | None = None
-    neutral_gaze_pitch: float | None = None
+    neutral_gaze_yaw: float
+    neutral_gaze_pitch: float
 
 
 # ---------------------------------------------------------------------------
