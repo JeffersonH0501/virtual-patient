@@ -1,17 +1,19 @@
 # Multimodal pipeline — integrated label rules (methodology configuration).
 #
-# One integrated label per family. Rules are evaluated in order (priority):
-# the first rule whose conditions all hold wins. Condition grammar:
+# This is one of the two research config files (with thresholds.yaml). It maps
+# the per-feature base labels of a family to exactly one integrated label.
+# Rules are evaluated in order (priority): the first rule whose conditions all
+# hold wins. Condition grammar:
 #   all: {slot: value}        -> every slot must equal the given base label (AND)
 #   any: {slot: [v1, v2]}     -> slot must equal one of the listed base labels (OR)
 # A rule may combine `all` and `any`; both must hold. If no rule matches, the
 # `fallback` value is used. `unavailable` names the outcome when the family's
 # base labels are insufficient (missing/unavailable required slots).
 #
-# The Spanish identifiers are research category names from the methodology and
-# are kept verbatim (domain content, not code). No categories are invented here
-# beyond the technical `unavailable` outcome. All labels are descriptive,
-# provisional research categories, not clinical or psychological judgments.
+# All labels are in English and are descriptive, provisional research categories,
+# not clinical or psychological judgments. To retune the categories, edit the
+# `value` names and the base-label values referenced under `all` / `any` (those
+# must match the labels produced by thresholds.yaml).
 version: "label_rules_v1"
 
 families:
@@ -19,28 +21,28 @@ families:
   # pause_duration, pause_frequency (base labels from thresholds.temporal).
   temporal:
     rules:
-      - value: fragmentado_por_pausas_breves
-        all: {pause_frequency: frecuencia_pausas_alta, pause_duration: pausas_predominantemente_breves}
-      - value: intermitente_por_pausas_largas
-        all: {pause_duration: pausas_predominantemente_largas}
-        any: {pause_load: [carga_pausas_alta, carga_pausas_tipica]}
-      - value: rafagas_rapidas_con_pausas
-        all: {global_rate: ritmo_global_alto, pause_load: carga_pausas_alta}
-      - value: ritmo_reducido_por_pausas
-        all: {global_rate: ritmo_global_bajo, pause_load: carga_pausas_alta}
-      - value: ritmo_lento_continuo
-        all: {articulation: articulacion_baja}
-        any: {pause_load: [carga_pausas_baja, carga_pausas_tipica]}
-      - value: ritmo_rapido_continuo
-        all: {articulation: articulacion_alta}
-        any: {pause_load: [carga_pausas_baja, carga_pausas_tipica]}
-      - value: pausas_escasas
-        all: {pause_load: carga_pausas_baja, pause_frequency: frecuencia_pausas_baja}
-      - value: alta_carga_de_pausas
-        all: {pause_load: carga_pausas_alta}
-      - value: patron_temporal_tipico
-        all: {global_rate: ritmo_global_tipico, articulation: articulacion_tipica, pause_load: carga_pausas_tipica}
-    fallback: patron_temporal_mixto_no_clasificado
+      - value: fragmented_by_brief_pauses
+        all: {pause_frequency: pause_frequency_high, pause_duration: pause_duration_brief}
+      - value: intermittent_by_long_pauses
+        all: {pause_duration: pause_duration_long}
+        any: {pause_load: [pause_load_high, pause_load_typical]}
+      - value: rapid_bursts_with_pauses
+        all: {global_rate: speech_rate_high, pause_load: pause_load_high}
+      - value: reduced_rate_by_pauses
+        all: {global_rate: speech_rate_low, pause_load: pause_load_high}
+      - value: slow_continuous_rate
+        all: {articulation: articulation_rate_low}
+        any: {pause_load: [pause_load_low, pause_load_typical]}
+      - value: fast_continuous_rate
+        all: {articulation: articulation_rate_high}
+        any: {pause_load: [pause_load_low, pause_load_typical]}
+      - value: sparse_pauses
+        all: {pause_load: pause_load_low, pause_frequency: pause_frequency_low}
+      - value: high_pause_load
+        all: {pause_load: pause_load_high}
+      - value: typical_temporal_pattern
+        all: {global_rate: speech_rate_typical, articulation: articulation_rate_typical, pause_load: pause_load_typical}
+    fallback: mixed_temporal_pattern_unclassified
     unavailable: unavailable
 
   # PARAVERBAL — prosodic level. Slots: pitch_level (relative_pitch_shift_st),
@@ -48,21 +50,21 @@ families:
   prosodic_level:
     session_relative: true
     rules:
-      - value: nivel_prosodico_elevado
-        all: {pitch_level: tono_relativo_alto, loudness_level: volumen_alto}
-      - value: nivel_prosodico_reducido
-        all: {pitch_level: tono_relativo_bajo, loudness_level: volumen_bajo}
-      - value: tono_elevado
-        all: {pitch_level: tono_relativo_alto}
-      - value: tono_reducido
-        all: {pitch_level: tono_relativo_bajo}
-      - value: volumen_elevado
-        all: {loudness_level: volumen_alto}
-      - value: volumen_reducido
-        all: {loudness_level: volumen_bajo}
-      - value: nivel_prosodico_tipico
-        all: {pitch_level: tono_relativo_tipico, loudness_level: volumen_tipico}
-    fallback: nivel_prosodico_mixto_no_clasificado
+      - value: elevated_prosodic_level
+        all: {pitch_level: relative_pitch_high, loudness_level: loudness_high}
+      - value: reduced_prosodic_level
+        all: {pitch_level: relative_pitch_low, loudness_level: loudness_low}
+      - value: elevated_pitch
+        all: {pitch_level: relative_pitch_high}
+      - value: reduced_pitch
+        all: {pitch_level: relative_pitch_low}
+      - value: elevated_loudness
+        all: {loudness_level: loudness_high}
+      - value: reduced_loudness
+        all: {loudness_level: loudness_low}
+      - value: typical_prosodic_level
+        all: {pitch_level: relative_pitch_typical, loudness_level: loudness_typical}
+    fallback: mixed_prosodic_level_unclassified
     unavailable: unavailable
 
   # PARAVERBAL — prosodic modulation. Slots: pitch_variation
@@ -71,37 +73,37 @@ families:
   prosodic_modulation:
     session_relative: true
     rules:
-      - value: modulacion_expresiva
-        all: {pitch_variation: entonacion_variable, loudness_variation: variabilidad_volumen_alta}
-      - value: modulacion_reducida
-        all: {pitch_variation: entonacion_monotona, loudness_variation: variabilidad_volumen_baja}
-      - value: entonacion_expresiva
-        all: {pitch_variation: entonacion_variable}
-      - value: entonacion_monotona
-        all: {pitch_variation: entonacion_monotona}
-      - value: variabilidad_volumen_marcada
-        all: {loudness_variation: variabilidad_volumen_alta}
-      - value: variabilidad_volumen_reducida
-        all: {loudness_variation: variabilidad_volumen_baja}
-      - value: modulacion_tipica
-        all: {pitch_variation: entonacion_tipica, loudness_variation: variabilidad_volumen_tipica}
-    fallback: modulacion_mixta_no_clasificada
+      - value: expressive_modulation
+        all: {pitch_variation: intonation_variable, loudness_variation: loudness_variability_high}
+      - value: reduced_modulation
+        all: {pitch_variation: intonation_monotone, loudness_variation: loudness_variability_low}
+      - value: expressive_intonation
+        all: {pitch_variation: intonation_variable}
+      - value: monotone_intonation
+        all: {pitch_variation: intonation_monotone}
+      - value: marked_loudness_variability
+        all: {loudness_variation: loudness_variability_high}
+      - value: reduced_loudness_variability
+        all: {loudness_variation: loudness_variability_low}
+      - value: typical_modulation
+        all: {pitch_variation: intonation_typical, loudness_variation: loudness_variability_typical}
+    fallback: mixed_modulation_unclassified
     unavailable: unavailable
 
   # NONVERBAL — visual orientation. Slots: alignment (visual_alignment_ratio),
   # dwell (median_visual_alignment_dwell_ms).
   visual_orientation:
     rules:
-      - value: orientacion_visual_sostenida
-        all: {alignment: alineacion_visual_alta, dwell: permanencia_visual_prolongada}
-      - value: orientacion_visual_escasa
-        all: {alignment: alineacion_visual_baja}
-      - value: orientacion_visual_fragmentada
-        all: {dwell: permanencia_visual_breve}
-        any: {alignment: [alineacion_visual_tipica, alineacion_visual_alta]}
-      - value: orientacion_visual_tipica
-        all: {alignment: alineacion_visual_tipica, dwell: permanencia_visual_tipica}
-    fallback: orientacion_visual_mixta_no_clasificada
+      - value: sustained_visual_orientation
+        all: {alignment: visual_alignment_high, dwell: visual_dwell_sustained}
+      - value: scarce_visual_orientation
+        all: {alignment: visual_alignment_low}
+      - value: fragmented_visual_orientation
+        all: {dwell: visual_dwell_brief}
+        any: {alignment: [visual_alignment_mid, visual_alignment_high]}
+      - value: typical_visual_orientation
+        all: {alignment: visual_alignment_mid, dwell: visual_dwell_typical}
+    fallback: mixed_visual_orientation_unclassified
     unavailable: unavailable
 
   # NONVERBAL — head gestural feedback. Slots: nod_present, nod_rate
@@ -109,15 +111,15 @@ families:
   head_gestural_feedback:
     session_relative: true
     rules:
-      - value: sin_asentimiento
+      - value: no_nodding
         all: {nod_present: nod_absent}
-      - value: asentimiento_frecuente
-        all: {nod_present: nod_observed, nod_rate: ritmo_asentimiento_alto}
-      - value: asentimiento_escaso
-        all: {nod_present: nod_observed, nod_rate: ritmo_asentimiento_bajo}
-      - value: asentimiento_presente
+      - value: frequent_nodding
+        all: {nod_present: nod_observed, nod_rate: nod_rate_high}
+      - value: scarce_nodding
+        all: {nod_present: nod_observed, nod_rate: nod_rate_low}
+      - value: nodding_present
         all: {nod_present: nod_observed}
-    fallback: retroalimentacion_gestual_mixta_no_clasificada
+    fallback: mixed_head_gestural_feedback_unclassified
     unavailable: unavailable
 
   # NONVERBAL — facial expressivity. Slots: smile_activity (four-band),
@@ -125,15 +127,15 @@ families:
   facial_expressivity:
     session_relative: true
     rules:
-      - value: expresividad_facial_ausente
-        all: {smile_activity: expresividad_ausente}
-      - value: expresividad_facial_marcada
-        all: {smile_activity: expresividad_frecuente, smile_activation: activacion_sonrisa_alta}
-      - value: expresividad_facial_frecuente
-        all: {smile_activity: expresividad_frecuente}
-      - value: expresividad_facial_moderada
-        all: {smile_activity: expresividad_moderada}
-      - value: expresividad_facial_escasa
-        all: {smile_activity: expresividad_escasa}
-    fallback: expresividad_facial_mixta_no_clasificada
+      - value: absent_facial_expressivity
+        all: {smile_activity: smile_activity_absent}
+      - value: marked_facial_expressivity
+        all: {smile_activity: smile_activity_frequent, smile_activation: smile_activation_marked}
+      - value: frequent_facial_expressivity
+        all: {smile_activity: smile_activity_frequent}
+      - value: moderate_facial_expressivity
+        all: {smile_activity: smile_activity_moderate}
+      - value: scarce_facial_expressivity
+        all: {smile_activity: smile_activity_sparse}
+    fallback: mixed_facial_expressivity_unclassified
     unavailable: unavailable

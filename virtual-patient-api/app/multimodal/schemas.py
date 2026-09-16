@@ -163,9 +163,11 @@ class ParaverbalIntegratedLabels(BaseModel):
 class NonverbalRawFeatures(BaseModel):
     """Signal-level nonverbal outputs of extraction, before derivation.
 
-    Produced by the Py-Feat extractor. Contains per-frame raw arrays,
+    Produced by the OpenFace 3.0 extractor. Contains per-frame raw arrays,
     segmentation, per-signal metadata, and frame-level quality; it carries no
-    labels. Field names match the real Py-Feat 2.1.1 columns used downstream.
+    labels. The field names and units are preserved unchanged from the previous
+    extractor, so downstream preprocessing, calibration, thresholds, and UI keep
+    consuming the same contract.
     """
 
     face_score_samples: list[float]

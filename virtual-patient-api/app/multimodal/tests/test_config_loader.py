@@ -4,8 +4,14 @@ These tests exercise the public API of ``app.multimodal.config_loader``:
 
 * ``load_methodology_config`` / ``reload_methodology_config`` for load + caching,
 * ``ConfigError`` for malformed / missing / non-mapping config, and
-* ``MethodologyConfig`` (``.processing`` / ``.thresholds`` / ``.label_rules`` /
-  ``.versions`` / ``.config_hash``).
+* ``MethodologyConfig`` (``.thresholds`` / ``.label_rules`` / ``.versions`` /
+  ``.config_hash``).
+
+The methodology configuration is now exactly two files: ``thresholds.yaml`` and
+``label_rules.yaml``. Technical derivation parameters (pause segmentation, gaze
+tolerance, AU12 activation, nod detector tuning) are module constants in the
+preprocessing modules and are intentionally NOT configuration, so this loader no
+longer reads a ``processing.yaml``.
 
 Every case that touches the cache clears it (via ``reload_methodology_config``)
 so cases stay isolated. Temporary config directories are built with the
@@ -28,7 +34,6 @@ from app.multimodal.config_loader import (
     reload_methodology_config,
 )
 
-_PROCESSING_FILE = "processing.yaml"
 _THRESHOLDS_FILE = "thresholds.yaml"
 _LABEL_RULES_FILE = "label_rules.yaml"
 
@@ -36,26 +41,6 @@ _LABEL_RULES_FILE = "label_rules.yaml"
 # ---------------------------------------------------------------------------
 # Fixtures / helpers to build minimal but structurally valid temp config dirs
 # ---------------------------------------------------------------------------
-
-
-def _valid_processing() -> dict[str, Any]:
-    """A minimal structurally valid processing config.
-
-    Keeps ``gaze.alignment_tolerance_radians`` present-but-null so the
-    present-null preservation case can rely on this baseline.
-    """
-
-    return {
-        "version": "processing_v1",
-        "paraverbal": {
-            "min_pause_ms": 250,
-        },
-        "nonverbal": {
-            "gaze": {"alignment_tolerance_radians": None},
-            "smile": {"au12_active_threshold": None},
-            "nod": {"enabled": True, "min_amplitude_deg": None},
-        },
-    }
 
 
 def _valid_thresholds() -> dict[str, Any]:
@@ -107,21 +92,16 @@ def _valid_label_rules() -> dict[str, Any]:
 def _write_config_dir(
     directory: Path,
     *,
-    processing: dict[str, Any] | None = None,
     thresholds: dict[str, Any] | None = None,
     label_rules: dict[str, Any] | None = None,
 ) -> Path:
-    """Write the three methodology YAML files into ``directory``.
+    """Write the two methodology YAML files into ``directory``.
 
     Any section left as ``None`` falls back to its valid baseline, so a case
     only has to override the file it wants to break.
     """
 
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / _PROCESSING_FILE).write_text(
-        yaml.safe_dump(processing if processing is not None else _valid_processing()),
-        encoding="utf-8",
-    )
     (directory / _THRESHOLDS_FILE).write_text(
         yaml.safe_dump(thresholds if thresholds is not None else _valid_thresholds()),
         encoding="utf-8",
@@ -161,12 +141,10 @@ def test_load_real_config_exposes_expected_versions_and_hash() -> None:
     config = load_methodology_config()
 
     assert isinstance(config, MethodologyConfig)
-    # Versions come from the real bundled files.
-    assert config.versions.processing == "processing_v1"
+    # Versions come from the real bundled files (only the two research files).
     assert config.versions.thresholds == "thresholds_v1"
     assert config.versions.label_rules == "label_rules_v1"
     # Sections are parsed mappings.
-    assert isinstance(config.processing, dict)
     assert isinstance(config.thresholds, dict)
     assert isinstance(config.label_rules, dict)
     # config_hash is a non-empty lowercase hex string (SHA-256 -> 64 chars).
@@ -177,9 +155,8 @@ def test_load_real_config_exposes_expected_versions_and_hash() -> None:
 
 
 def test_default_config_dir_points_at_bundled_config() -> None:
-    """Sanity check that the default config directory holds the three files."""
+    """Sanity check that the default config directory holds the two files."""
 
-    assert (DEFAULT_CONFIG_DIR / _PROCESSING_FILE).is_file()
     assert (DEFAULT_CONFIG_DIR / _THRESHOLDS_FILE).is_file()
     assert (DEFAULT_CONFIG_DIR / _LABEL_RULES_FILE).is_file()
 
@@ -208,15 +185,15 @@ def test_reload_forces_fresh_load(tmp_path: Path) -> None:
     first = load_methodology_config(config_dir=config_dir)
 
     # Change the version on disk, then reload; the cache must not be reused.
-    changed = _valid_processing()
-    changed["version"] = "processing_v1_reloaded"
-    _write_config_dir(tmp_path / "cfg", processing=changed)
+    changed = _valid_thresholds()
+    changed["version"] = "thresholds_v1_reloaded"
+    _write_config_dir(tmp_path / "cfg", thresholds=changed)
 
     reloaded = reload_methodology_config(config_dir=config_dir)
 
     assert reloaded is not first
-    assert first.versions.processing == "processing_v1"
-    assert reloaded.versions.processing == "processing_v1_reloaded"
+    assert first.versions.thresholds == "thresholds_v1"
+    assert reloaded.versions.thresholds == "thresholds_v1_reloaded"
 
 
 # ---------------------------------------------------------------------------
@@ -260,16 +237,15 @@ def test_missing_required_structural_key_raises_config_error_naming_file(
 ) -> None:
     """(c) A missing required structural key raises ConfigError naming file."""
 
-    processing = _valid_processing()
-    # Remove a required leaf that the shape model declares.
-    del processing["paraverbal"]["min_pause_ms"]
-    config_dir = _write_config_dir(tmp_path / "cfg", processing=processing)
+    thresholds = _valid_thresholds()
+    # Remove a required top-level structural key the shape model declares.
+    del thresholds["min_turns_for_session_stats"]
+    config_dir = _write_config_dir(tmp_path / "cfg", thresholds=thresholds)
 
     with pytest.raises(ConfigError) as excinfo:
         load_methodology_config(config_dir=config_dir)
 
-    message = str(excinfo.value)
-    assert _PROCESSING_FILE in message
+    assert _THRESHOLDS_FILE in str(excinfo.value)
 
 
 def test_non_mapping_top_level_raises_config_error_naming_file(
@@ -279,14 +255,14 @@ def test_non_mapping_top_level_raises_config_error_naming_file(
 
     config_dir = _write_config_dir(tmp_path / "cfg")
     # A YAML list at the top level is valid YAML but not a mapping.
-    (config_dir / _PROCESSING_FILE).write_text(
+    (config_dir / _LABEL_RULES_FILE).write_text(
         "- one\n- two\n", encoding="utf-8"
     )
 
     with pytest.raises(ConfigError) as excinfo:
         load_methodology_config(config_dir=config_dir)
 
-    assert _PROCESSING_FILE in str(excinfo.value)
+    assert _LABEL_RULES_FILE in str(excinfo.value)
 
 
 # ---------------------------------------------------------------------------
@@ -310,26 +286,19 @@ def test_config_hash_stable_across_reloads_of_same_config(tmp_path: Path) -> Non
 def test_config_hash_ignores_yaml_key_ordering(tmp_path: Path) -> None:
     """Key reordering in the YAML yields an identical config_hash."""
 
-    ordered = _valid_processing()
-    # Build a reordered variant with the same effective content: reverse the
-    # top-level key order and reorder a nested mapping. safe_dump(sort_keys=...)
-    # controls serialization order on disk without changing meaning.
+    thresholds = _valid_thresholds()
     dir_a = tmp_path / "a"
     dir_b = tmp_path / "b"
     dir_a.mkdir()
     dir_b.mkdir()
 
-    (dir_a / _PROCESSING_FILE).write_text(
-        yaml.safe_dump(ordered, sort_keys=False), encoding="utf-8"
+    (dir_a / _THRESHOLDS_FILE).write_text(
+        yaml.safe_dump(thresholds, sort_keys=False), encoding="utf-8"
     )
-    (dir_b / _PROCESSING_FILE).write_text(
-        yaml.safe_dump(ordered, sort_keys=True), encoding="utf-8"
+    (dir_b / _THRESHOLDS_FILE).write_text(
+        yaml.safe_dump(thresholds, sort_keys=True), encoding="utf-8"
     )
     for directory in (dir_a, dir_b):
-        (directory / _THRESHOLDS_FILE).write_text(
-            yaml.safe_dump(_valid_thresholds(), sort_keys=False),
-            encoding="utf-8",
-        )
         (directory / _LABEL_RULES_FILE).write_text(
             yaml.safe_dump(_valid_label_rules(), sort_keys=True),
             encoding="utf-8",
@@ -346,9 +315,9 @@ def test_config_hash_changes_when_content_changes(tmp_path: Path) -> None:
     """A genuine content change produces a different hash (guards the above)."""
 
     base_dir = _write_config_dir(tmp_path / "base")
-    changed = _valid_processing()
-    changed["paraverbal"]["min_pause_ms"] = 999
-    changed_dir = _write_config_dir(tmp_path / "changed", processing=changed)
+    changed = _valid_thresholds()
+    changed["min_turns_for_session_stats"] = 999
+    changed_dir = _write_config_dir(tmp_path / "changed", thresholds=changed)
 
     base = load_methodology_config(config_dir=base_dir)
     reload_methodology_config(config_dir=changed_dir)
@@ -363,14 +332,18 @@ def test_config_hash_changes_when_content_changes(tmp_path: Path) -> None:
 
 
 def test_present_null_value_is_preserved_as_none(tmp_path: Path) -> None:
-    """gaze.alignment_tolerance_radians: null loads as None, not a default."""
+    """A present-null threshold band edge loads as None, not a default.
 
-    processing = _valid_processing()
-    processing["nonverbal"]["gaze"]["alignment_tolerance_radians"] = None
-    config_dir = _write_config_dir(tmp_path / "cfg", processing=processing)
+    The loader preserves present-``null`` methodology values so the engines can
+    signal ``feature_unavailable`` rather than banding against an invented edge.
+    """
+
+    thresholds = _valid_thresholds()
+    thresholds["paraverbal"]["temporal"]["speech_rate_wpm"]["low_below"] = None
+    config_dir = _write_config_dir(tmp_path / "cfg", thresholds=thresholds)
 
     config = load_methodology_config(config_dir=config_dir)
 
-    gaze = config.processing["nonverbal"]["gaze"]
-    assert "alignment_tolerance_radians" in gaze
-    assert gaze["alignment_tolerance_radians"] is None
+    entry = config.thresholds["paraverbal"]["temporal"]["speech_rate_wpm"]
+    assert "low_below" in entry
+    assert entry["low_below"] is None

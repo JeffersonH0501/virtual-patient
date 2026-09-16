@@ -169,10 +169,10 @@ export const MultimodalDebugPanel = ({
 
       {!collapsed && (
         <div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
-          {/* PY-FEAT */}
+          {/* OpenFace 3.0 (visual extractor) */}
           <section className="mb-3">
             <h3 className="mb-1 text-[0.7rem] font-semibold uppercase tracking-wider text-sky-400">
-              {t('calibration.debug.sections.pyfeat')}
+              {t('calibration.debug.sections.openface')}
             </h3>
             {pyfeatUnavailable ? (
               <p className="text-neutral-500">

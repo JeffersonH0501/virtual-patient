@@ -10,8 +10,9 @@ emitted by the OpenSMILE extractor, an optional
 Design boundaries preserved here:
 
 * Pure, in-memory, and deterministic. No I/O, no OpenSMILE, no config-file
-  reading. ``min_pause_ms`` is passed in by the caller (from ``processing.yaml``)
-  rather than read here, so methodology changes never require editing this code.
+  reading. ``min_pause_ms`` is a technical derivation constant
+  (:data:`MIN_PAUSE_MS`) that tunes how pauses are segmented; it is not a
+  research threshold and defaults in-module.
 * Derivation only. This module computes descriptive numeric features. It does
   NOT threshold, band, or emit any base or integrated labels — that is the
   threshold/label engines' responsibility.
@@ -67,23 +68,26 @@ _P20 = 0.20
 _P80 = 0.80
 _ROUND_DIGITS = 3
 
+# Technical derivation constant (not a research threshold): the minimum silence
+# duration counted as a pause. This tunes how pauses are segmented from the
+# acoustic signal, not a label band, so it lives here as a fixed engineering
+# default rather than in the methodology config.
+MIN_PAUSE_MS = 250.0
+
 
 def preprocess_paraverbal(
     raw: ParaverbalRawFeatures,
     *,
-    min_pause_ms: float | None,
+    min_pause_ms: float = MIN_PAUSE_MS,
     baseline: PersonalBaseline | None = None,
 ) -> ParaverbalProcessedFeatures:
     """Derive processed paraverbal features from raw signals.
 
     Args:
         raw: Signal-level features from the OpenSMILE extractor.
-        min_pause_ms: Methodology parameter (passed in, e.g. from
-            ``processing.yaml``). Only contiguous silence segments of at least
-            this duration are counted as pauses. When ``None`` (undecided
-            methodology), pause-derived features are ``None`` and treated as
-            feature_unavailable rather than being computed with an invented
-            threshold.
+        min_pause_ms: Technical derivation constant (defaults to
+            :data:`MIN_PAUSE_MS`). Only contiguous silence segments of at least
+            this duration are counted as pauses.
         baseline: Optional per-participant reference. Required only for
             ``relative_pitch_shift_st``; when absent that feature is ``None``.
 

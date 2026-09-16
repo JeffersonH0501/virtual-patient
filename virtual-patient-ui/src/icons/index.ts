@@ -16,6 +16,7 @@ export * from './Play';
 export * from './Pause';
 export * from './Speaker';
 export * from './Trash';
+export * from './Eye';
 export * from './Camera';
 export * from './PaperPlaneRight';
 export * from './Stop';

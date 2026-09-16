@@ -2,14 +2,16 @@
 
 Responsibilities:
 
-* Load the three methodology YAML files (``processing.yaml``, ``thresholds.yaml``,
-  ``label_rules.yaml``) once and cache the result for reuse (Requirement 5.1).
+* Load the two methodology YAML files (``thresholds.yaml``, ``label_rules.yaml``)
+  once and cache the result for reuse (Requirement 5.1). These two files are the
+  only methodology configuration; technical derivation parameters (pause
+  segmentation, gaze tolerance, AU12 activation, nod detector tuning) are fixed
+  constants in the preprocessing modules, not configuration.
 * Validate each file structurally against a minimal Pydantic config-shape
   schema and, on any failure, raise a :class:`ConfigError` that names the
   failing file and the reason (Requirement 5.2, 5.3).
 * Expose the ``version`` string of each file as
-  ``versions.processing`` / ``versions.thresholds`` / ``versions.label_rules``
-  (Requirement 5.4).
+  ``versions.thresholds`` / ``versions.label_rules`` (Requirement 5.4).
 * Compute a deterministic, order-independent ``config_hash`` over the effective
   merged methodology configuration (Requirement 5.5, 5.6).
 
@@ -42,7 +44,6 @@ from pydantic import BaseModel, ConfigDict, ValidationError
 # this module so packaging and working-directory changes do not break loading.
 DEFAULT_CONFIG_DIR = Path(__file__).parent / "config"
 
-_PROCESSING_FILE = "processing.yaml"
 _THRESHOLDS_FILE = "thresholds.yaml"
 _LABEL_RULES_FILE = "label_rules.yaml"
 
@@ -64,32 +65,6 @@ class ConfigError(Exception):
 # that the engines depend on are declared as required fields; a present-``null``
 # leaf is allowed and preserved, while an absent required key raises.
 # ---------------------------------------------------------------------------
-
-
-class _ProcessingParaverbal(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    min_pause_ms: int | None
-
-
-class _ProcessingNonverbal(BaseModel):
-    model_config = ConfigDict(extra="allow")
-
-    # Only the top-level presence of these sub-sections is required; the
-    # individual leaf values (tolerances, thresholds, nod params) may be null.
-    gaze: dict[str, Any]
-    smile: dict[str, Any]
-    nod: dict[str, Any]
-
-
-class _ProcessingConfig(BaseModel):
-    """Structural shape of ``processing.yaml``."""
-
-    model_config = ConfigDict(extra="allow")
-
-    version: str
-    paraverbal: _ProcessingParaverbal
-    nonverbal: _ProcessingNonverbal
 
 
 class _ThresholdsConfig(BaseModel):
@@ -128,9 +103,13 @@ class _LabelRulesConfig(BaseModel):
 
 
 class Versions(BaseModel):
-    """Methodology config versions exposed on every result (Requirement 5.4)."""
+    """Methodology config versions exposed on every result (Requirement 5.4).
 
-    processing: str
+    Only the two provisional research config files are versioned. Technical
+    derivation parameters live as constants in the preprocessing modules and are
+    intentionally not methodology configuration.
+    """
+
     thresholds: str
     label_rules: str
 
@@ -142,12 +121,13 @@ class MethodologyConfig(BaseModel):
     config rather than re-parsing YAML), the per-file ``versions``, and the
     deterministic ``config_hash``. Present-``null`` methodology values are
     preserved inside the raw sections and must be interpreted by the engines as
-    ``feature_unavailable`` (Requirement 4.7).
+    ``feature_unavailable`` (Requirement 4.7). The two research config files
+    (``thresholds.yaml`` and ``label_rules.yaml``) are the only methodology
+    configuration; technical derivation parameters are module constants.
     """
 
     model_config = ConfigDict(frozen=True)
 
-    processing: dict[str, Any]
     thresholds: dict[str, Any]
     label_rules: dict[str, Any]
     versions: Versions
@@ -212,19 +192,17 @@ def _canonical_json(data: Any) -> str:
 
 
 def _compute_config_hash(
-    processing: dict[str, Any],
     thresholds: dict[str, Any],
     label_rules: dict[str, Any],
 ) -> str:
     """Compute the deterministic SHA-256 config hash over the merged config.
 
-    The hash covers the effective methodology content only (the three parsed
-    documents), never file paths or timestamps, so identical effective config
-    always yields an identical hash (Requirement 5.5, 5.6, 6.3).
+    The hash covers the effective methodology content only (the two parsed
+    research documents), never file paths or timestamps, so identical effective
+    config always yields an identical hash (Requirement 5.5, 5.6, 6.3).
     """
 
     effective = {
-        "processing": processing,
         "thresholds": thresholds,
         "label_rules": label_rules,
     }
@@ -235,27 +213,22 @@ def _compute_config_hash(
 def _load_methodology_config(config_dir: Path) -> MethodologyConfig:
     """Load, validate, and assemble the methodology config from ``config_dir``."""
 
-    processing_path = config_dir / _PROCESSING_FILE
     thresholds_path = config_dir / _THRESHOLDS_FILE
     label_rules_path = config_dir / _LABEL_RULES_FILE
 
-    processing = _read_yaml(config_dir, _PROCESSING_FILE)
     thresholds = _read_yaml(config_dir, _THRESHOLDS_FILE)
     label_rules = _read_yaml(config_dir, _LABEL_RULES_FILE)
 
-    _validate(_ProcessingConfig, processing, processing_path)
     _validate(_ThresholdsConfig, thresholds, thresholds_path)
     _validate(_LabelRulesConfig, label_rules, label_rules_path)
 
     versions = Versions(
-        processing=processing["version"],
         thresholds=thresholds["version"],
         label_rules=label_rules["version"],
     )
-    config_hash = _compute_config_hash(processing, thresholds, label_rules)
+    config_hash = _compute_config_hash(thresholds, label_rules)
 
     return MethodologyConfig(
-        processing=processing,
         thresholds=thresholds,
         label_rules=label_rules,
         versions=versions,

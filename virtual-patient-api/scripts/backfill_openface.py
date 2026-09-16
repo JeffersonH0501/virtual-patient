@@ -1,20 +1,26 @@
 #!/usr/bin/env python3
-"""Backfill nonverbal (Py-Feat) observations for existing interview recordings.
+"""Backfill nonverbal (OpenFace 3.0) observations for existing interview recordings.
 
-After the multimodal refactor there is no Py-Feat-only backfill path: the staged
-pipeline runs the paraverbal and nonverbal modalities together in a single pass.
-The former router helper that attached nonverbal observations in isolation has
-been removed. This script therefore runs the full multimodal pipeline
-(:func:`app.multimodal.pipeline.process_multimodal_interview`), which produces
-the nonverbal layer (visual orientation, head gestural feedback, facial
-expressivity) as part of the unified run, alongside the paraverbal layer.
+After the multimodal refactor there is no extractor-only backfill path: the
+staged pipeline runs the paraverbal and nonverbal modalities together in a
+single pass. The former router helper that attached nonverbal observations in
+isolation has been removed. This script therefore runs the full multimodal
+pipeline (:func:`app.multimodal.pipeline.process_multimodal_interview`), which
+produces the nonverbal layer (visual orientation, head gestural feedback, facial
+expressivity) via the OpenFace 3.0 extractor as part of the unified run,
+alongside the paraverbal layer.
+
+There is no legacy Py-Feat fallback: the nonverbal layer is produced only by the
+OpenFace 3.0 code path. If OpenFace 3.0 is unavailable or fails, the pipeline
+records the failure for the affected interview rather than falling back to a
+removed extractor.
 
 It is functionally equivalent to ``scripts/backfill_observations.py`` and is kept
 only for the familiar entry-point name. Prefer ``backfill_observations.py`` for
 new work, or ``scripts/relabel_multimodal.py`` to re-derive labels from stored
 features without re-extracting media.
 
-CLI: ``python -m scripts.backfill_pyfeat <interview_id> [<interview_id> ...]``.
+CLI: ``python -m scripts.backfill_openface <interview_id> [<interview_id> ...]``.
 """
 
 from __future__ import annotations

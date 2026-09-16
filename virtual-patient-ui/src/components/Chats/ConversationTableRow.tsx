@@ -6,7 +6,7 @@ import {useTranslation} from 'react-i18next';
 import {formatDuration} from '../../utils/duration';
 import {Personality} from '../../types/personality';
 import {interviewPath} from '../../utils/routes';
-import {Trash} from '../../icons';
+import {Eye, Trash} from '../../icons';
 import {EvaluationScore} from '../common';
 
 type TableRowProps = {
@@ -45,9 +45,13 @@ export const ConversationTableRow: FC<TableRowProps> = ({
     return 0;
   }, [status, startTime]);
 
-  const handleRowClick = () => {
-    const isTerminal = status === 'completed' || status === 'interrupted';
-    navigate(interviewPath(id, isTerminal ? 'review' : startTime ? 'session' : 'calibration'));
+  // Review is only reachable once the interview is completed. The row itself is
+  // no longer clickable; access to the review goes through the explicit "view"
+  // action, which stays disabled until the interview is completed.
+  const canViewReview = status === 'completed';
+  const handleViewReview = () => {
+    if (!canViewReview) return;
+    navigate(interviewPath(id, 'review'));
   };
 
   const statusVariant =
@@ -55,8 +59,7 @@ export const ConversationTableRow: FC<TableRowProps> = ({
 
   return (
     <tr
-      className="flex px-0 py-4 border-b border-gray-100 border-solid max-md:min-w-table cursor-pointer hover:bg-gray-50"
-      onClick={handleRowClick}
+      className="flex px-0 py-4 border-b border-gray-100 border-solid max-md:min-w-table hover:bg-gray-50"
     >
       <td className="flex min-w-0 table-column-date flex-col justify-center gap-0.5 px-6 py-0 text-left text-sm leading-5 text-gray-500 max-sm:px-3 max-sm:py-0">
         <span>{new Date(createdAt).toLocaleDateString(undefined, {
@@ -88,14 +91,21 @@ export const ConversationTableRow: FC<TableRowProps> = ({
           <EvaluationScore score={score} size="small" />
         )}
       </td>
-      <td className="flex min-w-0 table-column-action items-center justify-start px-6 py-0 max-sm:px-3">
+      <td className="flex min-w-0 table-column-action items-center justify-start gap-2 px-6 py-0 pr-8 max-sm:px-3 max-sm:pr-4">
         <button
           type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onDelete(Number(id));
-          }}
-          className="flex h-9 w-9 items-center justify-center rounded-control border-0 bg-slate-100 text-slate-700 transition-colors hover:bg-danger-50 hover:text-danger-700 [&_svg]:h-5 [&_svg]:w-5"
+          onClick={handleViewReview}
+          disabled={!canViewReview}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control border-0 bg-slate-100 text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-100 disabled:hover:text-slate-700 [&_svg]:h-5 [&_svg]:w-5"
+          aria-label={t('conversations.viewInterview')}
+          title={t('conversations.viewInterview')}
+        >
+          <Eye />
+        </button>
+        <button
+          type="button"
+          onClick={() => onDelete(Number(id))}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control border-0 bg-slate-100 text-slate-700 transition-colors hover:bg-danger-50 hover:text-danger-700 [&_svg]:h-5 [&_svg]:w-5"
           aria-label={t('conversations.deleteInterview')}
           title={t('conversations.deleteInterview')}
         >

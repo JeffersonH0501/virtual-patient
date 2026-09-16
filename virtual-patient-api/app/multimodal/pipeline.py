@@ -88,13 +88,10 @@ from app.multimodal.threshold_engine import (
     compute_nonverbal_base_labels,
     compute_paraverbal_base_labels,
 )
-from app.nonverbal.preprocessing import (
-    NodDetectionParams,
-    preprocess_nonverbal_turn,
-)
-from app.nonverbal.pyfeat_extractor import (
+from app.nonverbal.preprocessing import preprocess_nonverbal_turn
+from app.nonverbal.openface_extractor import (
     StudentTurnVideo,
-    analyze_pyfeat_student_turn_videos,
+    analyze_openface_student_turn_videos,
 )
 from app.paraverbal.opensmile_extractor import (
     StudentTurnAudio,
@@ -260,8 +257,6 @@ def _run_pipeline(
     config = load_methodology_config()
     versions = config.versions.model_dump()
     config_hash = config.config_hash
-    para_processing = config.processing.get("paraverbal", {}) or {}
-    nonverbal_processing = config.processing.get("nonverbal", {}) or {}
     min_turns_for_session_stats = int(
         config.thresholds.get("min_turns_for_session_stats", 0) or 0
     )
@@ -303,19 +298,17 @@ def _run_pipeline(
         outcome=outcome,
     )
 
-    # Step 7: paraverbal preprocessing per student turn.
+    # Step 7: paraverbal preprocessing per student turn. Pause segmentation uses
+    # the module's technical MIN_PAUSE_MS constant (not a methodology value).
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_PARAVERBAL_PREPROCESSING)
-    min_pause_ms = para_processing.get("min_pause_ms")
     paraverbal_processed: dict[str, ParaverbalProcessedFeatures] = {}
     for turn in student_turns:
         raw = paraverbal_raw.get(turn.id)
         if raw is None:
             continue
-        paraverbal_processed[turn.id] = preprocess_paraverbal(
-            raw, min_pause_ms=min_pause_ms, baseline=baseline
-        )
+        paraverbal_processed[turn.id] = preprocess_paraverbal(raw, baseline=baseline)
 
-    # Step 8: nonverbal extraction (Py-Feat once over the full video).
+    # Step 8: nonverbal extraction (OpenFace 3.0 once over the full video).
     nonverbal_raw, nonverbal_context = _extract_nonverbal(
         db=db,
         recording=recording,
@@ -325,11 +318,10 @@ def _run_pipeline(
         outcome=outcome,
     )
 
-    # Step 9: nonverbal preprocessing per turn.
+    # Step 9: nonverbal preprocessing per turn. Gaze tolerance, AU12 activation,
+    # and nod detector parameters are technical constants owned by the nonverbal
+    # preprocessing module, so no methodology config is threaded here.
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_NONVERBAL_PREPROCESSING)
-    nod_params = _nod_params(nonverbal_processing)
-    alignment_tolerance = _gaze_tolerance(nonverbal_processing)
-    au12_threshold = _au12_threshold(nonverbal_processing)
     nonverbal_processed: dict[str, NonverbalProcessedFeatures] = {}
     nonverbal_reasons: dict[str, dict[str, UnavailableReason]] = {}
     for turn in turns:
@@ -340,9 +332,6 @@ def _run_pipeline(
             raw,
             nonverbal_context.get(turn.id, _context_for(turn)),
             baseline=baseline,
-            alignment_tolerance_radians=alignment_tolerance,
-            au12_active_threshold=au12_threshold,
-            nod_params=nod_params,
         )
         nonverbal_processed[turn.id] = result.processed
         nonverbal_reasons[turn.id] = result.reasons
@@ -524,10 +513,10 @@ def _extract_nonverbal(
     turns: Sequence[InterviewTurnDB],
     outcome: "_OutcomeTracker",
 ) -> tuple[dict[str, NonverbalRawFeatures], dict[str, str]]:
-    """Run Py-Feat once over the full video, segmented by turn (Requirement 19.3).
+    """Run OpenFace 3.0 over the full video, segmented by turn (Requirement 19.3).
 
-    ``analyze_pyfeat_student_turn_videos`` opens the detector once over the whole
-    video and segments the rows by each turn window, so this is a single call for
+    ``analyze_openface_student_turn_videos`` samples the video once over the whole
+    file and segments the rows by each turn window, so this is a single call for
     all turns. It returns ``turn_id -> {NonverbalRawFeatures.model_dump() +
     observationContext}``; we reconstruct :class:`NonverbalRawFeatures` by
     validating the raw portion (dropping ``observationContext``) and read the
@@ -569,7 +558,7 @@ def _extract_nonverbal(
             )
             for turn in turns
         ]
-        extracted = analyze_pyfeat_student_turn_videos(video_path, windows)
+        extracted = analyze_openface_student_turn_videos(video_path, windows)
     except Exception:  # noqa: BLE001 - one modality failing must not fail all.
         outcome.note_gap()
         logger.exception(
@@ -903,39 +892,6 @@ def _percentile(values: Sequence[float], fraction: float) -> float:
     upper_index = min(lower_index + 1, count - 1)
     weight = rank - lower_index
     return ordered[lower_index] + (ordered[upper_index] - ordered[lower_index]) * weight
-
-
-# ---------------------------------------------------------------------------
-# Config -> preprocessing parameter adapters
-# ---------------------------------------------------------------------------
-
-
-def _nod_params(nonverbal_processing: dict[str, Any]) -> NodDetectionParams:
-    """Build :class:`NodDetectionParams` from the ``nonverbal.nod`` config block.
-
-    Present-``null`` methodology values pass straight through as ``None`` so the
-    detector reports ``feature_unavailable`` rather than running with an invented
-    threshold (Requirement 4.7).
-    """
-    nod = nonverbal_processing.get("nod", {}) or {}
-    return NodDetectionParams(
-        min_amplitude_deg=nod.get("min_amplitude_deg"),
-        min_cycle_ms=nod.get("min_cycle_ms"),
-        max_cycle_ms=nod.get("max_cycle_ms"),
-        smoothing_window_ms=nod.get("smoothing_window_ms"),
-    )
-
-
-def _gaze_tolerance(nonverbal_processing: dict[str, Any]) -> float | None:
-    """Read ``nonverbal.gaze.alignment_tolerance_radians`` (may be ``None``)."""
-    gaze = nonverbal_processing.get("gaze", {}) or {}
-    return gaze.get("alignment_tolerance_radians")
-
-
-def _au12_threshold(nonverbal_processing: dict[str, Any]) -> float | None:
-    """Read ``nonverbal.smile.au12_active_threshold`` (may be ``None``)."""
-    smile = nonverbal_processing.get("smile", {}) or {}
-    return smile.get("au12_active_threshold")
 
 
 # ---------------------------------------------------------------------------

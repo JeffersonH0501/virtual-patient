@@ -1128,6 +1128,21 @@
   margin-bottom: 0.5rem;
   color: var(--color-brand-800);
 }
+/* Each family is split into three ordered subgroups: base features, then
+   initial (base) labels, then the integrated label. The separator line is
+   reserved for the boundary BETWEEN subgroups, so rows within a subgroup have
+   no divider and each subgroup change is clearly marked. */
+.turn-detail-subgroup {
+  margin: 0;
+}
+.turn-detail-subgroup:empty {
+  display: none;
+}
+.turn-detail-subgroup + .turn-detail-subgroup {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--color-border);
+}
 .turn-detail-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(3rem, auto) minmax(4rem, auto);
@@ -1135,8 +1150,10 @@
   gap: 0.5rem;
   padding: 0.5rem 0;
 }
-.turn-detail-row + .turn-detail-row {
-  border-top: 1px solid var(--color-border);
+.turn-detail-label-value {
+  color: var(--color-neutral-800);
+  text-align: right;
+  overflow-wrap: anywhere;
 }
 .turn-detail-row dd {
   color: var(--color-neutral-800);

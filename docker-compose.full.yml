@@ -59,8 +59,7 @@ services:
     volumes:
       - ./virtual-patient-api/logs:/app/logs
       - interview_media:/app/media
-      - pyfeat_models:/app/pyfeat
-    gpus: all
+      - openface_models:/app/openface
     depends_on:
       postgres:
         condition: service_healthy
@@ -100,4 +99,4 @@ services:
 volumes:
   postgres_data:
   interview_media:
-  pyfeat_models:
+  openface_models:

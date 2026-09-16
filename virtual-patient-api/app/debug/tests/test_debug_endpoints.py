@@ -38,7 +38,7 @@ from fastapi.responses import JSONResponse
 
 from app.core.auth import get_current_active_user
 from app.debug.opensmile_debug import OpenSmileDebugUnavailable
-from app.debug.pyfeat_debug import PyFeatDebugUnavailable
+from app.debug.openface_debug import OpenFaceDebugUnavailable
 from app.debug.schemas import (
     DebugUnavailable,
     ExtractorInfo,
@@ -109,7 +109,7 @@ def _valid_pyfeat() -> PyFeatFrameDebug:
         landmarks=[[10.0, 20.0], [30.0, 40.0]],
         image_width=640,
         image_height=480,
-        extractor=ExtractorInfo(name="py-feat", version="2.1.1", detector="Detectorv2"),
+        extractor=ExtractorInfo(name="openface", version="3.0", detector="openface3-multitask"),
     )
 
 
@@ -132,7 +132,7 @@ class DebugEndpointAuthTests(unittest.TestCase):
     def test_frame_endpoint_requires_current_user_via_dependency(self):
         # The signature declares current_user defaulting to
         # Depends(get_current_active_user); that documents the auth requirement.
-        signature = inspect.signature(debug_router.debug_pyfeat_frame)
+        signature = inspect.signature(debug_router.debug_openface_frame)
         self.assertIn("current_user", signature.parameters)
         dependency = signature.parameters["current_user"].default
         self.assertEqual(getattr(dependency, "dependency", None), get_current_active_user)
@@ -157,7 +157,7 @@ class DebugFramePassThroughTests(unittest.TestCase):
         try:
             upload = _FakeUpload(content_type="image/png", data=b"pngbytes")
             result = _run(
-                debug_router.debug_pyfeat_frame(
+                debug_router.debug_openface_frame(
                     frame=upload,
                     frame_timestamp_ms=None,
                     current_user=_current_user(),
@@ -201,16 +201,16 @@ class DebugExtractorUnavailableTests(unittest.TestCase):
     def _body(self, response: JSONResponse) -> dict:
         return json.loads(bytes(response.body))
 
-    def test_frame_returns_503_pyfeat_unavailable(self):
+    def test_frame_returns_503_openface_unavailable(self):
         def _raise(*args, **kwargs):
-            raise PyFeatDebugUnavailable("no torch")
+            raise OpenFaceDebugUnavailable("no torch")
 
         original = debug_router.detect_frame
         debug_router.detect_frame = _raise
         try:
             upload = _FakeUpload(content_type="image/jpeg", data=b"jpegbytes")
             response = _run(
-                debug_router.debug_pyfeat_frame(
+                debug_router.debug_openface_frame(
                     frame=upload,
                     frame_timestamp_ms=None,
                     current_user=_current_user(),
@@ -222,7 +222,7 @@ class DebugExtractorUnavailableTests(unittest.TestCase):
         self.assertIsInstance(response, JSONResponse)
         self.assertEqual(response.status_code, status.HTTP_503_SERVICE_UNAVAILABLE)
         body = self._body(response)
-        self.assertEqual(body, {"available": False, "reason": "pyfeat_unavailable"})
+        self.assertEqual(body, {"available": False, "reason": "openface_unavailable"})
 
     def test_audio_returns_503_opensmile_unavailable(self):
         def _raise(*args, **kwargs):
@@ -258,7 +258,7 @@ class DebugUploadGuardTests(unittest.TestCase):
         upload = _FakeUpload(content_type="text/plain", data=b"not-an-image")
         with self.assertRaises(HTTPException) as ctx:
             _run(
-                debug_router.debug_pyfeat_frame(
+                debug_router.debug_openface_frame(
                     frame=upload,
                     frame_timestamp_ms=None,
                     current_user=_current_user(),
@@ -286,7 +286,7 @@ class DebugUploadGuardTests(unittest.TestCase):
         upload = _FakeUpload(content_type="image/png", data=b"")
         with self.assertRaises(HTTPException) as ctx:
             _run(
-                debug_router.debug_pyfeat_frame(
+                debug_router.debug_openface_frame(
                     frame=upload,
                     frame_timestamp_ms=None,
                     current_user=_current_user(),
@@ -300,7 +300,7 @@ class DebugUploadGuardTests(unittest.TestCase):
         upload = _FakeUpload(content_type="image/png", data=oversized)
         with self.assertRaises(HTTPException) as ctx:
             _run(
-                debug_router.debug_pyfeat_frame(
+                debug_router.debug_openface_frame(
                     frame=upload,
                     frame_timestamp_ms=None,
                     current_user=_current_user(),
@@ -318,7 +318,7 @@ class DebugUploadGuardTests(unittest.TestCase):
         try:
             upload = _FakeUpload(content_type="image/png; codecs=x", data=b"png")
             result = _run(
-                debug_router.debug_pyfeat_frame(
+                debug_router.debug_openface_frame(
                     frame=upload,
                     frame_timestamp_ms=None,
                     current_user=_current_user(),
@@ -336,7 +336,7 @@ class DebugUploadGuardTests(unittest.TestCase):
 
 class DebugNoPersistenceTests(unittest.TestCase):
     def test_frame_endpoint_has_no_db_dependency(self):
-        params = set(inspect.signature(debug_router.debug_pyfeat_frame).parameters)
+        params = set(inspect.signature(debug_router.debug_openface_frame).parameters)
         # No get_db / Session parameter is present on the debug endpoint.
         self.assertNotIn("db", params)
         self.assertNotIn("session", params)
@@ -351,9 +351,9 @@ class DebugNoPersistenceTests(unittest.TestCase):
         # DB layer (sqlalchemy Session / app.database), keeping them side-effect
         # free with respect to persistence.
         import app.debug.opensmile_debug as opensmile_debug
-        import app.debug.pyfeat_debug as pyfeat_debug
+        import app.debug.openface_debug as openface_debug
 
-        for source in (inspect.getsource(pyfeat_debug), inspect.getsource(opensmile_debug)):
+        for source in (inspect.getsource(openface_debug), inspect.getsource(opensmile_debug)):
             self.assertNotIn("app.database", source)
             self.assertNotIn("get_db", source)
             self.assertNotIn("Session", source)
@@ -398,9 +398,9 @@ class DebugSchemaDefaultTests(unittest.TestCase):
         self.assertEqual(frame.feature_set, "eGeMAPSv02")
 
     def test_debug_unavailable_is_not_available(self):
-        unavailable = DebugUnavailable(reason="pyfeat_unavailable")
+        unavailable = DebugUnavailable(reason="openface_unavailable")
         self.assertFalse(unavailable.available)
-        self.assertEqual(unavailable.reason, "pyfeat_unavailable")
+        self.assertEqual(unavailable.reason, "openface_unavailable")
 
 
 if __name__ == "__main__":

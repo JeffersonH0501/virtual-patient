@@ -5,7 +5,7 @@ import {useTranslation} from 'react-i18next';
 import {OrganizationInterview} from '../../types/interview';
 import {formatDuration} from '../../utils/duration';
 import {useUser} from '../../hooks/useUser';
-import {interviewPath} from '../../utils/routes';
+import {interviewPath, ROUTES} from '../../utils/routes';
 import {EvaluationScore} from '../common';
 
 type StudentsTableRowProps = {
@@ -36,8 +36,13 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
   }, [interview.status, interview.startTime]);
 
   const handleRowClick = () => {
-    const isTerminal = interview.status === 'completed' || interview.status === 'interrupted';
-    navigate(interviewPath(interview.id, isTerminal ? 'review' : 'session'));
+    // Teachers can only open a completed interview for review; they cannot run a
+    // student's session, so any other status stays on the history.
+    if (interview.status === 'completed') {
+      navigate(interviewPath(interview.id, 'review'));
+      return;
+    }
+    navigate(ROUTES.interviews);
   };
 
   return (

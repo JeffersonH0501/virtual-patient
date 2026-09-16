@@ -29,7 +29,7 @@ import doctorImage from '../../assets/doctor.png';
 import patientImageM from '../../assets/patient_m.png';
 import {AppContainerOutletContext} from '../common/AppContainer';
 import {X} from '../../icons';
-import {interviewPath} from '../../utils/routes';
+import {interviewPath, ROUTES} from '../../utils/routes';
 import {useInterviewMedia} from '../../contexts/interviewMedia';
 
 const EMPTY_PATIENT: Patient = {
@@ -486,7 +486,8 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setForceTerminationError(false);
     try {
       await interruptInterview(String(interviewId));
-      navigate(interviewPath(interviewId, 'review'), {replace: true});
+      // An interrupted interview has no review; return to the history.
+      navigate(ROUTES.interviews, {replace: true});
     } catch (error) {
       console.error('Failed to force interview termination:', error);
       setForceTerminationError(true);
@@ -504,15 +505,24 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setEnding(false);
     setHypothesesSubmitted(true);
     await fetchInterview();
+    // On finish the interview is not yet completed (multimodal processing keeps
+    // running in the background), so return to the history rather than the
+    // review. The review becomes reachable once the status turns 'completed'.
+    navigate(ROUTES.interviews, {replace: true});
   };
 
   if (!interviewId || !interview) return null;
 
+  // A terminal interview (completed or interrupted) can no longer run in a
+  // session: send the user back to the history instead of the review.
   if (mode === 'session' && isTerminal) {
-    return <Navigate to={interviewPath(interviewId, 'review')} replace />;
+    return <Navigate to={ROUTES.interviews} replace />;
   }
-  if (mode === 'review' && !isTerminal) {
-    return <Navigate to={interviewPath(interviewId, 'session')} replace />;
+  // Review is only reachable once the interview is completed (text evaluation
+  // ready). Any other status (in_progress, processing, interrupted) is blocked
+  // and redirected to the history.
+  if (mode === 'review' && !isCompleted) {
+    return <Navigate to={ROUTES.interviews} replace />;
   }
 
   const InterviewLayout = isInterviewOpen

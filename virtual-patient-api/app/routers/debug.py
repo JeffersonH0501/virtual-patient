@@ -4,7 +4,7 @@ These endpoints expose raw, frame-level extractor output for live display in the
 calibration debug UI. They are authenticated but intended for development use
 only. They never write to the database, never persist media, and never touch the
 interview or calibration persistence flow. Heavy extractor imports live inside
-the debug helpers (lazily), so this module imports cleanly without Py-Feat,
+the debug helpers (lazily), so this module imports cleanly without OpenFace 3.0,
 OpenCV, or OpenSMILE installed.
 """
 
@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.core.auth import get_current_active_user
 from app.debug.opensmile_debug import OpenSmileDebugUnavailable, process_audio_chunk
-from app.debug.pyfeat_debug import PyFeatDebugBusy, PyFeatDebugUnavailable, detect_frame
+from app.debug.openface_debug import OpenFaceDebugBusy, OpenFaceDebugUnavailable, detect_frame
 from app.debug.schemas import DebugUnavailable, OpenSmileFrameDebug, PyFeatFrameDebug
 from app.models.user import User
 
@@ -84,12 +84,12 @@ def _unavailable_response(reason: str) -> JSONResponse:
 
 
 @router.post("/frame", response_model=PyFeatFrameDebug)
-async def debug_pyfeat_frame(
+async def debug_openface_frame(
     frame: Annotated[UploadFile, File(description="Single image frame (jpeg/png)")],
     frame_timestamp_ms: Annotated[Optional[float], Form()] = None,
     current_user: User = Depends(get_current_active_user),
 ):
-    """Run single-image Py-Feat detection on one frame and return raw values.
+    """Run single-image OpenFace 3.0 detection on one frame and return raw values.
 
     No database writes and no media persistence occur. On extractor
     unavailability a 503 debug-unavailable body is returned.
@@ -101,11 +101,11 @@ async def debug_pyfeat_frame(
             image_bytes,
             frame_timestamp_ms=frame_timestamp_ms,
         )
-    except PyFeatDebugBusy:
-        return _unavailable_response("pyfeat_busy")
-    except PyFeatDebugUnavailable as error:
-        logger.warning("Py-Feat debug extractor unavailable: %s", error)
-        return _unavailable_response("pyfeat_unavailable")
+    except OpenFaceDebugBusy:
+        return _unavailable_response("openface_busy")
+    except OpenFaceDebugUnavailable as error:
+        logger.warning("OpenFace 3.0 debug extractor unavailable: %s", error)
+        return _unavailable_response("openface_unavailable")
 
 
 @router.post("/audio", response_model=OpenSmileFrameDebug)

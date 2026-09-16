@@ -132,7 +132,7 @@ def nonverbal(
 
 
 def test_temporal_and_rule_fragmentado(config) -> None:
-    """AND rule: high frequency + short pauses -> fragmentado_por_pausas_breves.
+    """AND rule: high frequency + short pauses -> fragmented_by_brief_pauses.
 
     Covers the ``all`` (AND) grammar: the first temporal rule requires both
     ``pause_frequency`` and ``pause_duration`` to hold (Requirement 12.1).
@@ -140,20 +140,20 @@ def test_temporal_and_rule_fragmentado(config) -> None:
 
     base = paraverbal(
         temporal={
-            "pause_frequency_per_min": ok("frecuencia_pausas_alta"),
-            "median_pause_duration_ms": ok("pausas_predominantemente_breves"),
+            "pause_frequency_per_min": ok("pause_frequency_high"),
+            "median_pause_duration_ms": ok("pause_duration_brief"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
     assert result.temporal.status == OutcomeStatus.OK
-    assert result.temporal.value == "fragmentado_por_pausas_breves"
+    assert result.temporal.value == "fragmented_by_brief_pauses"
     # Evidence records the driving slots (slot names, not feature keys).
-    assert result.temporal.evidence["pause_frequency"] == "frecuencia_pausas_alta"
+    assert result.temporal.evidence["pause_frequency"] == "pause_frequency_high"
     assert (
         result.temporal.evidence["pause_duration"]
-        == "pausas_predominantemente_breves"
+        == "pause_duration_brief"
     )
 
 
@@ -164,25 +164,25 @@ def test_temporal_or_rule_intermitente(config) -> None:
     slot value is one of the two listed options (Requirement 12.1).
     """
 
-    # any: {pause_load: [carga_pausas_alta, carga_pausas_tipica]} -> pick typical.
+    # any: {pause_load: [pause_load_high, pause_load_typical]} -> pick typical.
     base = paraverbal(
         temporal={
-            "median_pause_duration_ms": ok("pausas_predominantemente_largas"),
-            "pause_time_ratio": ok("carga_pausas_tipica"),
+            "median_pause_duration_ms": ok("pause_duration_long"),
+            "pause_time_ratio": ok("pause_load_typical"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
     assert result.temporal.status == OutcomeStatus.OK
-    assert result.temporal.value == "intermitente_por_pausas_largas"
-    assert result.temporal.evidence["pause_load"] == "carga_pausas_tipica"
+    assert result.temporal.value == "intermittent_by_long_pauses"
+    assert result.temporal.evidence["pause_load"] == "pause_load_typical"
 
 
 def test_temporal_ordered_priority_first_match_wins(config) -> None:
     """Ordered priority: an earlier rule wins over a lower one that also holds.
 
-    ``fragmentado_por_pausas_breves`` (rule 1) and ``alta_carga_de_pausas``
+    ``fragmented_by_brief_pauses`` (rule 1) and ``high_pause_load``
     (rule 8) can both hold for the same base labels; the earlier one must win
     (Requirement 12.2).
     """
@@ -190,47 +190,47 @@ def test_temporal_ordered_priority_first_match_wins(config) -> None:
     # Satisfies rule 1 (high freq + short pauses) AND rule 8 (carga alta).
     base = paraverbal(
         temporal={
-            "pause_frequency_per_min": ok("frecuencia_pausas_alta"),
-            "median_pause_duration_ms": ok("pausas_predominantemente_breves"),
-            "pause_time_ratio": ok("carga_pausas_alta"),
+            "pause_frequency_per_min": ok("pause_frequency_high"),
+            "median_pause_duration_ms": ok("pause_duration_brief"),
+            "pause_time_ratio": ok("pause_load_high"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
     # Earlier-listed rule 1 wins over rule 8.
-    assert result.temporal.value == "fragmentado_por_pausas_breves"
+    assert result.temporal.value == "fragmented_by_brief_pauses"
 
 
 def test_temporal_typical_pattern(config) -> None:
-    """A typical temporal pattern resolves to patron_temporal_tipico."""
+    """A typical temporal pattern resolves to typical_temporal_pattern."""
 
     base = paraverbal(
         temporal={
-            "speech_rate_wpm": ok("ritmo_global_tipico"),
-            "articulation_rate_wpm": ok("articulacion_tipica"),
-            "pause_time_ratio": ok("carga_pausas_tipica"),
+            "speech_rate_wpm": ok("speech_rate_typical"),
+            "articulation_rate_wpm": ok("articulation_rate_typical"),
+            "pause_time_ratio": ok("pause_load_typical"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
-    assert result.temporal.value == "patron_temporal_tipico"
+    assert result.temporal.value == "typical_temporal_pattern"
 
 
 def test_temporal_fallback_when_no_rule_matches(config) -> None:
     """Explicit fallback: present base labels matching no rule -> fallback.
 
-    A lone ``ritmo_global_alto`` (with no pause_load) matches none of the
+    A lone ``speech_rate_high`` (with no pause_load) matches none of the
     ordered rules, so the family fallback value is used (Requirement 12.2).
     """
 
-    base = paraverbal(temporal={"speech_rate_wpm": ok("ritmo_global_alto")})
+    base = paraverbal(temporal={"speech_rate_wpm": ok("speech_rate_high")})
 
     result = integrate_paraverbal_labels(base, config)
 
     assert result.temporal.status == OutcomeStatus.OK
-    assert result.temporal.value == "patron_temporal_mixto_no_clasificado"
+    assert result.temporal.value == "mixed_temporal_pattern_unclassified"
 
 
 def test_temporal_unavailable_when_all_slots_unavailable(config) -> None:
@@ -262,35 +262,35 @@ def test_temporal_unavailable_when_all_slots_unavailable(config) -> None:
 
 
 def test_prosodic_level_and_rule_elevado(config) -> None:
-    """AND rule: high pitch + high loudness -> nivel_prosodico_elevado."""
+    """AND rule: high pitch + high loudness -> elevated_prosodic_level."""
 
     base = paraverbal(
         prosodic_level={
-            "relative_pitch_shift_st": ok("tono_relativo_alto"),
-            "median_loudness": ok("volumen_alto"),
+            "relative_pitch_shift_st": ok("relative_pitch_high"),
+            "median_loudness": ok("loudness_high"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
-    assert result.prosodic_level.value == "nivel_prosodico_elevado"
-    assert result.prosodic_level.evidence["pitch_level"] == "tono_relativo_alto"
-    assert result.prosodic_level.evidence["loudness_level"] == "volumen_alto"
+    assert result.prosodic_level.value == "elevated_prosodic_level"
+    assert result.prosodic_level.evidence["pitch_level"] == "relative_pitch_high"
+    assert result.prosodic_level.evidence["loudness_level"] == "loudness_high"
 
 
 def test_prosodic_level_typical(config) -> None:
-    """Typical pitch + typical loudness -> nivel_prosodico_tipico."""
+    """Typical pitch + typical loudness -> typical_prosodic_level."""
 
     base = paraverbal(
         prosodic_level={
-            "relative_pitch_shift_st": ok("tono_relativo_tipico"),
-            "median_loudness": ok("volumen_tipico"),
+            "relative_pitch_shift_st": ok("relative_pitch_typical"),
+            "median_loudness": ok("loudness_typical"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
-    assert result.prosodic_level.value == "nivel_prosodico_tipico"
+    assert result.prosodic_level.value == "typical_prosodic_level"
 
 
 def test_prosodic_level_insufficient_reference_propagates(config) -> None:
@@ -303,7 +303,7 @@ def test_prosodic_level_insufficient_reference_propagates(config) -> None:
 
     base = paraverbal(
         prosodic_level={
-            "relative_pitch_shift_st": ok("tono_relativo_alto"),
+            "relative_pitch_shift_st": ok("relative_pitch_high"),
             "median_loudness": insufficient_reference(),
         }
     )
@@ -330,55 +330,55 @@ def test_prosodic_modulation_and_rule_expresiva(config) -> None:
 
     base = paraverbal(
         prosodic_modulation={
-            "f0_p20_p80_range_semitones": ok("entonacion_variable"),
-            "loudness_p20_p80_range": ok("variabilidad_volumen_alta"),
+            "f0_p20_p80_range_semitones": ok("intonation_variable"),
+            "loudness_p20_p80_range": ok("loudness_variability_high"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
-    assert result.prosodic_modulation.value == "modulacion_expresiva"
+    assert result.prosodic_modulation.value == "expressive_modulation"
 
 
 def test_prosodic_modulation_single_slot_rule(config) -> None:
     """A lone high loudness-variation label matches the single-slot rule.
 
-    With only ``loudness_p20_p80_range`` = ``variabilidad_volumen_alta`` present
-    (pitch missing), the paired ``modulacion_expresiva`` rule cannot hold, so
-    the single-slot rule ``variabilidad_volumen_marcada`` fires instead.
+    With only ``loudness_p20_p80_range`` = ``loudness_variability_high`` present
+    (pitch missing), the paired ``expressive_modulation`` rule cannot hold, so
+    the single-slot rule ``marked_loudness_variability`` fires instead.
     """
 
     base = paraverbal(
         prosodic_modulation={
-            "loudness_p20_p80_range": ok("variabilidad_volumen_alta"),
+            "loudness_p20_p80_range": ok("loudness_variability_high"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
-    assert result.prosodic_modulation.value == "variabilidad_volumen_marcada"
+    assert result.prosodic_modulation.value == "marked_loudness_variability"
 
 
 def test_prosodic_modulation_fallback(config) -> None:
     """Explicit fallback: a present-but-unmatched base label -> fallback.
 
-    A lone typical pitch (``entonacion_tipica``) with no loudness slot matches
+    A lone typical pitch (``intonation_typical``) with no loudness slot matches
     no modulation rule: every rule referencing pitch alone needs
-    ``entonacion_variable`` or ``entonacion_monotona``, and the typical rule
-    needs both slots. The family fallback ``modulacion_mixta_no_clasificada``
+    ``intonation_variable`` or ``intonation_monotone``, and the typical rule
+    needs both slots. The family fallback ``mixed_modulation_unclassified``
     therefore applies (Requirement 12.2). The pitch slot is usable, so the
     sufficiency guard passes and the fallback is reached (not UNAVAILABLE).
     """
 
     base = paraverbal(
         prosodic_modulation={
-            "f0_p20_p80_range_semitones": ok("entonacion_tipica"),
+            "f0_p20_p80_range_semitones": ok("intonation_typical"),
         }
     )
 
     result = integrate_paraverbal_labels(base, config)
 
-    assert result.prosodic_modulation.value == "modulacion_mixta_no_clasificada"
+    assert result.prosodic_modulation.value == "mixed_modulation_unclassified"
 
 
 def test_prosodic_modulation_insufficient_reference_propagates(config) -> None:
@@ -405,24 +405,24 @@ def test_prosodic_modulation_insufficient_reference_propagates(config) -> None:
 
 
 def test_visual_orientation_and_rule_sostenida(config) -> None:
-    """AND rule: high alignment + long dwell -> orientacion_visual_sostenida."""
+    """AND rule: high alignment + long dwell -> sustained_visual_orientation."""
 
     base = nonverbal(
         visual_orientation={
-            "visual_alignment_ratio": ok("alineacion_visual_alta"),
-            "median_visual_alignment_dwell_ms": ok("permanencia_visual_prolongada"),
+            "visual_alignment_ratio": ok("visual_alignment_high"),
+            "median_visual_alignment_dwell_ms": ok("visual_dwell_sustained"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.visual_orientation.value == "orientacion_visual_sostenida"
+    assert result.visual_orientation.value == "sustained_visual_orientation"
     assert (
-        result.visual_orientation.evidence["alignment"] == "alineacion_visual_alta"
+        result.visual_orientation.evidence["alignment"] == "visual_alignment_high"
     )
     assert (
         result.visual_orientation.evidence["dwell"]
-        == "permanencia_visual_prolongada"
+        == "visual_dwell_sustained"
     )
 
 
@@ -434,35 +434,35 @@ def test_visual_orientation_or_rule_fragmentada(config) -> None:
 
     base = nonverbal(
         visual_orientation={
-            "median_visual_alignment_dwell_ms": ok("permanencia_visual_breve"),
-            "visual_alignment_ratio": ok("alineacion_visual_tipica"),
+            "median_visual_alignment_dwell_ms": ok("visual_dwell_brief"),
+            "visual_alignment_ratio": ok("visual_alignment_mid"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.visual_orientation.value == "orientacion_visual_fragmentada"
+    assert result.visual_orientation.value == "fragmented_visual_orientation"
 
 
 def test_visual_orientation_ordered_priority(config) -> None:
     """Ordered priority: low-alignment rule wins over the fragmented rule.
 
-    With low alignment + short dwell, rule 2 (orientacion_visual_escasa) is
-    listed before rule 3 (orientacion_visual_fragmentada). Rule 3's ``any``
+    With low alignment + short dwell, rule 2 (scarce_visual_orientation) is
+    listed before rule 3 (fragmented_visual_orientation). Rule 3's ``any``
     would not match low alignment, but rule 2 fires first regardless
     (Requirement 12.2).
     """
 
     base = nonverbal(
         visual_orientation={
-            "visual_alignment_ratio": ok("alineacion_visual_baja"),
-            "median_visual_alignment_dwell_ms": ok("permanencia_visual_breve"),
+            "visual_alignment_ratio": ok("visual_alignment_low"),
+            "median_visual_alignment_dwell_ms": ok("visual_dwell_brief"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.visual_orientation.value == "orientacion_visual_escasa"
+    assert result.visual_orientation.value == "scarce_visual_orientation"
 
 
 def test_visual_orientation_fallback(config) -> None:
@@ -470,15 +470,15 @@ def test_visual_orientation_fallback(config) -> None:
 
     base = nonverbal(
         visual_orientation={
-            "visual_alignment_ratio": ok("alineacion_visual_alta"),
-            "median_visual_alignment_dwell_ms": ok("permanencia_visual_tipica"),
+            "visual_alignment_ratio": ok("visual_alignment_high"),
+            "median_visual_alignment_dwell_ms": ok("visual_dwell_typical"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
     assert (
-        result.visual_orientation.value == "orientacion_visual_mixta_no_clasificada"
+        result.visual_orientation.value == "mixed_visual_orientation_unclassified"
     )
 
 
@@ -506,7 +506,7 @@ def test_visual_orientation_unavailable(config) -> None:
 
 
 def test_head_feedback_no_nod(config) -> None:
-    """AND rule: nod absent -> sin_asentimiento (first rule)."""
+    """AND rule: nod absent -> no_nodding (first rule)."""
 
     base = nonverbal(
         head_gestural_feedback={"nod_present": ok("nod_absent")}
@@ -514,29 +514,29 @@ def test_head_feedback_no_nod(config) -> None:
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.head_gestural_feedback.value == "sin_asentimiento"
+    assert result.head_gestural_feedback.value == "no_nodding"
     assert result.head_gestural_feedback.evidence["nod_present"] == "nod_absent"
 
 
 def test_head_feedback_frequent_nods(config) -> None:
-    """AND rule: nod observed + high nod rate -> asentimiento_frecuente."""
+    """AND rule: nod observed + high nod rate -> frequent_nodding."""
 
     base = nonverbal(
         head_gestural_feedback={
             "nod_present": ok("nod_observed"),
-            "nod_rate_min": ok("ritmo_asentimiento_alto"),
+            "nod_rate_min": ok("nod_rate_high"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.head_gestural_feedback.value == "asentimiento_frecuente"
+    assert result.head_gestural_feedback.value == "frequent_nodding"
 
 
 def test_head_feedback_ordered_priority_over_present(config) -> None:
     """Ordered priority: high-rate rule wins over the bare 'present' rule.
 
-    ``asentimiento_frecuente`` (rule 2) is listed before ``asentimiento_presente``
+    ``frequent_nodding`` (rule 2) is listed before ``nodding_present``
     (rule 4); with nod observed + high rate both could hold, the earlier wins
     (Requirement 12.2).
     """
@@ -544,13 +544,13 @@ def test_head_feedback_ordered_priority_over_present(config) -> None:
     base = nonverbal(
         head_gestural_feedback={
             "nod_present": ok("nod_observed"),
-            "nod_rate_min": ok("ritmo_asentimiento_alto"),
+            "nod_rate_min": ok("nod_rate_high"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.head_gestural_feedback.value == "asentimiento_frecuente"
+    assert result.head_gestural_feedback.value == "frequent_nodding"
 
 
 def test_head_feedback_present_fallback_rule(config) -> None:
@@ -559,13 +559,13 @@ def test_head_feedback_present_fallback_rule(config) -> None:
     base = nonverbal(
         head_gestural_feedback={
             "nod_present": ok("nod_observed"),
-            "nod_rate_min": ok("ritmo_asentimiento_tipico"),
+            "nod_rate_min": ok("nod_rate_typical"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.head_gestural_feedback.value == "asentimiento_presente"
+    assert result.head_gestural_feedback.value == "nodding_present"
 
 
 def test_head_feedback_insufficient_reference_propagates(config) -> None:
@@ -597,30 +597,30 @@ def test_head_feedback_insufficient_reference_propagates(config) -> None:
 
 
 def test_facial_expressivity_absent(config) -> None:
-    """AND rule: absent smile activity -> expresividad_facial_ausente."""
+    """AND rule: absent smile activity -> absent_facial_expressivity."""
 
     base = nonverbal(
-        facial_expressivity={"smile_activity_ratio": ok("expresividad_ausente")}
+        facial_expressivity={"smile_activity_ratio": ok("smile_activity_absent")}
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.facial_expressivity.value == "expresividad_facial_ausente"
+    assert result.facial_expressivity.value == "absent_facial_expressivity"
 
 
 def test_facial_expressivity_marked_and_rule(config) -> None:
-    """AND rule: frequent activity + high activation -> expresividad_facial_marcada."""
+    """AND rule: frequent activity + high activation -> marked_facial_expressivity."""
 
     base = nonverbal(
         facial_expressivity={
-            "smile_activity_ratio": ok("expresividad_frecuente"),
-            "mean_smile_activation": ok("activacion_sonrisa_alta"),
+            "smile_activity_ratio": ok("smile_activity_frequent"),
+            "mean_smile_activation": ok("smile_activation_marked"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.facial_expressivity.value == "expresividad_facial_marcada"
+    assert result.facial_expressivity.value == "marked_facial_expressivity"
 
 
 def test_facial_expressivity_ordered_priority(config) -> None:
@@ -632,26 +632,26 @@ def test_facial_expressivity_ordered_priority(config) -> None:
 
     base = nonverbal(
         facial_expressivity={
-            "smile_activity_ratio": ok("expresividad_frecuente"),
-            "mean_smile_activation": ok("activacion_sonrisa_alta"),
+            "smile_activity_ratio": ok("smile_activity_frequent"),
+            "mean_smile_activation": ok("smile_activation_marked"),
         }
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.facial_expressivity.value == "expresividad_facial_marcada"
+    assert result.facial_expressivity.value == "marked_facial_expressivity"
 
 
 def test_facial_expressivity_moderate(config) -> None:
-    """Moderate smile activity -> expresividad_facial_moderada."""
+    """Moderate smile activity -> moderate_facial_expressivity."""
 
     base = nonverbal(
-        facial_expressivity={"smile_activity_ratio": ok("expresividad_moderada")}
+        facial_expressivity={"smile_activity_ratio": ok("smile_activity_moderate")}
     )
 
     result = integrate_nonverbal_labels(base, config)
 
-    assert result.facial_expressivity.value == "expresividad_facial_moderada"
+    assert result.facial_expressivity.value == "moderate_facial_expressivity"
 
 
 def test_facial_expressivity_insufficient_reference_propagates(config) -> None:
@@ -659,7 +659,7 @@ def test_facial_expressivity_insufficient_reference_propagates(config) -> None:
 
     base = nonverbal(
         facial_expressivity={
-            "smile_activity_ratio": ok("expresividad_frecuente"),
+            "smile_activity_ratio": ok("smile_activity_frequent"),
             "mean_smile_activation": insufficient_reference(),
         }
     )

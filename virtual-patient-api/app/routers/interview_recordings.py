@@ -116,6 +116,18 @@ def _require_replay_access(interview: MedicalInterviewDB, user: UserDB) -> None:
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recording access denied")
 
 
+def _require_completed_for_replay(interview: MedicalInterviewDB) -> None:
+    # The recap and its media assets are review artifacts. They only become
+    # accessible once the interview is completed (text evaluation ready);
+    # multimodal processing may still be running in the background. While the
+    # interview is in_progress, processing or interrupted, replay stays blocked.
+    if interview.status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Interview results are not ready yet",
+        )
+
+
 def _recording_response(recording: InterviewRecordingDB) -> RecordingStateResponse:
     return RecordingStateResponse(
         interview_id=recording.medical_interview_id,
@@ -456,6 +468,7 @@ def get_recap(
 ):
     interview = _get_interview(db, interview_id)
     _require_replay_access(interview, user)
+    _require_completed_for_replay(interview)
     recording = db.query(InterviewRecordingDB).filter(
         InterviewRecordingDB.medical_interview_id == interview_id
     ).first()
@@ -510,6 +523,7 @@ async def stream_recording_asset(
 ):
     interview = _get_interview(db, interview_id)
     _require_replay_access(interview, user)
+    _require_completed_for_replay(interview)
     asset = db.query(InterviewMediaAssetDB).join(InterviewRecordingDB).filter(
         InterviewRecordingDB.medical_interview_id == interview_id,
         InterviewMediaAssetDB.kind == asset_kind.value,

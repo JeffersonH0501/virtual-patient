@@ -1,20 +1,25 @@
 # Multimodal pipeline — threshold strategies (methodology configuration).
 #
-# Declarative, strategy-based mapping from processed features to base labels.
-# Every numeric value here is a PROVISIONAL RESEARCH THRESHOLD, not a clinical,
-# diagnostic, or psychological cutoff. `null` band edges mean the band is
-# undecided and the feature is feature_unavailable until defined.
+# This is one of the two research config files (with label_rules.yaml). It maps
+# each processed feature to a base label using a simple, editable strategy per
+# feature. Every numeric value here is a PROVISIONAL RESEARCH THRESHOLD, not a
+# clinical, diagnostic, or psychological cutoff. `null` band edges mean the band
+# is undecided and the feature is feature_unavailable until defined.
+#
+# All label names are in English. To retune the system you normally only need to
+# edit the numbers below (band edges / percentile refs); the label names are the
+# descriptive categories those bands produce.
 #
 # Boundary semantics are explicit per strategy:
 #   fixed_bands:
-#     value <  low_below              -> labels[0]  (low)
-#     low_below <= value <= high_above -> labels[1] (typical)  [boundaries inclusive to typical]
-#     value >  high_above             -> labels[2]  (high)
+#     value <  low_below               -> labels[0]  (low)
+#     low_below <= value <= high_above -> labels[1]  (typical)  [boundaries inclusive to typical]
+#     value >  high_above              -> labels[2]  (high)
 #   baseline_delta: like fixed_bands but on (feature - baseline); needs PersonalBaseline.
 #   session_percentiles:
-#     value <  P(low)                 -> low
-#     P(low) <= value <= P(high)      -> typical  [percentile boundaries inclusive to typical]
-#     value >  P(high)                -> high
+#     value <  P(low)                  -> low
+#     P(low) <= value <= P(high)       -> typical  [percentile boundaries inclusive to typical]
+#     value >  P(high)                 -> high
 #   binary: threshold on a count/flag (e.g. nod_count > 0).
 #   four_band: three ascending breakpoints define four bands (see per-feature note).
 version: "thresholds_v1"
@@ -32,46 +37,46 @@ paraverbal:
       low_below: 110          # < 110 -> low ; 110 and 170 -> typical ; > 170 -> high
       high_above: 170
       boundary: inclusive_typical
-      labels: [ritmo_global_bajo, ritmo_global_tipico, ritmo_global_alto]
+      labels: [speech_rate_low, speech_rate_typical, speech_rate_high]
     articulation_rate_wpm:
       strategy: fixed_bands
       low_below: 130          # < 130 -> low ; 130 and 210 -> typical ; > 210 -> high
       high_above: 210
       boundary: inclusive_typical
-      labels: [articulacion_baja, articulacion_tipica, articulacion_alta]
+      labels: [articulation_rate_low, articulation_rate_typical, articulation_rate_high]
     median_pause_duration_ms:
       strategy: fixed_bands
-      low_below: 500          # < 500 -> breves ; 500 and 1000 -> tipica ; > 1000 -> largas
+      low_below: 500          # < 500 -> brief ; 500 and 1000 -> typical ; > 1000 -> long
       high_above: 1000
       boundary: inclusive_typical
-      labels: [pausas_predominantemente_breves, pausas_duracion_tipica, pausas_predominantemente_largas]
+      labels: [pause_duration_brief, pause_duration_typical, pause_duration_long]
     pause_frequency_per_min:
       strategy: fixed_bands
       low_below: 12           # < 12 -> low ; 12 and 24 -> typical ; > 24 -> high
       high_above: 24
       boundary: inclusive_typical
-      labels: [frecuencia_pausas_baja, frecuencia_pausas_tipica, frecuencia_pausas_alta]
+      labels: [pause_frequency_low, pause_frequency_typical, pause_frequency_high]
     pause_time_ratio:
       strategy: fixed_bands
       low_below: 0.15         # < 0.15 -> low ; 0.15 and 0.30 -> typical ; > 0.30 -> high
       high_above: 0.30
       boundary: inclusive_typical
-      labels: [carga_pausas_baja, carga_pausas_tipica, carga_pausas_alta]
+      labels: [pause_load_low, pause_load_typical, pause_load_high]
 
   # PROSODIC LEVEL family.
   prosodic_level:
     relative_pitch_shift_st:
       strategy: baseline_delta   # (turn_f0_median_st - baseline_f0_median_st)
-      low_below: -3              # < -3 st -> lowered ; -3..+3 -> typical ; > +3 -> raised
+      low_below: -3              # < -3 st -> low ; -3..+3 -> typical ; > +3 -> high
       high_above: 3
       boundary: inclusive_typical
-      labels: [tono_relativo_bajo, tono_relativo_tipico, tono_relativo_alto]
+      labels: [relative_pitch_low, relative_pitch_typical, relative_pitch_high]
     median_loudness:
       strategy: session_percentiles
       low: p25                   # < P25 -> low ; P25..P75 -> typical ; > P75 -> high
       high: p75
       boundary: inclusive_typical
-      labels: [volumen_bajo, volumen_tipico, volumen_alto]
+      labels: [loudness_low, loudness_typical, loudness_high]
 
   # PROSODIC MODULATION family.
   prosodic_modulation:
@@ -80,29 +85,29 @@ paraverbal:
       low_below: 4               # < 4 st -> monotone ; 4..8 -> typical ; > 8 -> variable
       high_above: 8
       boundary: inclusive_typical
-      labels: [entonacion_monotona, entonacion_tipica, entonacion_variable]
+      labels: [intonation_monotone, intonation_typical, intonation_variable]
     loudness_p20_p80_range:
       strategy: session_percentiles
       low: p25                   # < P25 -> low ; P25..P75 -> typical ; > P75 -> high
       high: p75
       boundary: inclusive_typical
-      labels: [variabilidad_volumen_baja, variabilidad_volumen_tipica, variabilidad_volumen_alta]
+      labels: [loudness_variability_low, loudness_variability_typical, loudness_variability_high]
 
 nonverbal:
   # VISUAL ORIENTATION family — fixed bands. Provisional thresholds.
   visual_orientation:
     visual_alignment_ratio:
       strategy: fixed_bands
-      low_below: 0.30            # < 0.30 -> low ; 0.30..0.65 -> typical ; > 0.65 -> high
+      low_below: 0.30            # < 0.30 -> low ; 0.30..0.65 -> mid ; > 0.65 -> high
       high_above: 0.65
       boundary: inclusive_typical
-      labels: [alineacion_visual_baja, alineacion_visual_tipica, alineacion_visual_alta]
+      labels: [visual_alignment_low, visual_alignment_mid, visual_alignment_high]
     median_visual_alignment_dwell_ms:
       strategy: fixed_bands
-      low_below: 500             # < 500 -> short ; 500..1500 -> typical ; > 1500 -> long
+      low_below: 500             # < 500 -> brief ; 500..1500 -> typical ; > 1500 -> sustained
       high_above: 1500
       boundary: inclusive_typical
-      labels: [permanencia_visual_breve, permanencia_visual_tipica, permanencia_visual_prolongada]
+      labels: [visual_dwell_brief, visual_dwell_typical, visual_dwell_sustained]
 
   # HEAD GESTURAL FEEDBACK family.
   head_gestural_feedback:
@@ -116,7 +121,7 @@ nonverbal:
       low: p25                   # < P25 -> low ; P25..P75 -> typical ; > P75 -> high
       high: p75
       boundary: inclusive_typical
-      labels: [ritmo_asentimiento_bajo, ritmo_asentimiento_tipico, ritmo_asentimiento_alto]
+      labels: [nod_rate_low, nod_rate_typical, nod_rate_high]
     interaction_context:
       strategy: passthrough      # speaking / listening carried through, not thresholded
 
@@ -131,10 +136,10 @@ nonverbal:
       #   value > 0.35          -> band[3] (frequent)
       breaks: [0.0, 0.10, 0.35]
       boundary: inclusive_middle
-      labels: [expresividad_ausente, expresividad_escasa, expresividad_moderada, expresividad_frecuente]
+      labels: [smile_activity_absent, smile_activity_sparse, smile_activity_moderate, smile_activity_frequent]
     mean_smile_activation:
       strategy: session_percentiles
-      low: p25                   # < P25 -> low ; P25..P75 -> typical ; > P75 -> high
+      low: p25                   # < P25 -> subtle ; P25..P75 -> typical ; > P75 -> marked
       high: p75
       boundary: inclusive_typical
-      labels: [activacion_sonrisa_baja, activacion_sonrisa_tipica, activacion_sonrisa_alta]
+      labels: [smile_activation_subtle, smile_activation_typical, smile_activation_marked]

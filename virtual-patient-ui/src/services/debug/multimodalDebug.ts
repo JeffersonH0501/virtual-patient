@@ -10,16 +10,20 @@ import {transformToCamelCase} from '../../utils/apiTransform';
 // in real time while calibrating. They MUST NOT be used to derive processed
 // features, base/integrated labels, or aggregates.
 
-// Metadata about the Py-Feat extractor that produced a frame observation.
+// Metadata about the visual extractor that produced a frame observation.
+// The extractor is now OpenFace 3.0; the type name is kept stable as a
+// wire-contract identifier mirroring the backend schema class.
 export type PyFeatExtractorInfo = {
   name: string;
   version: string;
   detector: string;
 };
 
-// Raw per-frame Py-Feat observation (camelCase, produced by transformToCamelCase
-// from the snake_case backend payload). Every measurable value is nullable so a
-// missing/low-quality frame is represented as "not available", never as zero.
+// Raw per-frame visual observation (camelCase, produced by transformToCamelCase
+// from the snake_case backend payload). Produced by the OpenFace 3.0 extractor;
+// the type name is kept stable as a wire-contract identifier mirroring the
+// backend schema class. Every measurable value is nullable so a missing/low-
+// quality frame is represented as "not available", never as zero.
 export type PyFeatFrameDebug = {
   faceDetected: boolean;
   faceScore: number | null;

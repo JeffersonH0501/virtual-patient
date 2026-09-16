@@ -40,19 +40,40 @@ openai==1.109.1
 # Research-only paraverbal feature extraction from student audio.
 opensmile==2.6.0
 
-# Py-Feat 2.1.1 and its explicitly pinned runtime dependencies.
+# OpenFace 3.0 (CMU-MultiComp-Lab) visual extractor and its pinned runtime
+# dependencies. Package name on PyPI is "openface-test"; it provides the
+# `openface` CLI (`openface download`) that materializes model weights via
+# huggingface. Version and transitive pins confirmed against the published
+# package metadata for openface-test==0.1.26 (requires_dist).
+#
+# torch/torchvision are intentionally NOT pinned here: they are installed as
+# CPU builds from the PyTorch CPU wheel index in the api Dockerfile (see
+# task 8.2 / Req 6.3-6.5), so `openface-test` reuses the already-installed CPU
+# wheels instead of pulling default (CUDA) wheels. Do not add a torch CUDA
+# index in this file.
 huggingface-hub==0.21.0
 imageio==2.34.2
-matplotlib==3.10.1
 numpy==1.26.4
 opencv-contrib-python==4.11.0.86
 pandas==2.2.3
-Pillow==10.4.0
 scipy==1.13.0
-seaborn==0.13.2
 scikit-image==0.24.0
-tensorboardX==2.6.2.2
 timm==1.0.15
 tqdm==4.66.2
-py-feat==2.1.1
-torchcodec==0.11.1
+# Required by openface-test==0.1.26 (its declared `==` pins). These were also
+# present for Py-Feat; they are KEPT because OpenFace 3.0 still declares them as
+# hard dependencies, so removing them would either be re-added by
+# `pip install openface-test` or break its resolution.
+matplotlib==3.10.1
+seaborn==0.13.2
+tensorboardX==2.6.2.2
+# openface-test==0.1.26 pins Pillow==9.4.0 with a strict "==" constraint, so pip
+# cannot resolve requirements alongside the previous Pillow==10.4.0. Aligned to
+# 9.4.0: no application code imports PIL directly, and the other consumers
+# (torchvision 0.17.2, matplotlib 3.10.1, scikit-image 0.24.0, imageio 2.34.2)
+# accept Pillow 9.4.0 (they require pillow>=5.3.0 with no <10 upper bound issue).
+Pillow==9.4.0
+# OpenFace 3.0 package (RetinaFace detection + STAR 68-pt landmarks + multitask
+# AU/gaze/emotion). Confirmed against the CMU-MultiComp-Lab/OpenFace-3.0 install
+# docs (`pip install openface-test`) and PyPI metadata (latest 0.1.26).
+openface-test==0.1.26

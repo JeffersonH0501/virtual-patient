@@ -18,9 +18,9 @@ tests patch, on the ``app.multimodal.pipeline`` module:
   ``.commit()`` calls are counted.
 * ``get_media_storage`` -> returns a stub storage whose ``.resolve(key)`` yields
   a dummy path (never touched, because the extractors are also patched).
-* ``analyze_student_turns`` / ``analyze_pyfeat_student_turn_videos`` -> return
+* ``analyze_student_turns`` / ``analyze_openface_student_turn_videos`` -> return
   in-memory raw features (real ``ParaverbalRawFeatures`` objects and the raw
-  Py-Feat payload dict shape) so no media / OpenSMILE / Py-Feat runs.
+  OpenFace 3.0 payload dict shape) so no media / OpenSMILE / OpenFace 3.0 runs.
 * ``read_personal_baseline`` -> returns a real ``PersonalBaseline`` or ``None``
   (missing-calibration case).
 
@@ -234,9 +234,9 @@ def _paraverbal_raw(turn_duration_ms: int = 4000) -> ParaverbalRawFeatures:
 
 
 def _nonverbal_payload(conversation_speaker: str, turn_duration_ms: int = 4000) -> dict:
-    """The raw Py-Feat per-turn payload shape: NonverbalRawFeatures dump + context.
+    """The raw OpenFace 3.0 per-turn payload shape: NonverbalRawFeatures dump + context.
 
-    Matches ``analyze_pyfeat_student_turn_videos`` output: a
+    Matches ``analyze_openface_student_turn_videos`` output: a
     ``NonverbalRawFeatures.model_dump()`` plus an ``observationContext`` block.
     Enough frames are provided that preprocessing can run; features that depend on
     null methodology params (gaze tolerance, AU12 threshold, nod params) will be
@@ -255,7 +255,7 @@ def _nonverbal_payload(conversation_speaker: str, turn_duration_ms: int = 4000) 
         "frame_timestamps_ms": timestamps,
         "sample_fps": 2.0,
         "turn_duration_ms": turn_duration_ms,
-        "extractor": {"name": "pyfeat", "version": "test"},
+        "extractor": {"name": "openface", "version": "test"},
         "video_quality": {"detected_frames": 8, "issues": []},
         "observationContext": {
             "observedParticipant": "student",
@@ -319,7 +319,7 @@ class _PipelineHarness:
                 patch.object(pipeline_module, "analyze_student_turns", side_effect=fake_paraverbal), \
                 patch.object(
                     pipeline_module,
-                    "analyze_pyfeat_student_turn_videos",
+                    "analyze_openface_student_turn_videos",
                     side_effect=fake_nonverbal,
                 ), \
                 patch.object(
@@ -612,8 +612,7 @@ class MultimodalPipelineTests(unittest.TestCase):
                 self.assertIsNotNone(layer)
                 self.assertEqual(layer["versions"], expected_versions)
                 self.assertEqual(layer["config_hash"], expected_hash)
-                # Versions expose all three methodology files.
-                self.assertIn("processing", layer["versions"])
+                # Versions expose the two methodology config files.
                 self.assertIn("thresholds", layer["versions"])
                 self.assertIn("label_rules", layer["versions"])
 

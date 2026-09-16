@@ -18,7 +18,12 @@ from pydantic import BaseModel, Field
 
 
 class ExtractorInfo(BaseModel):
-    """Identifying metadata for the extractor that produced a frame."""
+    """Identifying metadata for the extractor that produced a frame.
+
+    Now identifies OpenFace 3.0 (``name="openface"``, ``version="3.0"``,
+    ``detector="openface3-multitask"``). The class name is kept stable as a
+    wire-contract identifier shared with the UI.
+    """
 
     name: str
     version: str
@@ -26,11 +31,15 @@ class ExtractorInfo(BaseModel):
 
 
 class PyFeatFrameDebug(BaseModel):
-    """Raw, single-image Py-Feat observation for one debug frame.
+    """Raw, single-image OpenFace 3.0 observation for one debug frame.
 
-    Numeric fields are the raw values read from the best-``FaceScore`` detection
-    row. They are not thresholded, aligned, or aggregated. Landmarks are raw
-    image-pixel coordinates as returned by the detector.
+    Numeric fields are the raw values read from the best face-confidence
+    detection. They are not thresholded, aligned, or aggregated. Landmarks are
+    raw image-pixel coordinates as returned by the detector.
+
+    The class name is intentionally kept stable as a wire-contract identifier
+    (the response model and the matching UI type); only the extractor-identity
+    values it carries name OpenFace 3.0.
     """
 
     face_detected: bool = False

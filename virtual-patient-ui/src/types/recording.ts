@@ -88,12 +88,23 @@ export type ParaverbalIntegratedLabels = {
   prosodicModulation?: FamilyLabel;
 };
 
+// Per-feature base (initial) labels grouped by family. Each family maps a
+// camelCased feature key (e.g. `speechRateWpm`) to its per-feature FamilyLabel
+// from the threshold stage. These are the "initial labels" shown between the
+// base features and the integrated label. Optional because a legacy payload
+// carries `baseLabels: null`.
+export type ParaverbalBaseLabels = {
+  temporal?: Record<string, FamilyLabel>;
+  prosodicLevel?: Record<string, FamilyLabel>;
+  prosodicModulation?: Record<string, FamilyLabel>;
+};
+
 export type ParaverbalObservation = {
   schema?: ObservationSchema;
   modality?: 'paraverbal';
   raw?: Record<string, unknown> | null;
   processed?: ParaverbalProcessed;
-  baseLabels?: Record<string, unknown> | null;
+  baseLabels?: ParaverbalBaseLabels | null;
   integratedLabels?: ParaverbalIntegratedLabels;
   quality?: {validRatio?: number | null; issues?: string[]; [key: string]: unknown};
   versions?: Record<string, string> | null;
@@ -125,12 +136,19 @@ export type NonverbalIntegratedLabels = {
   facialExpressivity?: FamilyLabel;
 };
 
+// Per-feature base (initial) labels grouped by nonverbal family.
+export type NonverbalBaseLabels = {
+  visualOrientation?: Record<string, FamilyLabel>;
+  headGesturalFeedback?: Record<string, FamilyLabel>;
+  facialExpressivity?: Record<string, FamilyLabel>;
+};
+
 export type NonverbalObservation = {
   schema?: ObservationSchema;
   modality?: 'nonverbal';
   raw?: Record<string, unknown> | null;
   processed?: NonverbalProcessed;
-  baseLabels?: Record<string, unknown> | null;
+  baseLabels?: NonverbalBaseLabels | null;
   integratedLabels?: NonverbalIntegratedLabels;
   quality?: {sampledFrameCount?: number; validFrameCount?: number; issues?: string[]; [key: string]: unknown};
   versions?: Record<string, string> | null;

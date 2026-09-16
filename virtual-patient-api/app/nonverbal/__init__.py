@@ -1,5 +1,5 @@
-"""Py-Feat-based descriptive visual observations for interview turns."""
+"""OpenFace 3.0-based descriptive visual observations for interview turns."""
 
-from .pyfeat_extractor import StudentTurnVideo, analyze_pyfeat_student_turn_videos
+from .openface_extractor import StudentTurnVideo, analyze_openface_student_turn_videos
 
-__all__ = ["StudentTurnVideo", "analyze_pyfeat_student_turn_videos"]
+__all__ = ["StudentTurnVideo", "analyze_openface_student_turn_videos"]

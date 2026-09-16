@@ -101,7 +101,7 @@ Nonverbal (all turn windows):
 
 | Stage / concern | Location |
 |-----------------|----------|
-| Extraction (signal + quality only) | `app/paraverbal/opensmile_extractor.py`, `app/nonverbal/pyfeat_extractor.py` |
+| Extraction (signal + quality only) | `app/paraverbal/opensmile_extractor.py`, `app/nonverbal/openface_extractor.py` |
 | Derivation (raw → processed) | `app/paraverbal/preprocessing.py`, `app/nonverbal/preprocessing.py` |
 | Base labels (processed → base labels from `thresholds.yaml`) | `threshold_engine.py` |
 | Integrated labels (base labels → one label per family from `label_rules.yaml`) | `label_engine.py` |
@@ -194,7 +194,7 @@ references with the same two-pass guard, and rewrites
 python -m scripts.relabel_multimodal <interview_id> [<interview_id> ...]
 ```
 
-The `backfill_observations.py`, `backfill_pyfeat.py`, and `verify_observations.py`
+The `backfill_observations.py`, `backfill_openface.py`, and `verify_observations.py`
 scripts are adjusted to the layered result shape.
 
 ## Persistence and legacy compatibility

@@ -4,7 +4,7 @@
 This script re-derives Base_Labels and Integrated_Labels for one or more
 interviews from the *already stored* per-turn raw/processed features, using the
 current ``thresholds.yaml`` / ``label_rules.yaml``. It never invokes the
-OpenSMILE or Py-Feat extractors: it reconstructs the typed
+OpenSMILE or OpenFace 3.0 extractors: it reconstructs the typed
 ``ParaverbalProcessedFeatures`` / ``NonverbalProcessedFeatures`` from each
 turn's persisted ``processed`` block, recomputes the per-interview session
 references with the pipeline's own two-pass guarded logic, and rewrites

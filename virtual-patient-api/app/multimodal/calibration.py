@@ -208,9 +208,9 @@ def _derive_video_metrics(
     if video_path is None:
         return None, None
 
-    from app.nonverbal.pyfeat_extractor import (
+    from app.nonverbal.openface_extractor import (
         StudentTurnVideo,
-        analyze_pyfeat_student_turn_videos,
+        analyze_openface_student_turn_videos,
     )
 
     window = StudentTurnVideo(
@@ -219,7 +219,7 @@ def _derive_video_metrics(
         end_ms=_FULL_MEDIA_WINDOW_END_MS,
         conversation_speaker="calibration",
     )
-    extracted = analyze_pyfeat_student_turn_videos(video_path, [window])
+    extracted = analyze_openface_student_turn_videos(video_path, [window])
     raw = extracted.get(_CALIBRATION_WINDOW_TURN_ID)
     if raw is None:
         return None, None
