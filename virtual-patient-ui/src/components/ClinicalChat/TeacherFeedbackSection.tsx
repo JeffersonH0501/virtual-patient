@@ -162,7 +162,7 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-900">
-                      {[feedback.teacherFirstName, feedback.teacherLastName].filter(Boolean).join(' ') || `Teacher ${feedback.teacherId}`}
+                      {feedback.teacherName || `Teacher ${feedback.teacherId}`}
                     </p>
                     <p className="text-xs text-gray-500">
                       {new Date(feedback.createdAt).toLocaleDateString('en-US', {
@@ -213,7 +213,7 @@ export const TeacherFeedbackSection: FC<TeacherFeedbackSectionProps> = ({ interv
                   </div>
                   <div>
                     <p className="text-lg font-semibold text-gray-900">
-                      {[selectedFeedback.teacherFirstName, selectedFeedback.teacherLastName].filter(Boolean).join(' ') || `Teacher ${selectedFeedback.teacherId}`}
+                      {selectedFeedback.teacherName || `Teacher ${selectedFeedback.teacherId}`}
                     </p>
                     <p className="text-sm text-gray-500">
                       {new Date(selectedFeedback.createdAt).toLocaleDateString('en-US', {

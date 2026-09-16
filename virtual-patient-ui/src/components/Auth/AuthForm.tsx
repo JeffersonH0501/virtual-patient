@@ -35,7 +35,7 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
     setError('');
     try {
       const result = registering
-        ? await createUser({email: email.trim(), first_name: name.trim(), password, role})
+        ? await createUser({email: email.trim(), name: name.trim(), password, role})
         : await signIn({email: email.trim(), password});
       if (!result.access_token) throw new Error(t('errors.noAccessToken'));
       Cookies.set('access_token', result.access_token, getAuthCookieOptions());

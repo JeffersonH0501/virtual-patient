@@ -27,8 +27,7 @@ async def create_user(user: UserCreate, db: Session = Depends(get_db)):
     hashed_password = get_password_hash(user.password)
     db_user = UserDB(
         email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
+        name=user.name,
         hashed_password=hashed_password,
         disabled=False,
         preferred_language=user.preferred_language or "en",
@@ -72,10 +71,9 @@ async def update_user_me(
     Update the current user's profile information.
     
     - **email**: New email address (optional)
-    - **first_name**: Given name (optional)
-    - **last_name**: Family name (optional)
+    - **name**: Display name (optional)
     - **preferred_language**: New preferred language code (optional)
-    Only email, first name, last name, and preferred language can be updated.
+    Only email, name, and preferred language can be updated.
     Password, role, and organization membership cannot be changed through this
     endpoint.
     """

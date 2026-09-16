@@ -55,19 +55,22 @@ delivery only and must not add or rewrite transcript words. Stored audio paths
 are not created; message metadata retains the policy version for reproducibility.
 
 Interview recording uses a private filesystem provider and a persistent Docker
-volume. Configure it with:
+volume. These settings are no longer environment variables; they are hardcoded
+in the API:
 
-```bash
-MEDIA_STORAGE_ROOT=/app/media
-MEDIA_RETENTION_DAYS=
-MEDIA_CONSENT_POLICY_VERSION=institutional-v1
-MEDIA_DURATION_TOLERANCE_MS=500
-MEDIA_MIN_FREE_BYTES=268435456
-```
+- Storage root and minimum free-space guard: `MEDIA_STORAGE_ROOT` (`/app/media`)
+  and `MEDIA_MIN_FREE_BYTES` (256 MiB) in `app/media/storage.py`.
+- Retention, consent policy version, and duration tolerance:
+  `MEDIA_RETENTION_DAYS` (`None`), `MEDIA_CONSENT_POLICY_VERSION`
+  (`institutional-v1`), and `MEDIA_DURATION_TOLERANCE_MS` (500) in
+  `app/routers/interview_recordings.py`.
 
-`MEDIA_RETENTION_DAYS` records an optional expiry timestamp; this release does
-not delete expired files automatically. Nginx streams uploads without request
-buffering and does not expose the media directory as public static content.
+`/app/media` is the in-container mount point backed by the `interview_media`
+Docker volume; to change where media lands on the host, adjust that volume in
+the compose file rather than the code. Retention has no expiry by default and
+this release does not delete expired files automatically. Nginx streams uploads
+without request buffering and does not expose the media directory as public
+static content.
 Playback is authorized by the API and supports HTTP Range requests.
 
 Post-interview observations run through the staged multimodal pipeline, which
@@ -76,7 +79,7 @@ pipeline is scheduled as a background task when a recording is finalized. Its
 methodology (derivation parameters, threshold bands, and label rules) lives in
 versioned YAML under `app/multimodal/config/`. Extractor runtime constants live
 beside their implementations: OpenSMILE uses eGeMAPSv02 LLDs over mono 16 kHz
-PCM, while Py-Feat uses Detectorv2 at 10 FPS with batches of 8 and stores
+PCM, while Py-Feat uses Detectorv2 at 3 FPS with batches of 8 and stores
 downloaded resources in the persistent `/app/pyfeat` volume. The API image uses
 the official PyTorch CUDA 12.6 runtime and both Compose modes expose the NVIDIA
 GPU to the API. Py-Feat selects CUDA automatically, reduces its batch through
@@ -183,10 +186,9 @@ Both modes call `virtual-patient-api/scripts/setup_db.py`. The process:
 - stops when it finds existing tables without Alembic history instead of
   guessing a version or overwriting them.
 
-Database setup also provisions exactly one `superuser` from
-`SUPERUSER_EMAIL`, `SUPERUSER_FIRST_NAME`, `SUPERUSER_LAST_NAME`,
-`SUPERUSER_PASSWORD`, and `SUPERUSER_PREFERRED_LANGUAGE`. Production setup
-rejects missing placeholder values. Re-running setup synchronizes that sole
+Database setup also provisions exactly one `superuser` from `SUPERUSER_EMAIL`,
+`SUPERUSER_NAME`, and `SUPERUSER_PASSWORD` (the account uses a single display
+name). Setup rejects missing values. Re-running setup synchronizes that sole
 account with the configured identity and password; if multiple superusers or a
 email collision exists, setup stops for manual resolution. Public
 registration only accepts `student` and `teacher`, and self-service profile
@@ -219,10 +221,12 @@ are stored only in `user_identity_migration_archive` for downgrade and are not
 exposed by the API. That archive contains personal data and follows the same
 access and retention controls as the user table.
 
-Replace the former superuser name settings with `SUPERUSER_FIRST_NAME` and
-`SUPERUSER_LAST_NAME` in deployment environment files. Existing local superusers
-retain their stored names when these are unset; creating a superuser requires
-both names. The deployment-managed email and password remain unchanged.
+The superuser now uses a single `SUPERUSER_NAME` value instead of separate
+first/last name settings, matching the single `name` column on the user table.
+Deployment environment files must provide `SUPERUSER_EMAIL`, `SUPERUSER_NAME`,
+and `SUPERUSER_PASSWORD`. An existing
+superuser whose email differs from the configured one is not renamed
+automatically: resolve email collisions or duplicate superusers manually.
 
 ### Py-Feat observation migration
 

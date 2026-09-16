@@ -53,7 +53,7 @@ export const StudentsTable = () => {
   // Filter interviews based on search term
   const filteredInterviews = interviews.filter((interview) =>
     interview.clinicalCaseTitle.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    [interview.userFirstName, interview.userLastName].filter(Boolean).join(' ').toLowerCase().includes(searchTerm.toLowerCase()),
+    (interview.userName || '').toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   if (isLoading) {

@@ -57,11 +57,11 @@ export const StudentsTableRow: FC<StudentsTableRowProps> = ({
         <div className="flex items-center gap-2">
           <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
             <span className="text-xs font-medium text-blue-600">
-              {[interview.userFirstName, interview.userLastName].filter(Boolean).join(' ').charAt(0).toUpperCase()}
+              {(interview.userName || '').charAt(0).toUpperCase()}
             </span>
           </div>
           <span className="font-medium text-gray-900">
-            {[interview.userFirstName, interview.userLastName].filter(Boolean).join(' ')}
+            {interview.userName}
           </span>
         </div>
       </td>

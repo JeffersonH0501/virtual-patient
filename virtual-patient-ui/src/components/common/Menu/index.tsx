@@ -39,7 +39,7 @@ export const Menu: FC<Props> = ({open, onOutsideClick, onSignOut, triggerElement
             {roleLabel}
           </span>
           <p className="mt-3 truncate text-sm font-semibold text-slate-800">
-            {[user.firstName, user.lastName].filter(Boolean).join(' ')}
+            {user.name}
           </p>
           <p className="mt-1 truncate text-xs text-slate-500" title={user.email}>
             {user.email}

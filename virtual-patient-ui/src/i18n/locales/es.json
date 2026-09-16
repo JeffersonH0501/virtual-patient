@@ -36,8 +36,6 @@
     "page": "Página {{page}}"
   },
   "auth": {
-    "firstName": "Nombre",
-    "lastName": "Apellido",
     "name": "Nombre",
     "accountAccess": "Tu espacio de aprendizaje",
     "practiceLabel": "Aprende conversando",
@@ -155,16 +153,15 @@
     "startCalibration": "Iniciar calibración",
     "calibrating": "Calibrando...",
     "saving": "Guardando...",
-    "baselineProcessing": "Guardando ajustes finales de calibración. Espera un momento...",
-    "processingBaseline": "Guardando ajustes...",
-    "baselineReady": "Calibración completada exitosamente. Ya puedes iniciar la simulación.",
+    "baselineProcessing": "Realizando ajustes finales de calibración. Espera un momento...",
+    "processingBaseline": "Realizando ajustes...",
     "baselineUnavailable": "No se pudo realizar la calibración correctamente. Realízala de nuevo.",
     "repeat": "Repetir calibración",
     "startInterview": "Comenzar entrevista",
     "notStarted": "Sin iniciar",
     "pending": "Calibración pendiente",
     "resultReady": "Equipo listo",
-    "resultReadyDescription": "La cámara, el rostro, el micrófono y la señal de voz cumplen todas las comprobaciones necesarias.",
+    "resultReadyDescription": "La cámara, la presencia facial, el micrófono y la actividad de audio cumplen todas las comprobaciones necesarias.",
     "resultProblemDescription": "Revisa los indicadores de audio y video, corrige los que aparecen en rojo y repite la prueba.",
     "quality": {
       "low": "La señal se escucha baja. Acércate al micrófono y repite la prueba.",

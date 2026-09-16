@@ -27,7 +27,6 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_user_from_token
-from app.core.config import settings
 from app.core.database import get_db
 from app.media import LocalMediaStorage, get_media_storage
 from app.multimodal.legacy_adapter import normalize_observation
@@ -54,6 +53,13 @@ from app.models.user import UserDB, UserRole
 router = APIRouter(prefix="/medical-interviews", tags=["interview-recordings"])
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
+# Interview media governance settings. Hardcoded on purpose: these values are
+# fixed for the deployment and are not sourced from the environment.
+# No automatic deletion is performed yet, so retention has no expiry by default.
+MEDIA_RETENTION_DAYS: int | None = None
+MEDIA_CONSENT_POLICY_VERSION = "institutional-v1"
+MEDIA_DURATION_TOLERANCE_MS = 500
 
 ALLOWED_CONTENT_TYPES = {
     "audio/webm": ".webm",
@@ -138,15 +144,15 @@ def start_recording(
     ).first()
     if recording is None:
         retention_expires_at = None
-        if settings.media_retention_days is not None:
-            retention_expires_at = payload.started_at + timedelta(days=settings.media_retention_days)
+        if MEDIA_RETENTION_DAYS is not None:
+            retention_expires_at = payload.started_at + timedelta(days=MEDIA_RETENTION_DAYS)
         recording = InterviewRecordingDB(
             medical_interview_id=interview_id,
             status=RecordingStatus.RECORDING.value,
             started_at=payload.started_at,
             capture_config=payload.capture_config,
             consent_basis="institutional",
-            consent_policy_version=settings.media_consent_policy_version,
+            consent_policy_version=MEDIA_CONSENT_POLICY_VERSION,
             retention_expires_at=retention_expires_at,
         )
         db.add(recording)
@@ -261,7 +267,7 @@ async def finalize_recording(
     latest_turn = db.query(InterviewTurnDB).filter(
         InterviewTurnDB.medical_interview_id == interview_id
     ).order_by(InterviewTurnDB.end_ms.desc()).first()
-    if latest_turn and latest_turn.end_ms > duration_ms + settings.media_duration_tolerance_ms:
+    if latest_turn and latest_turn.end_ms > duration_ms + MEDIA_DURATION_TOLERANCE_MS:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="A turn extends beyond the common recording timeline",
@@ -410,7 +416,7 @@ def mark_recording_unavailable(
             started_at=interview.start_time,
             capture_config={},
             consent_basis="institutional",
-            consent_policy_version=settings.media_consent_policy_version,
+            consent_policy_version=MEDIA_CONSENT_POLICY_VERSION,
         )
         db.add(recording)
     failure_code = (
@@ -589,7 +595,7 @@ def _validate_source_durations(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid duration for {kind}",
             )
-        if abs(source_duration - common_duration_ms) > settings.media_duration_tolerance_ms:
+        if abs(source_duration - common_duration_ms) > MEDIA_DURATION_TOLERANCE_MS:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"{kind} duration differs from the common timeline",

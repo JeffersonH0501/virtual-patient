@@ -8,13 +8,13 @@ from app.models.user import UserCreate, UserRole, UserUpdate
 
 def test_public_registration_accepts_student_and_teacher_roles() -> None:
     for role in (UserRole.STUDENT, UserRole.TEACHER):
-        request = UserCreate(email=f"new-{role.value}@example.org", first_name="New", last_name="User", password="secret", role=role)
+        request = UserCreate(email=f"new-{role.value}@example.org", name="New User", password="secret", role=role)
         assert request.role == role
 
 
 def test_public_registration_rejects_superuser_role() -> None:
     with pytest.raises(ValidationError):
-        UserCreate(email="attacker@example.org", first_name="New", last_name="User", password="secret", role="superuser")
+        UserCreate(email="attacker@example.org", name="New User", password="secret", role="superuser")
 
 
 @pytest.mark.parametrize("field", ["role", "organization_id"])
@@ -27,8 +27,7 @@ def test_public_registration_rejects_organization_assignment() -> None:
     with pytest.raises(ValidationError):
         UserCreate(
             email="cross-organization@example.org",
-            first_name="New",
-            last_name="User",
+            name="New User",
             password="secret",
             organization_id=99,
         )

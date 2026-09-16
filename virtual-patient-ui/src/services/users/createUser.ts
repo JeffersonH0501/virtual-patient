@@ -2,9 +2,8 @@ import {API_URL} from '../../utils/request';
 
 export type CreateUserPayload = {
   email: string;
-  // The registration form collects a single "Name" value, sent as first_name.
-  first_name: string;
-  last_name?: string;
+  // The registration form collects a single "Name" value.
+  name: string;
   password: string;
   role?: 'student' | 'teacher'; // Make optional until backend supports it
 };

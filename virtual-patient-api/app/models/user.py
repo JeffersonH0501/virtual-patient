@@ -17,8 +17,7 @@ class UserDB(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
-    first_name = Column(String, nullable=False)
-    last_name = Column(String, nullable=False)
+    name = Column(String, nullable=False)
     __table_args__ = (Index("uq_users_email_normalized", func.lower(email), unique=True),)
     hashed_password = Column(String)
     disabled = Column(Boolean, default=False)
@@ -31,9 +30,8 @@ class UserDB(Base):
     organization = relationship("OrganizationDB")
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
-# The registration form collects a single "Name" value, stored in first_name.
-# last_name is kept in the schema for backward compatibility but may be empty.
-OptionalName = Annotated[str, StringConstraints(strip_whitespace=True)]
+# The registration form collects a single "Name" value, stored in the ``name``
+# column.
 
 
 class EmailIdentity(BaseModel):
@@ -46,8 +44,7 @@ class EmailIdentity(BaseModel):
 # Pydantic Models
 class UserBase(EmailIdentity):
     email: EmailStr
-    first_name: str
-    last_name: str
+    name: str
     disabled: Optional[bool] = None
     preferred_language: Optional[str] = "en"
     role: Optional[UserRole] = UserRole.STUDENT
@@ -59,8 +56,7 @@ class UserCreate(EmailIdentity):
     model_config = ConfigDict(extra="forbid")
 
     email: EmailStr
-    first_name: Name
-    last_name: OptionalName = ""
+    name: Name
     preferred_language: Optional[str] = "en"
     role: Literal[UserRole.TEACHER, UserRole.STUDENT] = UserRole.STUDENT
     password: str
@@ -71,11 +67,10 @@ class UserUpdate(EmailIdentity):
     model_config = ConfigDict(extra="forbid")
 
     email: Optional[EmailStr] = None
-    first_name: Optional[Name] = None
-    last_name: Optional[Name] = None
+    name: Optional[Name] = None
     preferred_language: Optional[str] = None
 
-    @field_validator("email", "first_name", "last_name", mode="before")
+    @field_validator("email", "name", mode="before")
     @classmethod
     def reject_explicit_null(cls, value):
         if value is None:

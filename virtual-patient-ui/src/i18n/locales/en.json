@@ -36,8 +36,6 @@
     "page": "Page {{page}}"
   },
   "auth": {
-    "firstName": "First name",
-    "lastName": "Last name",
     "name": "Name",
     "accountAccess": "Your learning space",
     "practiceLabel": "Learn through conversation",
@@ -155,16 +153,15 @@
     "startCalibration": "Start calibration",
     "calibrating": "Calibrating...",
     "saving": "Saving...",
-    "baselineProcessing": "Saving final calibration settings. Please wait...",
-    "processingBaseline": "Saving settings...",
-    "baselineReady": "Calibration completed successfully. You can now start the simulation.",
+    "baselineProcessing": "Applying final calibration adjustments. Please wait...",
+    "processingBaseline": "Applying adjustments...",
     "baselineUnavailable": "Calibration could not be completed correctly. Please run it again.",
     "repeat": "Repeat calibration",
     "startInterview": "Start interview",
     "notStarted": "Not started",
     "pending": "Calibration pending",
     "resultReady": "Equipment ready",
-    "resultReadyDescription": "The camera, face, microphone, and voice signal passed every required check.",
+    "resultReadyDescription": "The camera, facial presence, microphone, and audio activity passed every required check.",
     "resultProblemDescription": "Review the audio and video indicators, correct those shown in red, and repeat the test.",
     "quality": {
       "low": "The signal is low. Move closer to the microphone and repeat the test.",

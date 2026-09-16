@@ -875,7 +875,7 @@
   .calibration-message--error { @apply bg-danger-50 text-danger-700; }
   .calibration-result { @apply rounded-card px-4 py-3; }
   .calibration-result h2 { @apply text-sm font-semibold; }
-  .calibration-result p { @apply mt-1 text-sm; }
+  .calibration-result p { @apply m-0 text-sm; }
   .calibration-result--passed { @apply bg-success-50 text-success-800; }
   .calibration-result--failed { @apply bg-danger-50 text-danger-800; }
   .calibration-result__warning { @apply font-medium text-warning-700; }

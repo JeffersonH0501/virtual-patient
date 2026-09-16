@@ -51,8 +51,8 @@ def synchronize_superuser(session: Session) -> str:
 
     created = superuser is None
     if created:
-        if not settings.superuser_first_name or not settings.superuser_last_name:
-            raise RuntimeError("New superusers require SUPERUSER_FIRST_NAME and SUPERUSER_LAST_NAME")
+        if not settings.superuser_name:
+            raise RuntimeError("New superusers require SUPERUSER_NAME")
         organization = session.scalars(
             select(OrganizationDB)
             .where(OrganizationDB.active.is_(True))
@@ -71,8 +71,7 @@ def synchronize_superuser(session: Session) -> str:
     changed = created
     desired_values = {
         "email": settings.superuser_email,
-        "first_name": settings.superuser_first_name or superuser.first_name,
-        "last_name": settings.superuser_last_name or superuser.last_name,
+        "name": settings.superuser_name or superuser.name,
         "preferred_language": settings.superuser_preferred_language,
         "disabled": False,
     }

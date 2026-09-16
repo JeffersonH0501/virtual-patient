@@ -691,7 +691,7 @@ async def get_interviews_by_organization(
     Returns a list of student interviews with evaluation scores and additional context including:
     - organization_id: The organization ID (for compatibility)
     - clinical_case_title: Title of the clinical case
-    - user_first_name / user_last_name: Name of the student who conducted the interview
+    - user_name: Name of the student who conducted the interview
     - evaluation_score: Overall evaluation score (null if no evaluation exists)
     - teacher_feedback: List of teacher feedback for the interview
     """

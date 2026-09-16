@@ -33,7 +33,7 @@ from app.multimodal.schemas import NonverbalRawFeatures
 EXTRACTOR_NAME = "py-feat"
 EXTRACTOR_VERSION = "2.1.1"
 WEIGHTS_ROOT = Path("/app/pyfeat/weights")
-SAMPLE_FPS = 10.0
+SAMPLE_FPS = 3.0
 CPU_BATCH_SIZE = 8
 CUDA_BATCH_SIZE = 8
 CUDA_BATCH_CANDIDATES = (CUDA_BATCH_SIZE, 4, 2, 1)

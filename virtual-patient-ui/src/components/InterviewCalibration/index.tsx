@@ -400,11 +400,15 @@ export const InterviewCalibration = () => {
             </div>
           )}
 
-          {result && (
+          {result && (result.status === 'failed' || baselinePending || saved) && (
             <div className={`calibration-result calibration-result--${result.status}`} role="status">
-              <p>{t(result.status === 'passed' ? 'calibration.resultReadyDescription' : 'calibration.resultProblemDescription')}</p>
-              {baselinePending && <p>{t('calibration.baselineProcessing')}</p>}
-              {saved && result.status === 'passed' && <p>{t('calibration.baselineReady')}</p>}
+              {result.status === 'failed' ? (
+                <p>{t('calibration.resultProblemDescription')}</p>
+              ) : baselinePending ? (
+                <p>{t('calibration.baselineProcessing')}</p>
+              ) : (
+                <p>{t('calibration.resultReadyDescription')}</p>
+              )}
               {result.audio.inputLevel !== 'adequate' && <p className="calibration-result__warning">{t(`calibration.quality.${result.audio.inputLevel}`)}</p>}
               {result.audio.clippingDetected && <p className="calibration-result__warning">{t('calibration.quality.clipping')}</p>}
             </div>

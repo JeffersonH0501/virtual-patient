@@ -112,8 +112,7 @@ export type OrganizationInterview = {
   evaluationScore: number;
   organizationId: number;
   clinicalCaseTitle: string;
-  userFirstName: string;
-  userLastName: string;
+  userName: string;
   startTime: string | null;
   endTime: string | null;
   teacherFeedback: TeacherFeedback[];

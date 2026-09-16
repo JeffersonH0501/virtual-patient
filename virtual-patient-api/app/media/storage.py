@@ -12,7 +12,12 @@ from typing import AsyncIterator
 
 from fastapi import UploadFile
 
-from app.core.config import settings
+
+# Interview media storage settings. Hardcoded on purpose: the storage root is the
+# in-container mount point (backed by a Docker volume), and the minimum free space
+# guard is fixed for the deployment. Neither is sourced from the environment.
+MEDIA_STORAGE_ROOT = Path("/app/media")
+MEDIA_MIN_FREE_BYTES = 256 * 1024 * 1024  # 256 MiB
 
 
 @dataclass(frozen=True)
@@ -113,7 +118,7 @@ class LocalMediaStorage:
 
     def _ensure_free_space(self) -> None:
         available = shutil.disk_usage(self.root).free
-        if available < settings.media_min_free_bytes:
+        if available < MEDIA_MIN_FREE_BYTES:
             raise OSError("Insufficient free space for interview media")
 
 
@@ -123,5 +128,5 @@ _storage: LocalMediaStorage | None = None
 def get_media_storage() -> LocalMediaStorage:
     global _storage
     if _storage is None:
-        _storage = LocalMediaStorage(settings.media_storage_root)
+        _storage = LocalMediaStorage(MEDIA_STORAGE_ROOT)
     return _storage

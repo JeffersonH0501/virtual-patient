@@ -30,8 +30,7 @@ class Settings:
     )
 
     superuser_email: str = os.getenv("SUPERUSER_EMAIL", "").strip().lower()
-    superuser_first_name: str = os.getenv("SUPERUSER_FIRST_NAME", "").strip()
-    superuser_last_name: str = os.getenv("SUPERUSER_LAST_NAME", "").strip()
+    superuser_name: str = os.getenv("SUPERUSER_NAME", "").strip()
     superuser_password: str = os.getenv("SUPERUSER_PASSWORD", "")
     superuser_preferred_language: str = os.getenv(
         "SUPERUSER_PREFERRED_LANGUAGE", "es"
@@ -59,26 +58,11 @@ class Settings:
         "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"
     )
 
-    media_storage_root: Path = Path(os.getenv("MEDIA_STORAGE_ROOT", str(REPOSITORY_ROOT / ".data" / "media")))
-    media_retention_days: int | None = (
-        int(os.environ["MEDIA_RETENTION_DAYS"])
-        if os.getenv("MEDIA_RETENTION_DAYS", "").strip()
-        else None
-    )
-    media_consent_policy_version: str = os.getenv(
-        "MEDIA_CONSENT_POLICY_VERSION",
-        "institutional-v1",
-    )
-    media_duration_tolerance_ms: int = int(
-        os.getenv("MEDIA_DURATION_TOLERANCE_MS", "500")
-    )
-    media_min_free_bytes: int = int(
-        os.getenv("MEDIA_MIN_FREE_BYTES", str(256 * 1024 * 1024))
-    )
-    patient_response_timing_logging: bool = os.getenv(
-        "PATIENT_RESPONSE_TIMING_LOGGING",
-        "false",
-    ).strip().lower() in {"1", "true", "yes", "on"}
+    # Temporary diagnostic timing logs for patient-response generation.
+    # Hardcoded on purpose: not sourced from the environment. Flip to True in
+    # code to emit the "patient_response_timing" logs while debugging latency.
+    patient_response_timing_logging: bool = False
+
     @property
     def database_url(self) -> str:
         password = quote_plus(self.postgres_password)

@@ -3,7 +3,7 @@ import {getAuthHeaders} from '../auth/authHeaders';
 import {User} from '../../types';
 import {transformToCamelCase, transformToSnakeCase} from '../../utils/apiTransform';
 
-export type UpdateUserPayload = Partial<Pick<User, 'email' | 'firstName' | 'lastName' | 'preferredLanguage'>>;
+export type UpdateUserPayload = Partial<Pick<User, 'email' | 'name' | 'preferredLanguage'>>;
 
 export const updateUser = async (payload: UpdateUserPayload): Promise<User> => {
   const authHeaders = getAuthHeaders();

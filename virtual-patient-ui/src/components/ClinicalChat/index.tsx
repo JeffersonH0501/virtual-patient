@@ -114,7 +114,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const isTerminal = isCompleted || interview?.status === 'interrupted';
   const isInterviewOpen = Boolean(interview) && !isTerminal && mode === 'session';
   const isSimulationActive = isInterviewOpen && simulationAccepted;
-  const studentName = [user?.firstName, user?.lastName].filter(Boolean).join(' ').trim() || t('clinicalChat.call.student');
+  const studentName = user?.name?.trim() || t('clinicalChat.call.student');
 
   useEffect(() => {
     setClinicalSimulationActive(isInterviewOpen);
