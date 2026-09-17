@@ -10,6 +10,7 @@ export * from './CaretUp';
 export * from './CaretLeft';
 export * from './CaretRight';
 export * from './Warning';
+export * from './ArrowsClockwise';
 export * from './ComparisonIcon';
 export * from './EditIcon';
 export * from './Play';

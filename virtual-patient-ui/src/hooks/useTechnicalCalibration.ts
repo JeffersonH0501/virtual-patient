@@ -1,303 +1,117 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {FaceDetection} from '@mediapipe/face_detection';
-import {CalibrationResultPayload} from '../services/interviews';
 import {selectVideoMimeType} from '../utils/mediaRecorder';
 
-const CALIBRATION_DURATION_MS = 20_000;
-const VOICE_ACTIVITY_RMS = 0.012;
-const LOW_SIGNAL_RMS = 0.02;
-const HIGH_SIGNAL_RMS = 0.15;
-const CLIPPING_AMPLITUDE = 0.98;
-const FACE_SAMPLE_INTERVAL_MS = 250;
-const MIN_FACE_DETECTION_RATE = 80;
+const VALIDATION_MS = 2_500;
+const TARGET_MS = 2_000;
+const CAMERA_MS = 3_000;
+const VOICE_MS = 9_000;
+export const CALIBRATION_DURATION_MS = VALIDATION_MS + 9 * TARGET_MS + CAMERA_MS + VOICE_MS;
 
-export type CalibrationPhase = 'idle' | 'recording' | 'complete' | 'error';
+const TARGETS = [
+  ['CENTER', .5, .5], ['TOP_LEFT', .1, .1], ['BOTTOM_RIGHT', .9, .9],
+  ['TOP_RIGHT', .9, .1], ['BOTTOM_LEFT', .1, .9], ['TOP_CENTER', .5, .1],
+  ['BOTTOM_CENTER', .5, .9], ['MIDDLE_LEFT', .1, .5], ['MIDDLE_RIGHT', .9, .5],
+] as const;
 
-export const useTechnicalCalibration = (
-  microphoneStream: MediaStream | null,
-  cameraStream: MediaStream | null,
-) => {
+export type CalibrationPhase = 'idle' | 'capture_validation' | 'gaze_targets' | 'camera_reference' | 'voice_baseline' | 'complete' | 'error';
+type Geometry = {
+  viewportWidth: number; viewportHeight: number; devicePixelRatio: number;
+  screenWidth: number; screenHeight: number; orientation: 'portrait' | 'landscape';
+  videoWidth: number; videoHeight: number;
+};
+export type CalibrationCapture = {blob: Blob; mimeType: string; durationMs: number; metadata: Record<string, unknown>};
+
+const readGeometry = (stream: MediaStream): Geometry => {
+  const settings = stream.getVideoTracks()[0]?.getSettings();
+  return {
+    viewportWidth: window.innerWidth, viewportHeight: window.innerHeight,
+    devicePixelRatio: window.devicePixelRatio || 1,
+    screenWidth: window.screen.width, screenHeight: window.screen.height,
+    orientation: window.innerWidth >= window.innerHeight ? 'landscape' : 'portrait',
+    videoWidth: settings?.width || 1, videoHeight: settings?.height || 1,
+  };
+};
+
+export const useTechnicalCalibration = (microphoneStream: MediaStream | null, cameraStream: MediaStream | null) => {
   const [phase, setPhase] = useState<CalibrationPhase>('idle');
-  const [audioLevel, setAudioLevel] = useState(0);
-  const [voiceDetected, setVoiceDetected] = useState(false);
-  const [faceDetected, setFaceDetected] = useState(false);
-  const [faceDetectionRate, setFaceDetectionRate] = useState(0);
   const [remainingMs, setRemainingMs] = useState(CALIBRATION_DURATION_MS);
-  const [result, setResult] = useState<CalibrationResultPayload | null>(null);
-  // The recorded calibration media, assembled once recording finishes. The same
-  // ~20s recording that drives the device checks is reused to derive the
-  // personal baseline; nothing extra is captured. Kept only long enough to be
-  // uploaded, then cleared on reset.
-  const [media, setMedia] = useState<{blob: Blob; mimeType: string} | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
-  const analyserRef = useRef<AnalyserNode | null>(null);
-  const animationRef = useRef<number | null>(null);
-  const timerRef = useRef<number | null>(null);
-  const faceTimerRef = useRef<number | null>(null);
-  const faceDetectorRef = useRef<FaceDetection | null>(null);
-  const faceVideoRef = useRef<HTMLVideoElement | null>(null);
-  const faceRequestPendingRef = useRef(false);
+  const [activeTarget, setActiveTarget] = useState<{id: string; x: number; y: number} | null>(null);
+  const [media, setMedia] = useState<CalibrationCapture | null>(null);
+  const [audioLevel, setAudioLevel] = useState(0);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const temporaryStreamRef = useRef<MediaStream | null>(null);
-  const recordingRef = useRef(false);
-  // Buffers the MediaRecorder chunks so the recorded media can be reused for
-  // baseline derivation. Previously discarded in `ondataavailable`.
+  const timerRef = useRef<number | null>(null);
+  const animationRef = useRef<number | null>(null);
   const chunksRef = useRef<Blob[]>([]);
-  const recorderMimeRef = useRef<string>('');
-  const samplesRef = useRef({sum: 0, count: 0, peak: 0, voiceDetected: false});
-  const faceSamplesRef = useRef({total: 0, detected: 0});
-
-  const stopTemporaryRecording = useCallback(() => {
-    const recorder = recorderRef.current;
-    recorderRef.current = null;
-    // Stopping flushes a final `dataavailable` and then fires `onstop`, where
-    // the buffered chunks are assembled into the reusable calibration blob.
-    if (recorder && recorder.state !== 'inactive') recorder.stop();
-    temporaryStreamRef.current?.getTracks().forEach((track) => track.stop());
-    temporaryStreamRef.current = null;
-    if (faceTimerRef.current !== null) window.clearInterval(faceTimerRef.current);
-    faceTimerRef.current = null;
-    faceRequestPendingRef.current = false;
-    if (faceVideoRef.current) {
-      faceVideoRef.current.pause();
-      faceVideoRef.current.srcObject = null;
-    }
-    faceVideoRef.current = null;
-  }, []);
+  const startedAtRef = useRef(0);
+  const geometryStableRef = useRef(true);
+  const metadataRef = useRef<Record<string, unknown> | null>(null);
 
   useEffect(() => {
-    if (!microphoneStream?.active || typeof AudioContext === 'undefined') {
-      setAudioLevel(0);
-      return undefined;
-    }
+    if (!microphoneStream?.active || typeof AudioContext === 'undefined') return undefined;
     const context = new AudioContext();
-    const analyser = context.createAnalyser();
-    analyser.fftSize = 2048;
+    const analyser = context.createAnalyser(); analyser.fftSize = 1024;
     context.createMediaStreamSource(microphoneStream).connect(analyser);
-    audioContextRef.current = context;
-    analyserRef.current = analyser;
-    const data = new Float32Array(analyser.fftSize);
-
-    const analyse = () => {
-      analyser.getFloatTimeDomainData(data);
-      let squareSum = 0;
-      let peak = 0;
-      data.forEach((sample) => {
-        squareSum += sample * sample;
-        peak = Math.max(peak, Math.abs(sample));
-      });
-      const rms = Math.sqrt(squareSum / data.length);
-      setAudioLevel(Math.min(1, rms / 0.12));
-      if (recordingRef.current) {
-        const aggregate = samplesRef.current;
-        aggregate.sum += rms;
-        aggregate.count += 1;
-        aggregate.peak = Math.max(aggregate.peak, peak);
-        if (!aggregate.voiceDetected && rms >= VOICE_ACTIVITY_RMS) {
-          aggregate.voiceDetected = true;
-          setVoiceDetected(true);
-        }
-      }
-      animationRef.current = requestAnimationFrame(analyse);
+    const samples = new Float32Array(analyser.fftSize);
+    const update = () => {
+      analyser.getFloatTimeDomainData(samples);
+      const rms = Math.sqrt(samples.reduce((sum, value) => sum + value * value, 0) / samples.length);
+      setAudioLevel(Math.min(1, rms / .12)); animationRef.current = requestAnimationFrame(update);
     };
-    void context.resume();
-    analyse();
-    return () => {
-      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-      animationRef.current = null;
-      analyserRef.current = null;
-      audioContextRef.current = null;
-      void context.close();
-    };
+    void context.resume(); update();
+    return () => { if (animationRef.current !== null) cancelAnimationFrame(animationRef.current); void context.close(); };
   }, [microphoneStream]);
 
+  const stopTracks = useCallback(() => {
+    temporaryStreamRef.current?.getTracks().forEach((track) => track.stop()); temporaryStreamRef.current = null;
+  }, []);
   const finish = useCallback(() => {
-    recordingRef.current = false;
     if (timerRef.current !== null) window.clearInterval(timerRef.current);
-    timerRef.current = null;
-    stopTemporaryRecording();
-    const audio = samplesRef.current;
-    const meanRms = audio.count ? audio.sum / audio.count : 0;
-    const inputLevel = meanRms < LOW_SIGNAL_RMS
-      ? 'low'
-      : meanRms > HIGH_SIGNAL_RMS
-        ? 'high'
-        : 'adequate';
-    const clippingDetected = audio.peak >= CLIPPING_AMPLITUDE;
-    const faceSamples = faceSamplesRef.current;
-    const finalFaceDetectionRate = faceSamples.total
-      ? (faceSamples.detected / faceSamples.total) * 100
-      : 0;
-    const finalFaceDetected = finalFaceDetectionRate >= MIN_FACE_DETECTION_RATE;
-    const videoTrack = cameraStream?.getVideoTracks()[0];
-    const audioTrack = microphoneStream?.getAudioTracks()[0];
-    const streamActive = Boolean(videoTrack?.readyState === 'live');
-    const microphoneActive = Boolean(
-      microphoneStream?.active && audioTrack?.readyState === 'live',
-    );
-    const nextResult: CalibrationResultPayload = {
-      version: 'technical_v2',
-      status: audio.voiceDetected && microphoneActive && streamActive &&
-        inputLevel === 'adequate' && !clippingDetected && finalFaceDetected
-        ? 'passed'
-        : 'failed',
-      durationMs: CALIBRATION_DURATION_MS,
-      recordingSupported: true,
-      audio: {
-        microphoneAvailable: Boolean(microphoneStream?.getAudioTracks().length),
-        streamActive: microphoneActive,
-        voiceDetected: audio.voiceDetected,
-        inputLevel,
-        clippingDetected,
-      },
-      video: {
-        cameraAvailable: Boolean(videoTrack),
-        streamActive,
-        faceDetected: finalFaceDetected,
-        faceDetectionRate: finalFaceDetectionRate,
-        qualityStatus: streamActive && finalFaceDetected ? 'adequate' : 'inadequate',
-      },
-      personalBaseline: null,
-    };
-    setRemainingMs(0);
-    setResult(nextResult);
-    setFaceDetected(finalFaceDetected);
-    setFaceDetectionRate(finalFaceDetectionRate);
-    setPhase('complete');
-  }, [cameraStream, microphoneStream, stopTemporaryRecording]);
+    timerRef.current = null; setRemainingMs(0); setActiveTarget(null);
+    if (recorderRef.current?.state !== 'inactive') recorderRef.current?.stop();
+  }, []);
 
   const start = useCallback(async () => {
-    const videoMime = selectVideoMimeType();
-    if (!microphoneStream?.active || !cameraStream?.active || !videoMime) {
-      setPhase('error');
-      return;
-    }
-    await audioContextRef.current?.resume();
-    stopTemporaryRecording();
-    if (!faceDetectorRef.current) {
-      const detector = new FaceDetection({
-        locateFile: (file) => `/mediapipe/face_detection/${file}`,
-      });
-      detector.setOptions({model: 'short', minDetectionConfidence: 0.5});
-      detector.onResults((faceResults) => {
-        const samples = faceSamplesRef.current;
-        samples.total += 1;
-        if (faceResults.detections.length > 0) samples.detected += 1;
-        const rate = (samples.detected / samples.total) * 100;
-        setFaceDetected(faceResults.detections.length > 0);
-        setFaceDetectionRate(rate);
-      });
-      try {
-        await detector.initialize();
-        faceDetectorRef.current = detector;
-      } catch {
-        await detector.close().catch(() => undefined);
-        setPhase('error');
-        return;
-      }
-    }
-    const temporaryStream = new MediaStream([
-      ...microphoneStream.getAudioTracks().map((track) => track.clone()),
-      ...cameraStream.getVideoTracks().map((track) => track.clone()),
-    ]);
+    const mimeType = selectVideoMimeType();
+    if (!microphoneStream?.active || !cameraStream?.active || !mimeType) { setPhase('error'); return; }
+    const combined = new MediaStream([...microphoneStream.getAudioTracks().map((track) => track.clone()), ...cameraStream.getVideoTracks().map((track) => track.clone())]);
     let recorder: MediaRecorder;
-    try {
-      recorder = new MediaRecorder(temporaryStream, {mimeType: videoMime});
-    } catch {
-      temporaryStream.getTracks().forEach((track) => track.stop());
-      setPhase('error');
-      return;
-    }
-    chunksRef.current = [];
-    recorderMimeRef.current = videoMime;
-    setMedia(null);
-    recorder.ondataavailable = (event) => {
-      if (event.data && event.data.size > 0) chunksRef.current.push(event.data);
-    };
+    try { recorder = new MediaRecorder(combined, {mimeType}); } catch { combined.getTracks().forEach((track) => track.stop()); setPhase('error'); return; }
+    temporaryStreamRef.current = combined; recorderRef.current = recorder; chunksRef.current = [];
+    const initial = readGeometry(cameraStream); geometryStableRef.current = true;
+    const startedAt = performance.now(); startedAtRef.current = startedAt;
+    const targets = TARGETS.map(([targetId, targetNormalizedX, targetNormalizedY], index) => {
+      const presentationStartMs = VALIDATION_MS + index * TARGET_MS;
+      return {targetId, targetOrder: index + 1, targetNormalizedX, targetNormalizedY, targetPixelX: targetNormalizedX * initial.viewportWidth, targetPixelY: targetNormalizedY * initial.viewportHeight, presentationStartMs, presentationEndMs: presentationStartMs + TARGET_MS, observationWindowStartMs: presentationStartMs + 250, observationWindowEndMs: presentationStartMs + TARGET_MS};
+    });
+    metadataRef.current = {geometry: initial, targets, cameraReferenceStartMs: VALIDATION_MS + 9 * TARGET_MS, cameraReferenceEndMs: VALIDATION_MS + 9 * TARGET_MS + CAMERA_MS, voiceBaselineStartMs: VALIDATION_MS + 9 * TARGET_MS + CAMERA_MS, voiceBaselineEndMs: CALIBRATION_DURATION_MS, geometryStable: true};
+    const markGeometryChange = () => { geometryStableRef.current = false; };
+    recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
+    recorder.onerror = () => { window.removeEventListener('resize', markGeometryChange); setPhase('error'); stopTracks(); };
     recorder.onstop = () => {
-      const chunks = chunksRef.current;
-      chunksRef.current = [];
-      if (chunks.length === 0) return;
-      // The recorder produces a single container with both the microphone and
-      // camera tracks; it is reused as the baseline media (uploaded as `video`
-      // so both extractors can run on it).
-      const mimeType = recorderMimeRef.current || chunks[0].type || 'video/webm';
-      setMedia({blob: new Blob(chunks, {type: mimeType}), mimeType});
+      window.removeEventListener('resize', markGeometryChange);
+      const stable = geometryStableRef.current && JSON.stringify(initial) === JSON.stringify(readGeometry(cameraStream));
+      const blob = new Blob(chunksRef.current, {type: mimeType}); stopTracks();
+      if (!blob.size) { setPhase('error'); return; }
+      setMedia({blob, mimeType, durationMs: performance.now() - startedAtRef.current, metadata: {...metadataRef.current, geometryStable: stable}}); setPhase('complete');
     };
-    recorder.onerror = () => {
-      recordingRef.current = false;
-      setPhase('error');
-      stopTemporaryRecording();
-    };
-    recorderRef.current = recorder;
-    temporaryStreamRef.current = temporaryStream;
-    samplesRef.current = {sum: 0, count: 0, peak: 0, voiceDetected: false};
-    setVoiceDetected(false);
-    faceSamplesRef.current = {total: 0, detected: 0};
-    setFaceDetected(false);
-    setFaceDetectionRate(0);
-    setResult(null);
-    setRemainingMs(CALIBRATION_DURATION_MS);
-    setPhase('recording');
-    recordingRef.current = true;
-    const startedAt = performance.now();
-    recorder.start(1_000);
-    const faceVideo = document.createElement('video');
-    faceVideo.muted = true;
-    faceVideo.playsInline = true;
-    faceVideo.srcObject = cameraStream;
-    faceVideoRef.current = faceVideo;
-    await faceVideo.play();
-    faceTimerRef.current = window.setInterval(() => {
-      if (faceRequestPendingRef.current || faceVideo.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
-      faceRequestPendingRef.current = true;
-      void faceDetectorRef.current?.send({image: faceVideo})
-        .catch(() => setPhase('error'))
-        .finally(() => {
-          faceRequestPendingRef.current = false;
-        });
-    }, FACE_SAMPLE_INTERVAL_MS);
+    window.addEventListener('resize', markGeometryChange);
+    recorder.start(1_000); setMedia(null); setPhase('capture_validation'); setRemainingMs(CALIBRATION_DURATION_MS);
     timerRef.current = window.setInterval(() => {
-      const nextRemaining = Math.max(0, CALIBRATION_DURATION_MS - (performance.now() - startedAt));
-      setRemainingMs(nextRemaining);
-      if (nextRemaining === 0) finish();
-    }, 100);
-  }, [cameraStream, finish, microphoneStream, stopTemporaryRecording]);
+      const elapsed = performance.now() - startedAt; setRemainingMs(Math.max(0, CALIBRATION_DURATION_MS - elapsed));
+      if (elapsed < VALIDATION_MS) { setPhase('capture_validation'); setActiveTarget(null); }
+      else if (elapsed < VALIDATION_MS + 9 * TARGET_MS) { const target = TARGETS[Math.min(8, Math.floor((elapsed - VALIDATION_MS) / TARGET_MS))]; setPhase('gaze_targets'); setActiveTarget({id: target[0], x: target[1], y: target[2]}); }
+      else if (elapsed < VALIDATION_MS + 9 * TARGET_MS + CAMERA_MS) { setPhase('camera_reference'); setActiveTarget(null); }
+      else if (elapsed < CALIBRATION_DURATION_MS) { setPhase('voice_baseline'); setActiveTarget(null); }
+      else finish();
+    }, 50);
+  }, [cameraStream, finish, microphoneStream, stopTracks]);
 
   const reset = useCallback(() => {
-    recordingRef.current = false;
-    if (timerRef.current !== null) window.clearInterval(timerRef.current);
-    timerRef.current = null;
-    stopTemporaryRecording();
-    samplesRef.current = {sum: 0, count: 0, peak: 0, voiceDetected: false};
-    setVoiceDetected(false);
-    faceSamplesRef.current = {total: 0, detected: 0};
-    setFaceDetected(false);
-    setFaceDetectionRate(0);
-    setRemainingMs(CALIBRATION_DURATION_MS);
-    setResult(null);
-    chunksRef.current = [];
-    setMedia(null);
-    setPhase('idle');
-  }, [stopTemporaryRecording]);
-
-  useEffect(() => () => {
-    if (timerRef.current !== null) window.clearInterval(timerRef.current);
-    stopTemporaryRecording();
-    void faceDetectorRef.current?.close();
-    faceDetectorRef.current = null;
-  }, [stopTemporaryRecording]);
-
-  return {
-    phase,
-    audioLevel,
-    voiceDetected,
-    faceDetected,
-    faceDetectionRate,
-    remainingMs,
-    result,
-    media,
-    start,
-    reset,
-  };
+    if (timerRef.current !== null) window.clearInterval(timerRef.current); timerRef.current = null;
+    if (recorderRef.current?.state !== 'inactive') recorderRef.current?.stop(); recorderRef.current = null;
+    stopTracks(); chunksRef.current = []; setPhase('idle'); setRemainingMs(CALIBRATION_DURATION_MS); setActiveTarget(null); setMedia(null);
+  }, [stopTracks]);
+  useEffect(() => () => { if (timerRef.current !== null) window.clearInterval(timerRef.current); if (recorderRef.current?.state !== 'inactive') recorderRef.current?.stop(); stopTracks(); }, [stopTracks]);
+  return {phase, remainingMs, activeTarget, media, audioLevel, start, reset};
 };

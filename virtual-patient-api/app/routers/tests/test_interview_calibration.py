@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from pydantic import ValidationError
 
 from app.controllers.medical_interview_controller import MedicalInterviewController
+from app.models.calibration import CalibrationAttemptDB
 from app.models.medical_interview import InterviewStatus
 from app.routers.medical_interviews import CalibrationResultRequest
 
@@ -90,12 +91,13 @@ class Query:
 
 
 class Database:
-    def __init__(self, interview):
+    def __init__(self, interview, calibration=None):
         self.interview = interview
+        self.calibration = calibration
         self.commit_count = 0
 
     def query(self, model):
-        return Query(self.interview)
+        return Query(self.calibration if model is CalibrationAttemptDB else self.interview)
 
     def commit(self):
         self.commit_count += 1
@@ -108,6 +110,7 @@ class InterviewStartTests(unittest.TestCase):
     def test_uncalibrated_interview_cannot_start(self):
         interview = SimpleNamespace(
             id=7,
+            user_id=2,
             status=InterviewStatus.IN_PROGRESS,
             start_time=None,
             interview_metadata={},
@@ -122,11 +125,12 @@ class InterviewStartTests(unittest.TestCase):
     def test_start_sets_clock_once_and_is_idempotent(self):
         interview = SimpleNamespace(
             id=7,
+            user_id=2,
             status=InterviewStatus.IN_PROGRESS,
             start_time=None,
             interview_metadata={"calibration": {"status": "passed"}},
         )
-        database = Database(interview)
+        database = Database(interview, SimpleNamespace(status="passed", is_active=True))
         controller = MedicalInterviewController(database)
         response = SimpleNamespace(start_time=None)
 

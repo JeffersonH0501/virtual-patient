@@ -46,6 +46,7 @@ export const CallStage = ({
       aria-label={t('clinicalChat.call.videoArea')}
     >
       <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-900 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
+        <span data-patient-roi-anchor className="pointer-events-none absolute inset-0" aria-hidden="true" />
         <div
           className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
             patientSpeaking ? 'opacity-80' : 'opacity-100'

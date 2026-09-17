@@ -319,6 +319,7 @@ def _classify_family(
     value_getter: Callable[[str], Any],
     baseline_available: bool,
     session_refs: SessionReferences | None,
+    unavailable_reasons: Mapping[str, UnavailableReason] | None = None,
 ) -> dict[str, FamilyLabel]:
     """Classify every feature declared in one family's threshold config.
 
@@ -333,8 +334,13 @@ def _classify_family(
             labels[feature_name] = _unavailable(UnavailableReason.PROCESSING_ERROR)
             continue
         feature_refs = session_refs.get(feature_name) if session_refs else None
+        value = value_getter(feature_name)
+        reason_key = "nod_count" if feature_name == "nod_present" else feature_name
+        if value is None and unavailable_reasons and reason_key in unavailable_reasons:
+            labels[feature_name] = _unavailable(unavailable_reasons[reason_key])
+            continue
         labels[feature_name] = _classify_feature(
-            value=value_getter(feature_name),
+            value=value,
             entry=entry,
             baseline_available=baseline_available,
             feature_refs=feature_refs,
@@ -425,6 +431,7 @@ def compute_nonverbal_base_labels(
     *,
     baseline_available: bool,
     session_refs: SessionReferences | None,
+    unavailable_reasons: Mapping[str, UnavailableReason] | None = None,
 ) -> NonverbalBaseLabels:
     """Map nonverbal processed features to per-feature base labels.
 
@@ -446,17 +453,20 @@ def compute_nonverbal_base_labels(
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,
+            unavailable_reasons=unavailable_reasons,
         ),
         head_gestural_feedback=_classify_family(
             family_config=nonverbal_config.get("head_gestural_feedback", {}),
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,
+            unavailable_reasons=unavailable_reasons,
         ),
         facial_expressivity=_classify_family(
             family_config=nonverbal_config.get("facial_expressivity", {}),
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,
+            unavailable_reasons=unavailable_reasons,
         ),
     )

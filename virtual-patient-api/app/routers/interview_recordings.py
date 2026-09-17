@@ -31,6 +31,7 @@ from app.core.database import get_db
 from app.media import LocalMediaStorage, get_media_storage
 from app.multimodal.legacy_adapter import normalize_observation
 from app.multimodal.pipeline import process_multimodal_interview
+from app.multimodal.reprocess import reprocess_interview_evaluation
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
     InterviewRecapResponse,
@@ -59,6 +60,12 @@ logger.setLevel(logging.INFO)
 # No automatic deletion is performed yet, so retention has no expiry by default.
 MEDIA_RETENTION_DAYS: int | None = None
 MEDIA_CONSENT_POLICY_VERSION = "institutional-v1"
+
+# Non-terminal observation_processing statuses reported by the multimodal
+# pipeline (see app/multimodal/pipeline.py STATUS_*). While a run is in one of
+# these states a new reprocess request must be rejected to avoid interleaved
+# writes to the same per-turn columns.
+_PENDING_OBSERVATION_STATUSES = frozenset({"queued", "processing"})
 MEDIA_DURATION_TOLERANCE_MS = 500
 
 ALLOWED_CONTENT_TYPES = {
@@ -510,6 +517,68 @@ def get_recap(
         turns=turns,
         **sources,
     )
+
+
+@router.post("/{interview_id}/recording/reprocess", response_model=RecordingStateResponse)
+def reprocess_recording(
+    interview_id: int,
+    background_tasks: BackgroundTasks,
+    user: UserDB = Depends(_current_media_user),
+    db: Session = Depends(get_db),
+):
+    """Re-run the whole analysis for a completed interview from the review screen.
+
+    The regeneration runs the two operations in order: first the full multimodal
+    pipeline (paraverbal + non-verbal extraction and per-turn integrated
+    labels), then the final textual communication evaluation. Only the owner can
+    trigger it, and only once the interview is completed and its recording has
+    durable media to re-analyze. The interview lifecycle status is left
+    unchanged (``completed``) so the review and its recap stay reachable while
+    the work runs; the UI tracks progress through ``observation_processing``.
+    """
+    interview = _get_interview(db, interview_id)
+    _require_owner(interview, user)
+    if getattr(interview.status, "value", interview.status) != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only completed interviews can be reprocessed",
+        )
+    recording = db.query(InterviewRecordingDB).filter(
+        InterviewRecordingDB.medical_interview_id == interview_id
+    ).first()
+    if recording is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This interview has no recording to reprocess",
+        )
+    # A run already in flight must not be duplicated: the pipeline overwrites the
+    # same per-turn columns, so two concurrent runs could interleave writes.
+    current = (recording.capture_config or {}).get("observation_processing", {})
+    if current.get("status") in _PENDING_OBSERVATION_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Analysis is already being regenerated",
+        )
+
+    # Re-seed the observable lifecycle before the pipeline picks it up, mirroring
+    # the seed written at finalize so the vocabulary stays consistent.
+    recording.capture_config = {
+        **(recording.capture_config or {}),
+        "observation_processing": {"status": "queued", "stage": "queued"},
+    }
+    db.commit()
+    db.refresh(recording)
+    logger.info(
+        "recording_storage_event interview_id=%s recording_id=%s event=reprocess_requested",
+        interview_id,
+        recording.id,
+    )
+    background_tasks.add_task(
+        reprocess_interview_evaluation,
+        interview_id,
+        recording.id,
+    )
+    return _recording_response(recording)
 
 
 @router.get("/{interview_id}/recording/assets/{asset_kind}")

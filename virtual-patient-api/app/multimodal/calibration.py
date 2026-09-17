@@ -35,7 +35,7 @@ Baseline derivation methods
   single window that spans the entire calibration recording.
 * ``baseline_loudness``: median of the loudness samples over the same audio.
 * ``neutral_head_yaw`` / ``neutral_head_pitch`` / ``neutral_head_roll``: median of
-  the Py-Feat head-pose series (Yaw/Pitch/Roll) over the whole calibration video.
+  the shared MediaPipe head-pose series (Yaw/Pitch/Roll) over the whole video.
   Pitch was already emitted by the extractor; yaw and roll were added there as
   raw series specifically for this calibration use.
 * ``neutral_gaze_yaw`` / ``neutral_gaze_pitch``: median gaze on both axes. Both
@@ -64,7 +64,7 @@ from app.multimodal.schemas import PersonalBaseline
 # A window large enough to span any realistic calibration recording. The
 # extractors operate on turn windows; calibration has no turns, so a single
 # window from 0 to this bound captures the entire media (FFmpeg decodes to EOF
-# and Py-Feat rows are filtered by ``start_ms <= ts <= end_ms``).
+# and visual observations use absolute media timestamps).
 _FULL_MEDIA_WINDOW_END_MS = 24 * 60 * 60 * 1000  # 24 hours
 
 # Placeholder transcript for the single calibration audio window. It only feeds
@@ -208,29 +208,24 @@ def _derive_video_metrics(
     if video_path is None:
         return None, None
 
-    from app.nonverbal.openface_extractor import (
-        StudentTurnVideo,
-        analyze_openface_student_turn_videos,
-    )
+    from app.nonverbal.ccdbhg import head_pose_features
+    from app.nonverbal.video_observations import extract_nonverbal_video_observations
 
-    window = StudentTurnVideo(
-        turn_id=_CALIBRATION_WINDOW_TURN_ID,
-        start_ms=0,
-        end_ms=_FULL_MEDIA_WINDOW_END_MS,
-        conversation_speaker="calibration",
-    )
-    extracted = analyze_openface_student_turn_videos(video_path, [window])
-    raw = extracted.get(_CALIBRATION_WINDOW_TURN_ID)
-    if raw is None:
+    observations = extract_nonverbal_video_observations(video_path)
+    head_samples = [
+        head_pose_features(item.shared.facial_transformation_matrix)
+        for item in observations
+        if item.shared.face_valid and item.shared.facial_transformation_matrix is not None
+    ]
+    gaze_samples = [
+        (item.gaze.unclipped_x, item.gaze.unclipped_y)
+        for item in observations
+        if item.gaze.valid and item.gaze.unclipped_x is not None and item.gaze.unclipped_y is not None
+    ]
+    if not head_samples and not gaze_samples:
         return None, None
-
-    head_yaw_samples = raw.get("head_yaw_samples") or []
-    head_pitch_samples = raw.get("head_pitch_samples") or []
-    head_roll_samples = raw.get("head_roll_samples") or []
-    gaze_yaw_samples = raw.get("gaze_yaw_samples") or []
-    gaze_pitch_samples = raw.get("gaze_pitch_samples") or []
-
-    if head_yaw_samples and head_pitch_samples and head_roll_samples:
+    if head_samples:
+        head_yaw_samples, head_roll_samples, head_pitch_samples = zip(*head_samples)
         head_metrics: tuple[float, float, float] | None = (
             float(median(head_yaw_samples)),
             float(median(head_pitch_samples)),
@@ -239,9 +234,6 @@ def _derive_video_metrics(
     else:
         head_metrics = None
 
-    gaze_metrics = (
-        (float(median(gaze_yaw_samples)), float(median(gaze_pitch_samples)))
-        if gaze_yaw_samples and gaze_pitch_samples
-        else None
-    )
+    gaze_x_samples, gaze_y_samples = zip(*gaze_samples) if gaze_samples else ((), ())
+    gaze_metrics = (float(median(gaze_x_samples)), float(median(gaze_y_samples))) if gaze_samples else None
     return head_metrics, gaze_metrics

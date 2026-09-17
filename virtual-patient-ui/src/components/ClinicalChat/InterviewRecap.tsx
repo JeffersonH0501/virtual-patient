@@ -9,7 +9,17 @@ import {Modal} from '../common/Modal';
 type Props = {
   interviewId: number;
   messages?: Message[];
+  /**
+   * Disables the per-turn info buttons and prevents opening the detail dialog
+   * while the multimodal analysis is being regenerated, so the student cannot
+   * inspect stale per-turn evidence until the fresh results are ready.
+   */
+  infoDisabled?: boolean;
 };
+
+// Small offset added when seeking to a turn's start so the playback time lands
+// firmly inside the turn window and the playback-driven highlight marks it.
+const TURN_SEEK_OFFSET_MS = 50;
 
 const formatElapsed = (seconds: number): string => {
   const safeSeconds = Math.max(0, Math.floor(seconds));
@@ -41,7 +51,7 @@ const legacyTurns = (messages: Message[] = []): RecapTurn[] => messages.map((mes
   timingQuality: 'unavailable',
 }));
 
-export const InterviewRecap = ({interviewId, messages}: Props) => {
+export const InterviewRecap = ({interviewId, messages, infoDisabled = false}: Props) => {
   const {t} = useTranslation();
   const [recap, setRecap] = useState<InterviewRecapData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,13 +60,21 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
   const [playing, setPlaying] = useState(false);
   const [volume, setVolume] = useState(1);
   const [detailTurn, setDetailTurn] = useState<RecapTurn | null>(null);
+  // The turn whose bubble shows the blue outline. It is set directly (and
+  // immediately) when a bubble is clicked, and also kept in sync with playback
+  // by the master element's time events. Making it explicit state — rather than
+  // deriving it from a possibly-stale currentTime during render — is what makes
+  // the click reliably highlight the clicked turn.
+  const [activeTurnId, setActiveTurnId] = useState<string | null>(null);
   const studentVideoRef = useRef<HTMLVideoElement>(null);
   const patientVideoRef = useRef<HTMLVideoElement>(null);
   const studentAudioRef = useRef<HTMLAudioElement>(null);
   const patientAudioRef = useRef<HTMLAudioElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const audioElementsConnectedRef = useRef(false);
-  const animationFrameRef = useRef<number | null>(null);
+  // Latest turns, kept in a ref so the time-event callbacks can compute the
+  // active turn without being re-created on every render.
+  const turnsRef = useRef<RecapTurn[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -90,11 +108,40 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     };
   }, [interviewId, messages]);
 
+  // Silently refresh the per-turn evidence once a regeneration finishes. This
+  // never toggles the panel's full-screen loading state, so the recap keeps its
+  // usual appearance; only the info buttons are inactive while `infoDisabled` is
+  // true. It skips the initial mount (infoDisabled starts false).
+  const wasInfoDisabledRef = useRef(false);
+  useEffect(() => {
+    const justFinished = wasInfoDisabledRef.current && !infoDisabled;
+    wasInfoDisabledRef.current = infoDisabled;
+    if (!justFinished) return;
+    let active = true;
+    void (async () => {
+      try {
+        const nextRecap = await getInterviewRecap(interviewId);
+        if (active) setRecap(nextRecap);
+      } catch {
+        // Keep the existing recap on a transient refresh failure.
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [infoDisabled, interviewId]);
+
   useEffect(() => {
     if (!detailTurn || !recap?.turns) return;
     const updatedTurn = recap.turns.find((turn) => turn.turnId === detailTurn.turnId);
     if (updatedTurn) setDetailTurn(updatedTurn);
   }, [detailTurn, recap?.turns]);
+
+  // Close the per-turn detail dialog if a regeneration starts while it is open:
+  // the shown evidence is about to be replaced, so it must not stay inspectable.
+  useEffect(() => {
+    if (infoDisabled) setDetailTurn(null);
+  }, [infoDisabled]);
 
   const sources = useMemo(() => ({
     studentVideo: resolveRecordingSource(recap?.studentVideoSource),
@@ -142,23 +189,42 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     await context.resume();
   }, []);
 
-  const stopClock = useCallback(() => {
-    if (animationFrameRef.current !== null) cancelAnimationFrame(animationFrameRef.current);
-    animationFrameRef.current = null;
+  // The active turn for a given time (ms): the turn whose start is the largest
+  // one at or before that time, breaking ties by conversational sequence.
+  // During the inter-turn dead time the next turn has not started yet, so this
+  // keeps the just-ended turn active. Falls back to the first turn so there is
+  // always exactly one highlight.
+  const turnIdAtTime = useCallback((ms: number): string | null => {
+    const currentTurns = turnsRef.current;
+    let best: string | null = currentTurns[0]?.turnId ?? null;
+    let bestStartMs = -1;
+    currentTurns.forEach((turn) => {
+      if (typeof turn.startMs !== 'number') return;
+      if (turn.startMs <= ms && turn.startMs >= bestStartMs) {
+        bestStartMs = turn.startMs;
+        best = turn.turnId;
+      }
+    });
+    return best;
   }, []);
 
-  const runClock = useCallback(() => {
+  // Keep the displayed time, the other media elements, and the active-turn
+  // highlight aligned to the master's clock. Called on the master's native
+  // `timeupdate`/`seeked` events, which always report the element's real
+  // position (even right after a seek), so there is no stale read and no manual
+  // animation-frame loop to get out of sync.
+  const syncFromMaster = useCallback(() => {
     const master = masterElement();
     if (!master) return;
     const nextTime = master.currentTime;
     setCurrentTime(nextTime);
+    setActiveTurnId(turnIdAtTime(nextTime * 1000));
     mediaElements().forEach((element) => {
       if (element !== master && Math.abs(element.currentTime - nextTime) > 0.15) {
         element.currentTime = nextTime;
       }
     });
-    if (!master.paused && !master.ended) animationFrameRef.current = requestAnimationFrame(runClock);
-  }, [masterElement, mediaElements]);
+  }, [masterElement, mediaElements, turnIdAtTime]);
 
   const play = useCallback(async () => {
     if (!hasMedia) return;
@@ -173,15 +239,12 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     const results = await Promise.allSettled(elements.map((element) => element.play()));
     if (!results.some((result) => result.status === 'fulfilled')) return;
     setPlaying(true);
-    stopClock();
-    animationFrameRef.current = requestAnimationFrame(runClock);
-  }, [currentTime, duration, ensureAudioGraph, hasMedia, mediaElements, runClock, stopClock]);
+  }, [currentTime, duration, ensureAudioGraph, hasMedia, mediaElements]);
 
   const pause = useCallback(() => {
     mediaElements().forEach((element) => element.pause());
     setPlaying(false);
-    stopClock();
-  }, [mediaElements, stopClock]);
+  }, [mediaElements]);
 
   const changeVolume = (nextVolume: number) => {
     mediaElements().forEach((element) => {
@@ -196,29 +259,57 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
       element.currentTime = nextTime;
     });
     setCurrentTime(nextTime);
-  }, [duration, mediaElements]);
+    // Update the highlight from the requested time directly, so it is correct
+    // immediately regardless of when the media applies the seek.
+    setActiveTurnId(turnIdAtTime(nextTime * 1000));
+  }, [duration, mediaElements, turnIdAtTime]);
+
+  // Jump the synchronized playback to the start of a turn when its transcript
+  // bubble is clicked, and highlight that turn immediately. The highlight is set
+  // from the clicked turn itself (not derived from a not-yet-applied seek), so
+  // it never disappears while the media element catches up. Only turns with a
+  // measured start over available media can be targeted.
+  const seekToTurn = useCallback((turn: RecapTurn) => {
+    if (!hasMedia || typeof turn.startMs !== 'number') return;
+    setActiveTurnId(turn.turnId);
+    seek((turn.startMs + TURN_SEEK_OFFSET_MS) / 1000);
+  }, [hasMedia, seek]);
 
   useEffect(() => () => {
-    stopClock();
     mediaElements().forEach((element) => element.pause());
     void audioContextRef.current?.close();
-  }, [mediaElements, stopClock]);
+  }, [mediaElements]);
 
-  const currentMs = currentTime * 1000;
-  const timedTurns = turns.filter((turn) => typeof turn.startMs === 'number');
-  const visibleTurns = hasMedia && timedTurns.length > 0
-    ? turns.filter(
-      (turn) => typeof turn.startMs !== 'number' || (turn.startMs ?? 0) <= currentMs,
-    )
-    : turns;
-  // A single active turn: the most recent one that has already started at the
-  // current playback time. Relying only on startMs (not the [start, end]
-  // interval) guarantees at most one highlighted bubble even if timing windows
-  // overlap.
-  const startedTurns = timedTurns.filter((turn) => (turn.startMs ?? 0) <= currentMs);
-  const activeTurnId = hasMedia && startedTurns.length > 0
-    ? startedTurns.reduce((latest, turn) => ((turn.startMs ?? 0) >= (latest.startMs ?? 0) ? turn : latest)).turnId
-    : null;
+  // Drive currentTime from the master element's native events. `timeupdate`
+  // fires during playback and `seeked` fires after any seek (bubble click or
+  // timeline drag), both always reporting the element's real position, so the
+  // active-turn highlight can never lag behind or get stuck.
+  useEffect(() => {
+    const master = masterElement();
+    if (!master) return undefined;
+    master.addEventListener('timeupdate', syncFromMaster);
+    master.addEventListener('seeked', syncFromMaster);
+    return () => {
+      master.removeEventListener('timeupdate', syncFromMaster);
+      master.removeEventListener('seeked', syncFromMaster);
+    };
+  }, [masterElement, syncFromMaster, hasMedia, recap]);
+
+  // Keep the turns ref current, and initialize/repair the highlight only when it
+  // is missing or points at a turn that no longer exists (e.g. before the first
+  // event or after a recap refresh). Playback and seeks own the highlight
+  // otherwise, so this must not overwrite a valid selection.
+  useEffect(() => {
+    turnsRef.current = turns;
+    setActiveTurnId((previous) => {
+      if (previous && turns.some((turn) => turn.turnId === previous)) return previous;
+      return turnIdAtTime(currentTime * 1000);
+    });
+  }, [turns, currentTime, turnIdAtTime]);
+
+  // Every turn is always shown; bubbles no longer appear/disappear with the
+  // playback position.
+  const visibleTurns = turns;
 
   const updateDuration = () => {
     const mediaDuration = Math.max(
@@ -230,7 +321,6 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
 
   const handleEnded = () => {
     setPlaying(false);
-    stopClock();
     setCurrentTime(duration);
   };
 
@@ -282,7 +372,7 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
     familyKey: string,
     metricRows: ReactNode[],
     baseLabels: Record<string, FamilyLabel> | undefined,
-    baseLabelFeatures: Array<{featureKey: string; labelKey: string}>,
+    baseLabelFeatures: {featureKey: string; labelKey: string}[],
     integratedLabel: FamilyLabel | undefined,
   ) => (
     <div className="turn-detail-group" key={familyKey}>
@@ -414,24 +504,33 @@ export const InterviewRecap = ({interviewId, messages}: Props) => {
                     <button
                       type="button"
                       onClick={() => setDetailTurn(turn)}
-                      className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-blue-700 [&_svg]:h-4 [&_svg]:w-4"
+                      disabled={infoDisabled}
+                      className="mt-1.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100 hover:text-blue-700 disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent [&_svg]:h-4 [&_svg]:w-4"
                       aria-label={t('clinicalChat.recap.turnInfo')}
                       title={t('clinicalChat.recap.turnInfo')}
                     >
                       <Info color="currentColor" />
                     </button>
-                    <div
-                      className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors ${
+                    <button
+                      type="button"
+                      onClick={() => seekToTurn(turn)}
+                      disabled={!hasMedia || typeof turn.startMs !== 'number'}
+                      className={`min-w-0 flex-1 rounded-xl border p-3 text-left transition-colors enabled:cursor-pointer ${
                         isStudent
-                          ? 'border-blue-100 bg-blue-50'
-                          : 'border-slate-200 bg-slate-100'
-                      } ${active ? 'ring-2 ring-inset ring-blue-400' : ''}`}
+                          ? 'border-blue-100 bg-blue-50 enabled:hover:bg-blue-100'
+                          : 'border-slate-200 bg-slate-100 enabled:hover:bg-slate-200'
+                      } ${active ? 'ring-2 ring-blue-500 ring-offset-1' : ''}`}
+                      title={
+                        hasMedia && typeof turn.startMs === 'number'
+                          ? t('clinicalChat.recap.jumpToTurn')
+                          : undefined
+                      }
                     >
                       <p className="whitespace-pre-wrap text-sm leading-5 text-slate-800">{turn.transcript}</p>
                       {typeof turn.startMs === 'number' && (
                         <span className="block text-right text-timestamp leading-none text-slate-400">{formatElapsed(turn.startMs / 1000)}</span>
                       )}
-                    </div>
+                    </button>
                   </div>
                 );
               })}

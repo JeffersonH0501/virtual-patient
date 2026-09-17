@@ -444,7 +444,7 @@ async def derive_calibration_baseline(
 
     Authenticated and owner-only. Accepts calibration audio and/or video as
     multipart uploads, writes each to a temporary server file, runs the OpenSMILE
-    and Py-Feat extractors via ``derive_personal_baseline``, stores the resulting
+    and shared MediaPipe/BlazeGaze extractors via ``derive_personal_baseline``, stores the resulting
     numeric-only :class:`PersonalBaseline` into
     ``interview_metadata.calibration.personal_baseline``, and always deletes the
     temporary media. The media is never persisted (Requirement 15.3, 15.4).

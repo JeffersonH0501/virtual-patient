@@ -14,6 +14,7 @@ import {InterviewRecap} from './InterviewRecap';
 import {ActiveSimulationLayout, SimulationResultsLayout} from './InterviewLayouts';
 import {createSummary, interruptInterview, sendMessage, startInterview} from '../../services/interviews';
 import {getInterview} from '../../services/interviews/getInterview';
+import {getInterviewRecap, reprocessInterviewRecording} from '../../services/recordings';
 import {getSessionNote, updateSessionNote} from '../../services/sessionNote';
 import {CompleteInterviewResponse} from '../../types/interview';
 import {Patient} from '../../types/patient';
@@ -92,12 +93,14 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const [patient, setPatient] = useState<Patient>(EMPTY_PATIENT);
   const [headerControlsTarget, setHeaderControlsTarget] = useState<HTMLElement | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const interviewRequestRef = useRef(0);
   const summaryRequestRef = useRef(0);
   const welcomeShownRef = useRef(false);
   const resumePromptShownRef = useRef(false);
   const observationSnapshotRef = useRef('');
+  const regenerateActiveRef = useRef(false);
   const recordingRef = useRef<{
     pause: () => void;
     resume: () => void;
@@ -233,9 +236,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       console.error('Failed to load session note:', error);
     }
 
-    const calibrationPassed = interviewData.interviewMetadata?.calibration?.status === 'passed';
-    const hasSharedMedia = media.cameraState === 'ready' && media.microphoneState === 'ready';
-    if (mode === 'session' && !interviewData.startTime && (!calibrationPassed || !hasSharedMedia)) {
+    if (mode === 'session' && !interviewData.startTime) {
       navigate(interviewPath(interviewData.id, 'calibration'), {replace: true});
       return;
     }
@@ -257,7 +258,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       !isTerminalStatus &&
       interviewData.messages?.length === 0 &&
       interviewData.isOwner &&
-      (!interviewData.startTime || !calibrationPassed) &&
+      !interviewData.startTime &&
       !welcomeShownRef.current
     ) {
       welcomeShownRef.current = true;
@@ -300,12 +301,61 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     [interfaceLanguage, interviewId],
   );
 
+  // Regenerate the whole evaluation from the review screen. The backend runs
+  // the multimodal analysis first and only then the final text evaluation, so
+  // the UI keeps the panel in a loading state until the recording's
+  // observation_processing status turns terminal, then re-fetches the interview
+  // to pull the freshly stored evaluation.
+  const handleRegenerateEvaluation = useCallback(async () => {
+    if (!interviewId || regenerateActiveRef.current) return;
+    regenerateActiveRef.current = true;
+    setIsRegenerating(true);
+    const PENDING_STATUSES = ['queued', 'processing'];
+    const POLL_INTERVAL_MS = 3000;
+    const MAX_POLLS = 200; // ~10 minutes guardrail against an endless poll.
+    try {
+      await reprocessInterviewRecording(interviewId);
+      // Poll the recap until the multimodal pipeline reports a terminal status.
+      // The final evaluation is written right after that stage on the backend,
+      // so a short settle delay precedes the interview re-fetch.
+      for (let polls = 0; polls < MAX_POLLS; polls += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS));
+        if (!regenerateActiveRef.current) return;
+        let status: string | undefined;
+        try {
+          const recap = await getInterviewRecap(interviewId);
+          status = recap.observationProcessing?.status;
+        } catch (error) {
+          console.error('Failed to poll regeneration status:', error);
+        }
+        if (!status || !PENDING_STATUSES.includes(status)) {
+          break;
+        }
+      }
+      // Give the backend a moment to persist the final evaluation that runs
+      // immediately after the multimodal stage completes, then refresh.
+      await new Promise((resolve) => window.setTimeout(resolve, POLL_INTERVAL_MS));
+      if (!regenerateActiveRef.current) return;
+      await fetchInterview();
+    } catch (error) {
+      console.error('Failed to regenerate evaluation:', error);
+    } finally {
+      regenerateActiveRef.current = false;
+      setIsRegenerating(false);
+    }
+  }, [fetchInterview, interviewId]);
+
   useEffect(() => {
     void fetchInterview();
     return () => {
       interviewRequestRef.current += 1;
     };
   }, [fetchInterview]);
+
+  // If the review screen unmounts mid-regeneration, stop the poll loop.
+  useEffect(() => () => {
+    regenerateActiveRef.current = false;
+  }, []);
 
   useEffect(() => {
     if (!interviewId || !interview || mode !== 'session') return;
@@ -547,6 +597,9 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         <EvaluationResultsPanel
           evaluationData={evaluationData}
           className="xl:col-start-3 xl:row-start-1"
+          canRegenerate={mode === 'review' && isOwner && isCompleted}
+          isRegenerating={isRegenerating}
+          onRegenerate={handleRegenerateEvaluation}
         />
       )}
       {isInterviewOpen && (
@@ -568,7 +621,11 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         isInterviewOpen ? 'xl:col-start-3' : 'xl:col-start-2'
       }`}>
         {isTerminal ? (
-          <InterviewRecap interviewId={interviewId} messages={messages} />
+          <InterviewRecap
+            interviewId={interviewId}
+            messages={messages}
+            infoDisabled={isRegenerating}
+          />
         ) : (
           <>
             <ConversationTranscript

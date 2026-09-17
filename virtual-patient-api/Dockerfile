@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install build dependencies.
 #
 # The image/codec -dev libraries and OpenGL/GLib runtime libs are required by
-# the OpenFace 3.0 computer-vision stack (OpenCV, RetinaFace, STAR landmarks)
+# the MediaPipe/WebEyeTrack computer-vision stack
 # so its wheels build and import cleanly. libgl1 / libglib2.0-0 satisfy the
 # shared-object imports OpenCV performs at runtime.
 RUN apt-get update && apt-get install -y \
@@ -25,7 +25,10 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     libpng-dev \
     libgl1 \
+    libegl1 \
+    libgles2 \
     libglib2.0-0 \
+    git \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
@@ -37,22 +40,19 @@ COPY requirements.txt .
 #
 # IMPORTANT:
 # Do NOT use --no-cache-dir here.
-# The cache mount allows downloaded wheels (PyTorch, OpenCV, OpenFace 3.0, etc.)
+# The cache mount allows downloaded wheels (PyTorch, OpenCV, etc.)
 # to be reused when requirements.txt changes and this layer must run again.
 RUN --mount=type=cache,target=/root/.cache/pip \
     pip install --upgrade pip && \
-    # CPU-only initial version: install torch/torchvision from the PyTorch CPU
-    # wheel index instead of the CUDA index. The OpenFace 3.0 extractor runs on
-    # CPU only (no CUDA code path, no GPU device reservation), so CPU wheels are
-    # installed here first and openface-test (which declares torch/torchvision
-    # unpinned) reuses them instead of pulling default CUDA wheels.
-    # torch 2.2.2 + torchvision 0.17.2 is a matching pair with cp312 CPU wheels,
-    # compatible with numpy 1.26.4 and Pillow 9.4.0.
+    # CCDb-HG inference is CPU-only; CUDA is not a runtime requirement.
     pip install \
         --index-url https://download.pytorch.org/whl/cpu \
-        torch==2.2.2 \
-        torchvision==0.17.2 && \
-    pip install -r requirements.txt
+        torch==2.2.2 && \
+    pip install -r requirements.txt && \
+    sed -i 's/from dataclasses import dataclass/from dataclasses import dataclass, field/' /usr/local/lib/python3.12/site-packages/webeyetrack/webeyetrack.py && \
+    sed -i 's/kalman_config: KalmanFilterConfig = KalmanFilterConfig()/kalman_config: KalmanFilterConfig = field(default_factory=KalmanFilterConfig)/' /usr/local/lib/python3.12/site-packages/webeyetrack/webeyetrack.py && \
+    sed -i 's/calib_config: CalibConfig = CalibConfig()/calib_config: CalibConfig = field(default_factory=CalibConfig)/' /usr/local/lib/python3.12/site-packages/webeyetrack/webeyetrack.py && \
+    sed -i 's/norm_pog: np.ndarray = np.array(\[0.5, 0.5\])/norm_pog: np.ndarray = field(default_factory=lambda: np.array([0.5, 0.5]))/' /usr/local/lib/python3.12/site-packages/webeyetrack/data_protocols.py
 
 
 # Shared runtime stage. Local development stops before application source is
@@ -70,7 +70,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install runtime dependencies only.
 #
 # libgl1 and libglib2.0-0 provide the shared libraries OpenCV loads at import
-# time; they are required by the OpenFace 3.0 visual extractor at runtime.
+# time; they are required by OpenCV and MediaPipe at runtime.
 RUN apt-get update && apt-get install -y \
     postgresql-client \
     libpq5 \
@@ -80,6 +80,8 @@ RUN apt-get update && apt-get install -y \
     libjpeg62-turbo \
     libpng16-16 \
     libgl1 \
+    libegl1 \
+    libgles2 \
     libglib2.0-0 \
     ffmpeg \
     ca-certificates \
@@ -101,12 +103,8 @@ COPY --from=builder \
     /usr/local/bin \
     /usr/local/bin
 
-# Create runtime and named-volume mount points with the ownership required by
-# the non-root API process. New Docker volumes inherit these permissions.
-# OpenFace 3.0 weights are materialized into /app/openface/weights at first run
-# (writable openface_models volume); this only ensures the directory exists with
-# appuser ownership.
-RUN mkdir -p /app/logs /app/temp /app/media /app/openface/weights && \
+# Create runtime directories with the ownership required by the API process.
+RUN mkdir -p /app/logs /app/temp /app/media && \
     chown -R appuser:appuser /app
 
 # Switch to non-root user

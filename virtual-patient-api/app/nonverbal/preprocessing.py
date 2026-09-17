@@ -1,11 +1,11 @@
 """Nonverbal derivation for interview turns (Requirement 9).
 
 This module is the preprocessing/derivation stage for the nonverbal modality.
-It consumes the raw per-frame series produced by the Py-Feat extractor
+It consumes raw summaries produced by the shared MediaPipe visual pipeline
 (:class:`app.multimodal.schemas.NonverbalRawFeatures`), an optional
 :class:`app.multimodal.schemas.PersonalBaseline`, and the interaction context of
 the turn. Its derivation parameters (gaze alignment tolerance, AU12 activation,
-nod detector tuning) are technical constants defined in this module, not
+smile activation) are technical constants defined in this module, not
 methodology configuration. It produces derived
 :class:`app.multimodal.schemas.NonverbalProcessedFeatures`. It applies no
 methodology thresholding and assigns no label; that is the threshold engine's and
@@ -27,10 +27,8 @@ fabricated. The specific gaps are:
   interaction center is NEVER assumed to be ``(0, 0)``. If the center is missing
   the reason is ``missing_calibration``. When there are no valid gaze frames the
   reason is ``insufficient_signal``.
-* ``nod_count`` / ``nod_rate_min`` use the technical nod detector constants
-  (:class:`NodDetectionParams`), so the detector always runs when a head-pitch
-  series is present. With no head-pitch samples the reason is
-  ``insufficient_signal``.
+* ``nod_count`` / ``nod_rate_min`` are supplied by the CCDb-HG event pipeline;
+  its explicit unavailable reason is preserved when inference is not evaluable.
 * ``smile_activity_ratio`` uses the technical AU12 activation constant
   (:data:`AU12_ACTIVE_THRESHOLD`); it is unavailable only when there are no valid
   AU12 samples (``insufficient_signal``).
@@ -63,39 +61,15 @@ from app.multimodal.schemas import (
 # These are engineering parameters of the nonverbal derivation, not provisional
 # research cutoffs. They tune HOW a feature is computed, not the label bands
 # applied to it (those live in thresholds.yaml). They are fixed here with
-# sensible defaults for the OpenFace 3.0 head-pitch series sampled at 3 FPS, and
-# are not surfaced as methodology configuration.
+# and are not surfaced as methodology configuration.
 #
 # Gaze alignment tolerance: half-angle (radians) of the interaction cone around
 # the calibrated gaze center within which a frame counts as visually aligned.
 # ~0.35 rad ≈ 20°, a reasonable on-screen interaction cone.
 GAZE_ALIGNMENT_TOLERANCE_RADIANS = 0.35
 
-# AU12 activation at/above which AU12 is considered active. 0.5 is the presence
-# threshold used by the public OpenFace training/evaluation code.
+# Compatibility fallback for legacy raw records without explicit smile flags.
 AU12_ACTIVE_THRESHOLD = 0.5
-
-
-@dataclass(frozen=True)
-class NodDetectionParams:
-    """Deterministic nod-detector parameters (technical derivation constants).
-
-    These tune the head-pitch nod detector mechanics; they are engineering
-    defaults, not research thresholds. The defaults are set for the OpenFace 3.0
-    head-pitch series sampled at ``SAMPLE_FPS`` (3 FPS): a small peak-to-trough
-    amplitude gate, a plausible nod cycle window, and no pre-smoothing (at 3 FPS
-    a moving average would erase the short oscillation a nod produces).
-
-    Note on temporal resolution: at 3 FPS the nod signal is coarse, so nod
-    detection is a best-effort behavioural descriptor rather than a validated
-    detector; the label bands that interpret ``nod_count`` / ``nod_rate_min``
-    remain provisional research thresholds in ``thresholds.yaml``.
-    """
-
-    min_amplitude_deg: float = 2.0
-    min_cycle_ms: float = 300.0
-    max_cycle_ms: float = 2000.0
-    smoothing_window_ms: float | None = None
 
 
 @dataclass(frozen=True)
@@ -120,14 +94,13 @@ def preprocess_nonverbal_turn(
     baseline: PersonalBaseline | None,
     alignment_tolerance_radians: float = GAZE_ALIGNMENT_TOLERANCE_RADIANS,
     au12_active_threshold: float = AU12_ACTIVE_THRESHOLD,
-    nod_params: NodDetectionParams = NodDetectionParams(),
 ) -> NonverbalPreprocessingResult:
     """Derive :class:`NonverbalProcessedFeatures` for a single turn window.
 
     Parameters
     ----------
     raw:
-        Raw per-frame series and quality emitted by the OpenFace 3.0 extractor.
+        Raw observations and quality emitted by the shared visual extractor.
     context:
         Interaction context for the turn: ``"speaking"`` for a student-speaking
         turn or ``"listening"`` for a patient turn (Requirement 9.5). Any other
@@ -141,30 +114,34 @@ def preprocess_nonverbal_turn(
         the technical constant :data:`GAZE_ALIGNMENT_TOLERANCE_RADIANS`; it tunes
         how the ratio is computed and is not a methodology threshold.
     au12_active_threshold:
-        AU12 activation level at or above which AU12 is considered active.
-        Defaults to the technical constant :data:`AU12_ACTIVE_THRESHOLD` (0.5,
-        the public OpenFace presence threshold). It governs AU12 activity only
-        and is intentionally distinct from the derived ``smile_activity_ratio``.
-    nod_params:
-        Deterministic nod-detector constants (see :class:`NodDetectionParams`).
-        The detector always runs when a head-pitch series is present;
-        ``sample_fps`` on ``raw`` drives detector timing.
+        Compatibility threshold for legacy records lacking explicit MediaPipe
+        smile flags. New extraction uses ``smile_detected_samples`` directly.
     """
     reasons: dict[str, UnavailableReason] = {}
 
-    alignment_ratio, dwell_ms = _visual_alignment(
-        raw=raw,
-        baseline=baseline,
-        alignment_tolerance_radians=alignment_tolerance_radians,
-        reasons=reasons,
-    )
+    semantic = [item for item in raw.gaze_semantic_observations if item.get("state") != "UNAVAILABLE"]
+    if semantic:
+        aligned = [item.get("state") in ("PATIENT", "CAMERA") for item in semantic]
+        alignment_ratio = sum(aligned) / len(aligned)
+        dwell_ms = _median_aligned_dwell_ms(
+            timestamps=[float(item["timestamp_ms"]) for item in semantic],
+            aligned_flags=aligned,
+        )
+        if dwell_ms is None:
+            reasons["median_visual_alignment_dwell_ms"] = UnavailableReason.INSUFFICIENT_SIGNAL
+    else:
+        alignment_ratio, dwell_ms = None, None
+        reason = UnavailableReason.GAZE_CALIBRATION_PENDING if not raw.gaze_semantic_observations else UnavailableReason.INSUFFICIENT_SIGNAL
+        reasons["visual_alignment_ratio"] = reason
+        reasons["median_visual_alignment_dwell_ms"] = reason
 
-    nod_count, nod_rate_min = _nod_detection(
-        raw=raw,
-        nod_params=nod_params,
-        baseline=baseline,
-        reasons=reasons,
-    )
+    nod_count, nod_rate_min = raw.nod_count, raw.nod_rate_min
+    if nod_count is None:
+        reason = raw.nod_unavailable_reason or UnavailableReason.INSUFFICIENT_SIGNAL
+        reasons["nod_count"] = reason
+        reasons["nod_rate_min"] = reason
+    elif nod_rate_min is None:
+        reasons["nod_rate_min"] = raw.nod_unavailable_reason or UnavailableReason.INSUFFICIENT_SIGNAL
 
     smile_activity_ratio, mean_smile_activation = _smile(
         raw=raw,
@@ -479,6 +456,12 @@ def _smile(
 
     mean_smile_activation = sum(au12_values) / len(au12_values)
 
-    active = [value for value in au12_values if value >= au12_active_threshold]
-    smile_activity_ratio = len(active) / len(au12_values)
+    if raw.smile_detected_samples:
+        smile_activity_ratio = sum(raw.smile_detected_samples) / len(raw.smile_detected_samples)
+    elif au12_active_threshold is None:
+        reasons["smile_activity_ratio"] = UnavailableReason.FEATURE_UNAVAILABLE
+        smile_activity_ratio = None
+    else:
+        active = [value for value in au12_values if value >= au12_active_threshold]
+        smile_activity_ratio = len(active) / len(au12_values)
     return smile_activity_ratio, mean_smile_activation

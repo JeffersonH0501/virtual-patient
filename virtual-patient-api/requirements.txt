@@ -40,40 +40,16 @@ openai==1.109.1
 # Research-only paraverbal feature extraction from student audio.
 opensmile==2.6.0
 
-# OpenFace 3.0 (CMU-MultiComp-Lab) visual extractor and its pinned runtime
-# dependencies. Package name on PyPI is "openface-test"; it provides the
-# `openface` CLI (`openface download`) that materializes model weights via
-# huggingface. Version and transitive pins confirmed against the published
-# package metadata for openface-test==0.1.26 (requires_dist).
-#
-# torch/torchvision are intentionally NOT pinned here: they are installed as
-# CPU builds from the PyTorch CPU wheel index in the api Dockerfile (see
-# task 8.2 / Req 6.3-6.5), so `openface-test` reuses the already-installed CPU
-# wheels instead of pulling default (CUDA) wheels. Do not add a torch CUDA
-# index in this file.
-huggingface-hub==0.21.0
-imageio==2.34.2
+# Server-side BlazeGaze compatibility gate. The pinned upstream artifact was
+# serialized with Keras 3.10.0; TensorFlow 2.20.0 provides CPython 3.12 CPU
+# wheels and uses the matching Keras serialization APIs.
+tensorflow==2.20.0
+keras==3.10.0
+mediapipe==1.0.1
+webeyetrack @ git+https://github.com/RedForestAI/WebEyeTrack.git@75fbd2f5f784f2eb3a39675a8dcbf1b01c697f1c#subdirectory=python
+pytest==8.3.5
+
+# CCDb-HG and shared visual extraction runtime dependencies.
 numpy==1.26.4
 opencv-contrib-python==4.11.0.86
-pandas==2.2.3
 scipy==1.13.0
-scikit-image==0.24.0
-timm==1.0.15
-tqdm==4.66.2
-# Required by openface-test==0.1.26 (its declared `==` pins). These were also
-# present for Py-Feat; they are KEPT because OpenFace 3.0 still declares them as
-# hard dependencies, so removing them would either be re-added by
-# `pip install openface-test` or break its resolution.
-matplotlib==3.10.1
-seaborn==0.13.2
-tensorboardX==2.6.2.2
-# openface-test==0.1.26 pins Pillow==9.4.0 with a strict "==" constraint, so pip
-# cannot resolve requirements alongside the previous Pillow==10.4.0. Aligned to
-# 9.4.0: no application code imports PIL directly, and the other consumers
-# (torchvision 0.17.2, matplotlib 3.10.1, scikit-image 0.24.0, imageio 2.34.2)
-# accept Pillow 9.4.0 (they require pillow>=5.3.0 with no <10 upper bound issue).
-Pillow==9.4.0
-# OpenFace 3.0 package (RetinaFace detection + STAR 68-pt landmarks + multitask
-# AU/gaze/emotion). Confirmed against the CMU-MultiComp-Lab/OpenFace-3.0 install
-# docs (`pip install openface-test`) and PyPI metadata (latest 0.1.26).
-openface-test==0.1.26

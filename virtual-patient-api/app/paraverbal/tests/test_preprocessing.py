@@ -224,6 +224,8 @@ def _baseline(f0_semitones: float) -> PersonalBaseline:
         neutral_head_yaw=0.0,
         neutral_head_pitch=0.0,
         neutral_head_roll=0.0,
+        neutral_gaze_yaw=0.0,
+        neutral_gaze_pitch=0.0,
     )
 
 

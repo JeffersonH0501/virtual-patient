@@ -16,6 +16,54 @@ export type CalibrationBaselineResponse = {
   reason?: string | null;
 };
 
+export type CalibrationAttempt = {
+  id: string;
+  status: 'not_started' | 'processing' | 'passed' | 'failed';
+  failureReason: string | null;
+  isActive: boolean;
+  medicalInterviewId: number | null;
+  profile: Record<string, unknown> | null;
+  quality: Record<string, unknown> | null;
+};
+
+const requireAttempt = async (response: Response): Promise<CalibrationAttempt> => {
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    const error = new Error(body.detail || 'Calibration attempt request failed') as Error & {status?: number};
+    error.status = response.status;
+    throw error;
+  }
+  return transformToCamelCase(await response.json()) as CalibrationAttempt;
+};
+
+export const createCalibrationAttempt = async (): Promise<CalibrationAttempt> => requireAttempt(await apiFetch(
+  `${API_URL}/calibration-attempts`,
+  {method: 'POST', headers: getAuthHeaders()},
+));
+
+export const processCalibrationAttempt = async (
+  attemptId: string,
+  media: Blob,
+  durationMs: number,
+  metadata: Record<string, unknown>,
+): Promise<CalibrationAttempt> => {
+  const form = new FormData();
+  form.append('video', media, 'multimodal-calibration.webm');
+  form.append('duration_ms', String(Math.round(durationMs)));
+  form.append('metadata_json', JSON.stringify(transformToSnakeCase(metadata)));
+  return requireAttempt(await apiFetch(`${API_URL}/calibration-attempts/${attemptId}/process`, {
+    method: 'POST', headers: getAuthHeaders(), body: form,
+  }));
+};
+
+export const linkCalibrationAttempt = async (
+  attemptId: string,
+  interviewId: number,
+): Promise<CalibrationAttempt> => requireAttempt(await apiFetch(
+  `${API_URL}/calibration-attempts/${attemptId}/link/${interviewId}`,
+  {method: 'POST', headers: getAuthHeaders()},
+));
+
 const requireInterview = async (response: Response): Promise<CompleteInterviewResponse> => {
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));

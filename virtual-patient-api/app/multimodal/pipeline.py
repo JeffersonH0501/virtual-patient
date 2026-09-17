@@ -18,7 +18,8 @@ The 16-step flow (design section "pipeline.py — orchestration"):
 5.  Update ``observation_processing`` (stage + status) on every transition.
 6.  Run OpenSMILE once over the needed student segments.
 7.  Preprocess paraverbal per student turn.
-8.  Run Py-Feat once over the full video, segmented by turn window.
+8.  Decode once and run MediaPipe once per frame; fan out to smile, BlazeGaze,
+    and CCDb-HG before segmenting by turn window.
 9.  Preprocess nonverbal per turn.
 10. Compute ``SessionReferences`` once with the two-pass ``min_turns`` guard.
 11. Run the threshold engine per turn.
@@ -44,7 +45,7 @@ Design boundaries preserved here:
   present for all turns (Requirement 17.2).
 * Every unavailable value is represented with ``null`` + ``status`` + ``reason``
   and never a fabricated number (Requirement 16.3, 24.3).
-* Performance: Py-Feat is opened once over the full video; OpenSMILE runs once
+* Performance: video is decoded once over the full interview; OpenSMILE runs once
   per needed student segment; session percentiles are computed once; the DB
   writes are batched into a single commit (Requirement 19.2-19.5).
 """
@@ -89,10 +90,15 @@ from app.multimodal.threshold_engine import (
     compute_paraverbal_base_labels,
 )
 from app.nonverbal.preprocessing import preprocess_nonverbal_turn
-from app.nonverbal.openface_extractor import (
-    StudentTurnVideo,
-    analyze_openface_student_turn_videos,
+from app.nonverbal.video_observations import (
+    TurnWindow,
+    build_turn_raw_features,
+    extract_nonverbal_video_observations,
+    segment_nonverbal_observations_by_turn,
 )
+from app.models.calibration import CalibrationAttemptDB, CalibrationStatus
+from app.nonverbal.ccdbhg import NodAnalysis, analyze_nods
+from app.nonverbal.gaze import create_tracker
 from app.paraverbal.opensmile_extractor import (
     StudentTurnAudio,
     analyze_student_turns,
@@ -263,7 +269,16 @@ def _run_pipeline(
 
     # Step 3: read the personal baseline (may be None -> missing_calibration).
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_CALIBRATION)
-    baseline = read_personal_baseline(interview)
+    calibration_attempt = db.query(CalibrationAttemptDB).filter(
+        CalibrationAttemptDB.medical_interview_id == interview_id,
+        CalibrationAttemptDB.status == CalibrationStatus.PASSED.value,
+        CalibrationAttemptDB.is_active.is_(True),
+    ).first()
+    baseline_payload = (calibration_attempt.profile or {}).get("personal_baseline") if calibration_attempt else None
+    try:
+        baseline = PersonalBaseline.model_validate(baseline_payload) if baseline_payload else read_personal_baseline(interview)
+    except Exception:  # noqa: BLE001 - malformed stored calibration is unavailable.
+        baseline = None
     baseline_available = baseline is not None
     logger.info(
         "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
@@ -308,7 +323,7 @@ def _run_pipeline(
             continue
         paraverbal_processed[turn.id] = preprocess_paraverbal(raw, baseline=baseline)
 
-    # Step 8: nonverbal extraction (OpenFace 3.0 once over the full video).
+    # Step 8: shared MediaPipe/BlazeGaze/CCDb-HG extraction over the full video.
     nonverbal_raw, nonverbal_context = _extract_nonverbal(
         db=db,
         recording=recording,
@@ -316,6 +331,7 @@ def _run_pipeline(
         recording_id=recording_id,
         turns=turns,
         outcome=outcome,
+        calibration_attempt=calibration_attempt,
     )
 
     # Step 9: nonverbal preprocessing per turn. Gaze tolerance, AU12 activation,
@@ -512,16 +528,9 @@ def _extract_nonverbal(
     recording_id: str,
     turns: Sequence[InterviewTurnDB],
     outcome: "_OutcomeTracker",
+    calibration_attempt: CalibrationAttemptDB | None = None,
 ) -> tuple[dict[str, NonverbalRawFeatures], dict[str, str]]:
-    """Run OpenFace 3.0 over the full video, segmented by turn (Requirement 19.3).
-
-    ``analyze_openface_student_turn_videos`` samples the video once over the whole
-    file and segments the rows by each turn window, so this is a single call for
-    all turns. It returns ``turn_id -> {NonverbalRawFeatures.model_dump() +
-    observationContext}``; we reconstruct :class:`NonverbalRawFeatures` by
-    validating the raw portion (dropping ``observationContext``) and read the
-    conversation speaker from ``observationContext`` to derive the context.
-    """
+    """Extract the full video once, then segment shared observations by turn."""
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_NONVERBAL_EXTRACTION)
     if not turns:
         logger.info(
@@ -550,7 +559,7 @@ def _extract_nonverbal(
     try:
         video_path = storage.resolve(asset.storage_key)
         windows = [
-            StudentTurnVideo(
+            TurnWindow(
                 turn_id=turn.id,
                 start_ms=turn.start_ms,
                 end_ms=turn.end_ms,
@@ -558,7 +567,21 @@ def _extract_nonverbal(
             )
             for turn in turns
         ]
-        extracted = analyze_openface_student_turn_videos(video_path, windows)
+        profile = calibration_attempt.profile if calibration_attempt else None
+        tracker = create_tracker(affine_matrix=profile.get("affine_matrix")) if profile else create_tracker()
+        observations = extract_nonverbal_video_observations(video_path, tracker=tracker)
+        try:
+            nod_analysis = analyze_nods([item.shared for item in observations])
+        except Exception:  # noqa: BLE001 - preserve other visual branches.
+            logger.exception(
+                "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
+                "modality=nonverbal branch=ccdbhg result=extractor_failure",
+                interview_id,
+                recording_id,
+                STAGE_NONVERBAL_EXTRACTION,
+            )
+            nod_analysis = NodAnalysis((), False, "extractor_failure")
+        segmented = segment_nonverbal_observations_by_turn(observations, windows)
     except Exception:  # noqa: BLE001 - one modality failing must not fail all.
         outcome.note_gap()
         logger.exception(
@@ -572,10 +595,16 @@ def _extract_nonverbal(
 
     raw_by_turn: dict[str, NonverbalRawFeatures] = {}
     context_by_turn: dict[str, str] = {}
-    for turn_id, payload in extracted.items():
-        raw_dict = {key: value for key, value in payload.items() if key != "observationContext"}
+    windows_by_id = {window.turn_id: window for window in windows}
+    for turn_id, turn_observations in segmented.items():
         try:
-            raw_by_turn[turn_id] = NonverbalRawFeatures.model_validate(raw_dict)
+            raw_by_turn[turn_id] = build_turn_raw_features(
+                turn_observations,
+                windows_by_id[turn_id],
+                nod_analysis=nod_analysis,
+                calibration_profile=profile,
+                patient_roi_snapshots=(recording.capture_config or {}).get("patientRoiSnapshots", []),
+            )
         except Exception:  # noqa: BLE001 - a malformed row is a per-turn gap.
             outcome.note_gap()
             logger.warning(
@@ -588,9 +617,9 @@ def _extract_nonverbal(
                 turn_id,
             )
             continue
-        context = (payload.get("observationContext") or {}).get("conversationSpeaker")
-        if context is not None:
-            context_by_turn[turn_id] = _context_for_speaker(context)
+        context_by_turn[turn_id] = _context_for_speaker(
+            windows_by_id[turn_id].conversation_speaker
+        )
 
     if len(raw_by_turn) < len(turns):
         outcome.note_gap()
@@ -725,6 +754,7 @@ def _nonverbal_layer(
         config,
         baseline_available=baseline_available,
         session_refs=session_refs,
+        unavailable_reasons=reasons,
     )
     integrated = integrate_nonverbal_labels(base_labels, config)
     outcome.note_ok()

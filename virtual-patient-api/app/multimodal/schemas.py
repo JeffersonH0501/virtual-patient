@@ -55,6 +55,8 @@ class UnavailableReason(str, Enum):
     INSUFFICIENT_REFERENCE_DATA = "insufficient_reference_data"
     FEATURE_UNAVAILABLE = "feature_unavailable"
     PROCESSING_ERROR = "processing_error"
+    GAZE_CALIBRATION_PENDING = "gaze_calibration_pending"
+    NOD_MODEL_PENDING = "nod_model_pending"
 
 
 class PersonalBaseline(BaseModel):
@@ -163,7 +165,8 @@ class ParaverbalIntegratedLabels(BaseModel):
 class NonverbalRawFeatures(BaseModel):
     """Signal-level nonverbal outputs of extraction, before derivation.
 
-    Produced by the OpenFace 3.0 extractor. Contains per-frame raw arrays,
+    Produced by the shared MediaPipe/BlazeGaze/CCDb-HG extractor. Contains raw
+    observations and turn-level event summaries,
     segmentation, per-signal metadata, and frame-level quality; it carries no
     labels. The field names and units are preserved unchanged from the previous
     extractor, so downstream preprocessing, calibration, thresholds, and UI keep
@@ -174,6 +177,9 @@ class NonverbalRawFeatures(BaseModel):
     gaze_yaw_samples: list[float]
     gaze_pitch_samples: list[float]
     au12_samples: list[float]
+    smile_detected_samples: list[bool] = Field(default_factory=list)
+    gaze_observations: list[dict] = Field(default_factory=list)
+    gaze_semantic_observations: list[dict] = Field(default_factory=list)
     head_pitch_samples: list[float]
     # Optional head yaw/roll raw series. These are used to derive the neutral
     # head pose (all three axes) for the personal baseline in calibration
@@ -182,6 +188,10 @@ class NonverbalRawFeatures(BaseModel):
     # does not populate them.
     head_yaw_samples: list[float] = Field(default_factory=list)
     head_roll_samples: list[float] = Field(default_factory=list)
+    nod_events: list[dict] = Field(default_factory=list)
+    nod_count: int | None = None
+    nod_rate_min: float | None = None
+    nod_unavailable_reason: UnavailableReason | None = None
     frame_timestamps_ms: list[float]
     sample_fps: float
     turn_duration_ms: int

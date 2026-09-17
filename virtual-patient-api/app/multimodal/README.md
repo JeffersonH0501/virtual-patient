@@ -3,7 +3,7 @@
 This module owns the staged, versioned multimodal pipeline that turns a
 finalized interview recording into per-turn, per-family descriptive
 observations. It coordinates the existing paraverbal (OpenSMILE) and nonverbal
-(Py-Feat) extractors, derives processed features, applies declarative
+(MediaPipe, BlazeGaze, smile, and CCDb-HG) extractors, derives processed features, applies declarative
 thresholds, and produces one integrated label per family — or an explicit
 unavailable/insufficient outcome when data is missing.
 
@@ -57,7 +57,7 @@ Calibration ─► Extraction ─► Preprocessing ─► Thresholding ─► Ba
         │
 [EXTRACTION]  extractors (signal + quality only, NO labels)
    ├─ OpenSMILE_Extractor  ─► ParaverbalRawFeatures   (student-speaking turns only)
-   └─ PyFeat_Extractor     ─► NonverbalRawFeatures    (all turn windows)
+   └─ Shared visual flow   ─► NonverbalRawFeatures    (all turn windows)
         │
 [PREPROCESSING]  per-modality derivation
    ├─ app/paraverbal/preprocessing.py  ─► ParaverbalProcessedFeatures
@@ -101,7 +101,7 @@ Nonverbal (all turn windows):
 
 | Stage / concern | Location |
 |-----------------|----------|
-| Extraction (signal + quality only) | `app/paraverbal/opensmile_extractor.py`, `app/nonverbal/openface_extractor.py` |
+| Extraction (signal + quality only) | `app/paraverbal/opensmile_extractor.py`, `app/nonverbal/video_observations.py`, `app/nonverbal/ccdbhg.py` |
 | Derivation (raw → processed) | `app/paraverbal/preprocessing.py`, `app/nonverbal/preprocessing.py` |
 | Base labels (processed → base labels from `thresholds.yaml`) | `threshold_engine.py` |
 | Integrated labels (base labels → one label per family from `label_rules.yaml`) | `label_engine.py` |
@@ -113,7 +113,7 @@ Nonverbal (all turn windows):
 | Methodology configuration | `config/processing.yaml`, `config/thresholds.yaml`, `config/label_rules.yaml` |
 | Relabel stored turns without re-extraction | `../scripts/relabel_multimodal.py` |
 
-The extractors are the only code that touches OpenSMILE, Py-Feat, or media. The
+The extractors are the only code that touches OpenSMILE, visual models, or media. The
 threshold and label engines reference only feature names and configuration —
 never signal internals.
 
@@ -159,7 +159,7 @@ Fixed-band families are unaffected by the guard.
 1. `POST /medical-interviews/calibration/baseline` (authenticated) receives the
    calibration media upload without requiring or creating an interview.
 2. The upload is written to a **temporary** server file.
-3. `calibration.derive_personal_baseline(...)` runs the OpenSMILE and Py-Feat
+3. `calibration.derive_personal_baseline(...)` runs OpenSMILE and the shared visual
    extractors over the media and computes numeric-only metrics:
    `baseline_f0_semitones` (median voiced F0 **in semitones, never Hertz**),
    `baseline_loudness`, `neutral_head_yaw/pitch/roll`, and required
@@ -185,7 +185,7 @@ uses to read the stored baseline.
 `scripts/relabel_multimodal.py` re-derives base and integrated labels for stored
 turns using the **current** `thresholds.yaml` / `label_rules.yaml`, reading each
 turn's already-persisted `raw`/`processed` blocks. It never re-runs OpenSMILE or
-Py-Feat: it reconstructs the typed processed features, recomputes session
+the visual extractor: it reconstructs the typed processed features, recomputes session
 references with the same two-pass guard, and rewrites
 `base_labels`/`integrated_labels`/`versions`/`config_hash` while preserving
 `raw`/`processed`/`quality`/`status`/`reason`.
@@ -194,7 +194,7 @@ references with the same two-pass guard, and rewrites
 python -m scripts.relabel_multimodal <interview_id> [<interview_id> ...]
 ```
 
-The `backfill_observations.py`, `backfill_openface.py`, and `verify_observations.py`
+The `backfill_observations.py` and `verify_observations.py`
 scripts are adjusted to the layered result shape.
 
 ## Persistence and legacy compatibility

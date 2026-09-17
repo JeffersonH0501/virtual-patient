@@ -71,6 +71,36 @@ class LocalMediaStorage:
         storage_key = (relative_dir / filename).as_posix()
         return StoredMedia(storage_key=storage_key, size_bytes=size, sha256=digest.hexdigest())
 
+    async def save_calibration_upload(
+        self, user_id: int, attempt_id: str, kind: str, upload: UploadFile, extension: str
+    ) -> StoredMedia:
+        """Persist an immutable calibration source below its own lifecycle path."""
+        self._ensure_free_space()
+        relative_dir = Path("calibrations") / str(user_id) / attempt_id
+        target_dir = (self.root / relative_dir).resolve()
+        self._assert_within_root(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{kind}{extension}"
+        target = target_dir / filename
+        temporary = target_dir / f".{filename}.{uuid.uuid4().hex}.tmp"
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with temporary.open("wb") as output:
+                while chunk := await upload.read(1024 * 1024):
+                    output.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+            temporary.replace(target)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        finally:
+            await upload.close()
+        return StoredMedia((relative_dir / filename).as_posix(), size, digest.hexdigest())
+
     def resolve(self, storage_key: str) -> Path:
         path = (self.root / storage_key).resolve()
         self._assert_within_root(path)

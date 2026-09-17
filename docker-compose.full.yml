@@ -59,7 +59,6 @@ services:
     volumes:
       - ./virtual-patient-api/logs:/app/logs
       - interview_media:/app/media
-      - openface_models:/app/openface
     depends_on:
       postgres:
         condition: service_healthy
@@ -99,4 +98,3 @@ services:
 volumes:
   postgres_data:
   interview_media:
-  openface_models:

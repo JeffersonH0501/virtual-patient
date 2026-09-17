@@ -8,6 +8,7 @@ from app.models.medical_interview import (
     InterviewStatus, MedicalInterviewComplete, InterviewMessage
 )
 from app.models.user import UserDB, User
+from app.models.calibration import CalibrationAttemptDB, CalibrationStatus
 from app.models.clinical_case import ClinicalCase
 from app.controllers.clinical_case_controller import ClinicalCaseController
 from app.controllers.message_controller import MessageController
@@ -251,11 +252,16 @@ class MedicalInterviewController:
         if interview.start_time is not None:
             return MedicalInterview.from_orm(interview)
 
-        calibration = (interview.interview_metadata or {}).get("calibration") or {}
-        if calibration.get("status") != "passed":
+        calibration = self.db.query(CalibrationAttemptDB).filter(
+            CalibrationAttemptDB.medical_interview_id == interview.id,
+            CalibrationAttemptDB.user_id == interview.user_id,
+            CalibrationAttemptDB.status == CalibrationStatus.PASSED.value,
+            CalibrationAttemptDB.is_active.is_(True),
+        ).first()
+        if calibration is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Technical calibration must pass before the interview starts",
+                detail="An active passed multimodal calibration must be linked before the interview starts",
             )
 
         interview.start_time = datetime.now(timezone.utc)

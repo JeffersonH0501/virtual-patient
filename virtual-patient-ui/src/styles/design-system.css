@@ -843,6 +843,8 @@
 
 @layer components {
   .calibration-page { @apply mx-auto flex min-h-0 w-full max-w-content flex-col overflow-hidden rounded-panel bg-surface shadow-card; }
+  .calibration-target-layer { @apply fixed inset-0 z-[100] pointer-events-none; }
+  .calibration-target { @apply absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-brand-600 shadow-lg; }
   .calibration-header { @apply border-b border-border px-5 py-4 text-center lg:px-7; }
   .calibration-eyebrow { @apply mb-1 text-xs font-semibold uppercase tracking-wider text-brand-600; }
   .calibration-title { @apply text-xl font-bold text-content sm:text-2xl; }

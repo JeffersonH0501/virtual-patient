@@ -103,6 +103,8 @@ export const useInterviewRecording = ({
   const captureGenerationRef = useRef(0);
   const captureFailureRef = useRef<string | null>(null);
   const turnWritesRef = useRef(Promise.resolve());
+  const patientRoiTimerRef = useRef<number | null>(null);
+  const patientRoiSamplesRef = useRef<Array<Record<string, number>>>([]);
 
   microphoneEnabledRef.current = microphoneEnabled;
   patientAudioEnabledRef.current = patientAudioEnabled;
@@ -178,6 +180,7 @@ export const useInterviewRecording = ({
         audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
         clock: 'performance.now',
         studentTiming: 'browser-speech-events-provisional',
+        patientRoiSnapshots: patientRoiSamplesRef.current,
       },
     };
   }, [elapsedAt]);
@@ -187,6 +190,8 @@ export const useInterviewRecording = ({
     animationFrameRef.current = null;
     if (patientLevelTimerRef.current !== null) window.clearInterval(patientLevelTimerRef.current);
     patientLevelTimerRef.current = null;
+    if (patientRoiTimerRef.current !== null) window.clearInterval(patientRoiTimerRef.current);
+    patientRoiTimerRef.current = null;
     patientAnalyserRef.current = null;
     setPatientAudioLevel(0);
     const runtimes = recordersRef.current;
@@ -377,6 +382,21 @@ export const useInterviewRecording = ({
       originRef.current = performance.now();
       pausedDurationRef.current = 0;
       pausedAtRef.current = null;
+      patientRoiSamplesRef.current = [];
+      const samplePatientRoi = () => {
+        const element = document.querySelector<HTMLElement>('[data-patient-roi-anchor]');
+        if (!element || window.innerWidth <= 0 || window.innerHeight <= 0) return;
+        const rect = element.getBoundingClientRect();
+        patientRoiSamplesRef.current.push({
+          timestampMs: elapsedAt(),
+          xNormalized: rect.left / window.innerWidth,
+          yNormalized: rect.top / window.innerHeight,
+          widthNormalized: rect.width / window.innerWidth,
+          heightNormalized: rect.height / window.innerHeight,
+        });
+      };
+      samplePatientRoi();
+      patientRoiTimerRef.current = window.setInterval(samplePatientRoi, 500);
       runtimes.forEach((runtime) => runtime.recorder.start(RECORDER_TIMESLICE_MS));
       await startInterviewRecording(interviewId, new Date().toISOString(), {
         video: {width: VIDEO_WIDTH, height: VIDEO_HEIGHT, frameRate: VIDEO_FRAME_RATE},
@@ -395,7 +415,7 @@ export const useInterviewRecording = ({
     } finally {
       startingRef.current = false;
     }
-  }, [enabled, interviewId, releaseResources]);
+  }, [elapsedAt, enabled, interviewId, releaseResources]);
 
   useEffect(() => {
     if (!enabled) return;

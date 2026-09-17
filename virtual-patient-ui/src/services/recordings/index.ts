@@ -158,6 +158,23 @@ export const getInterviewRecap = async (interviewId: number): Promise<InterviewR
   };
 };
 
+/**
+ * Trigger a full re-analysis (multimodal pipeline first, then the final text
+ * evaluation) for a completed interview. The backend runs the work as a
+ * background task and reports progress through the recap's
+ * ``observationProcessing`` status, so callers poll ``getInterviewRecap`` until
+ * that status becomes terminal.
+ */
+export const reprocessInterviewRecording = async (
+  interviewId: number,
+): Promise<RecordingState> => {
+  const response = await requireOk(await fetch(
+    `${API_URL}/medical-interviews/${interviewId}/recording/reprocess`,
+    {method: 'POST', headers: getAuthHeaders()},
+  ));
+  return transformToCamelCase(await response.json()) as RecordingState;
+};
+
 export const resolveRecordingSource = (source?: string | null): string | null => {
   if (!source) return null;
   return source.startsWith('http') ? source : `${API_URL}${source}`;

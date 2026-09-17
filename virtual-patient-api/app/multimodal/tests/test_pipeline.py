@@ -49,7 +49,7 @@ from unittest.mock import patch
 from app.models.medical_interview import MediaAssetKind
 from app.multimodal import pipeline as pipeline_module
 from app.multimodal.config_loader import ConfigError, load_methodology_config
-from app.multimodal.schemas import ParaverbalRawFeatures
+from app.multimodal.schemas import NonverbalRawFeatures, ParaverbalRawFeatures
 
 
 # ---------------------------------------------------------------------------
@@ -309,19 +309,29 @@ class _PipelineHarness:
                 raise self._paraverbal_side_effect
             return dict(self._paraverbal_return)
 
-        def fake_nonverbal(video_path, windows, **kwargs):
+        def fake_nonverbal(video_path, **kwargs):
             if self._nonverbal_side_effect is not None:
                 raise self._nonverbal_side_effect
             return dict(self._nonverbal_return)
+
+        def fake_build(payload, window, **kwargs):
+            raw = {key: value for key, value in payload.items() if key != "observationContext"}
+            return NonverbalRawFeatures.model_validate(raw)
 
         with patch.object(pipeline_module, "SessionLocal", return_value=self.session), \
                 patch.object(pipeline_module, "get_media_storage", return_value=storage), \
                 patch.object(pipeline_module, "analyze_student_turns", side_effect=fake_paraverbal), \
                 patch.object(
                     pipeline_module,
-                    "analyze_openface_student_turn_videos",
+                    "extract_nonverbal_video_observations",
                     side_effect=fake_nonverbal,
                 ), \
+                patch.object(
+                    pipeline_module,
+                    "segment_nonverbal_observations_by_turn",
+                    side_effect=lambda observations, windows: observations,
+                ), \
+                patch.object(pipeline_module, "build_turn_raw_features", side_effect=fake_build), \
                 patch.object(
                     pipeline_module, "read_personal_baseline", return_value=self._baseline
                 ):
@@ -430,6 +440,18 @@ class MultimodalPipelineTests(unittest.TestCase):
                 turn.nonverbal_features, f"turn {turn.id} missing nonverbal"
             )
             self.assertEqual(turn.nonverbal_features["status"], "ok")
+            self.assertEqual(
+                turn.nonverbal_features["quality"]["feature_reasons"]["visual_alignment_ratio"],
+                "gaze_calibration_pending",
+            )
+            self.assertEqual(
+                turn.nonverbal_features["base_labels"]["visual_orientation"]
+                ["visual_alignment_ratio"]["reason"],
+                "gaze_calibration_pending",
+            )
+            self.assertIsNotNone(
+                turn.nonverbal_features["processed"]["mean_smile_activation"]
+            )
 
         status = harness.observation_processing().get("status")
         self.assertIn(status, {"complete", "partial"})
