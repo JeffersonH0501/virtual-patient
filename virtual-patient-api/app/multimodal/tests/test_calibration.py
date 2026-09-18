@@ -30,7 +30,9 @@ from pydantic import ValidationError
 from starlette.datastructures import Headers
 
 from app.multimodal.calibration import (
+    calibration_passed,
     derive_personal_baseline,
+    read_calibration,
     read_calibration_profile,
     read_personal_baseline,
 )
@@ -182,6 +184,54 @@ class ReadCalibrationProfileTests(unittest.TestCase):
         self.assertIsNone(read_calibration_profile(SimpleNamespace(interview_metadata={})))
         self.assertIsNone(
             read_calibration_profile(SimpleNamespace(interview_metadata={"calibration": {"profile": "nope"}}))
+        )
+
+
+class ReadCalibrationTests(unittest.TestCase):
+    def test_reads_calibration_block_from_metadata(self):
+        block = {"status": "passed", "profile": {"affine_matrix": []}, "personal_baseline": dict(_VALID_BASELINE_METRICS)}
+        interview = SimpleNamespace(interview_metadata={"calibration": block})
+        self.assertEqual(read_calibration(interview), block)
+
+    def test_returns_none_when_absent_or_invalid(self):
+        self.assertIsNone(read_calibration(None))
+        self.assertIsNone(read_calibration(SimpleNamespace(interview_metadata=None)))
+        self.assertIsNone(read_calibration(SimpleNamespace(interview_metadata={"other": {}}))
+                          )
+        self.assertIsNone(read_calibration(SimpleNamespace(interview_metadata={"calibration": "nope"})))
+
+
+class CalibrationPassedTests(unittest.TestCase):
+    """The interview-start gate: passed status + a valid persisted baseline."""
+
+    def test_true_when_passed_with_valid_baseline(self):
+        interview = SimpleNamespace(
+            interview_metadata={"calibration": {"status": "passed", "personal_baseline": dict(_VALID_BASELINE_METRICS)}}
+        )
+        self.assertTrue(calibration_passed(interview))
+
+    def test_false_when_no_calibration(self):
+        self.assertFalse(calibration_passed(None))
+        self.assertFalse(calibration_passed(SimpleNamespace(interview_metadata={})))
+
+    def test_false_when_status_not_passed(self):
+        interview = SimpleNamespace(
+            interview_metadata={"calibration": {"status": "failed", "personal_baseline": dict(_VALID_BASELINE_METRICS)}}
+        )
+        self.assertFalse(calibration_passed(interview))
+
+    def test_false_when_passed_but_baseline_missing_or_invalid(self):
+        # Passed status but no baseline -> not usable to start.
+        self.assertFalse(
+            calibration_passed(SimpleNamespace(interview_metadata={"calibration": {"status": "passed"}}))
+        )
+        # Passed status but malformed baseline -> not usable to start.
+        self.assertFalse(
+            calibration_passed(
+                SimpleNamespace(
+                    interview_metadata={"calibration": {"status": "passed", "personal_baseline": {"baseline_loudness": 0.5}}}
+                )
+            )
         )
 
 

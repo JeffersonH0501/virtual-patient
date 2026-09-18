@@ -41,6 +41,7 @@ from app.models.medical_interview import (
     MedicalInterviewDB,
 )
 from app.multimodal import pipeline
+from app.multimodal.calibration import read_calibration
 from app.multimodal.config_loader import load_methodology_config
 from app.multimodal.schemas import PersonalBaseline
 from app.nonverbal import ccdbhg
@@ -362,7 +363,7 @@ def main() -> None:
         audio_path = storage.resolve(audio_asset.storage_key)
         video_path = storage.resolve(video_asset.storage_key)
         probe_ms = 0.0
-        calibration = (interview.interview_metadata or {}).get("calibration") if isinstance(interview.interview_metadata, dict) else None
+        calibration = read_calibration(interview)
         config = timer.call("post.config", load_methodology_config)
         variant = os.environ.get("PROFILE_VARIANT", "baseline")
         parallel_video = variant in {"b16", "b32", "ab16", "ab32"}

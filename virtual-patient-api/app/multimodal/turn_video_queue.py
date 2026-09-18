@@ -11,10 +11,12 @@ from time import perf_counter
 from app.core.database import SessionLocal
 from app.media.storage import get_media_storage
 from app.multimodal.calibration import read_calibration_profile
+from app.multimodal.constants import NONVERBAL_GAZE_QUEUE_CAPACITY
 from app.models.medical_interview import (
     InterviewRecordingDB,
     MedicalInterviewDB,
     TurnVideoAnalysisDB,
+    TurnVideoAnalysisStatus,
 )
 from app.nonverbal.ccdbhg import NodAnalysis, analyze_nods
 from app.nonverbal.gaze import create_tracker
@@ -53,10 +55,13 @@ def start_turn_video_worker(*, recover: bool = True) -> None:
     db = SessionLocal()
     try:
         jobs = db.query(TurnVideoAnalysisDB).filter(
-            TurnVideoAnalysisDB.status.in_(("queued", "processing"))
+            TurnVideoAnalysisDB.status.in_((
+                TurnVideoAnalysisStatus.QUEUED.value,
+                TurnVideoAnalysisStatus.PROCESSING.value,
+            ))
         ).all()
         for job in jobs:
-            job.status = "queued"
+            job.status = TurnVideoAnalysisStatus.QUEUED.value
             job.error = None
         db.commit()
         for job in jobs:
@@ -97,14 +102,18 @@ def _worker_loop() -> None:
 def _process_job(job_id: str) -> None:
     processing_started = perf_counter()
     db = SessionLocal()
+    storage = get_media_storage()
     storage_key: str | None = None
     try:
         job = db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.id == job_id).first()
-        if job is None or job.status == "completed":
+        if job is None or job.status == TurnVideoAnalysisStatus.COMPLETED.value:
             return
-        if job.status not in {"queued", "processing"}:
+        if job.status not in {
+            TurnVideoAnalysisStatus.QUEUED.value,
+            TurnVideoAnalysisStatus.PROCESSING.value,
+        }:
             return
-        job.status = "processing"
+        job.status = TurnVideoAnalysisStatus.PROCESSING.value
         job.started_at = datetime.now(timezone.utc)
         job.error = None
         db.commit()
@@ -118,7 +127,9 @@ def _process_job(job_id: str) -> None:
         profile = read_calibration_profile(interview)
         tracker = create_tracker(affine_matrix=profile.get("affine_matrix")) if profile else create_tracker()
         observations = extract_nonverbal_video_observations_parallel(
-            storage.resolve(storage_key), tracker=tracker, queue_capacity=32
+            storage.resolve(storage_key),
+            tracker=tracker,
+            queue_capacity=NONVERBAL_GAZE_QUEUE_CAPACITY,
         )
         try:
             nod_analysis = analyze_nods([item.shared for item in observations])
@@ -137,7 +148,7 @@ def _process_job(job_id: str) -> None:
             patient_roi_snapshots=roi,
         )
         job.result = raw.model_dump(mode="json")
-        job.status = "completed"
+        job.status = TurnVideoAnalysisStatus.COMPLETED.value
         job.completed_at = datetime.now(timezone.utc)
         job.storage_key = None
         db.commit()
@@ -160,7 +171,7 @@ def _process_job(job_id: str) -> None:
         db.rollback()
         job = db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.id == job_id).first()
         if job is not None:
-            job.status = "failed"
+            job.status = TurnVideoAnalysisStatus.FAILED.value
             job.error = str(error)[:2000]
             job.completed_at = datetime.now(timezone.utc)
             db.commit()
@@ -178,7 +189,7 @@ def fail_pending_turn_video_jobs(db, interview_id: int, reason: str) -> int:
     storage = get_media_storage()
     jobs = db.query(TurnVideoAnalysisDB).filter(
         TurnVideoAnalysisDB.medical_interview_id == interview_id,
-        TurnVideoAnalysisDB.status == "queued",
+        TurnVideoAnalysisDB.status == TurnVideoAnalysisStatus.QUEUED.value,
     ).all()
     for job in jobs:
         if job.storage_key:
@@ -187,7 +198,7 @@ def fail_pending_turn_video_jobs(db, interview_id: int, reason: str) -> int:
             except Exception:  # noqa: BLE001 - status transition must still persist.
                 logger.exception("turn_video_analysis job_id=%s result=cancel_cleanup_failed", job.id)
         job.storage_key = None
-        job.status = "failed"
+        job.status = TurnVideoAnalysisStatus.FAILED.value
         job.error = reason
         job.completed_at = datetime.now(timezone.utc)
     db.commit()

@@ -48,6 +48,7 @@ from app.models.medical_interview import (
     SenderType,
     TurnUpsertRequest,
     TurnVideoAnalysisDB,
+    TurnVideoAnalysisStatus,
 )
 from app.models.medical_interview.interview_message import InterviewMessageDB
 from app.models.user import UserDB, UserRole
@@ -296,7 +297,7 @@ async def upload_turn_video(
         content_type=content_type,
         size_bytes=stored.size_bytes,
         sha256=stored.sha256,
-        status="queued",
+        status=TurnVideoAnalysisStatus.QUEUED.value,
         roi_snapshots=roi_snapshots,
     )
     db.add(job)
@@ -335,7 +336,7 @@ def list_turn_video_analyses(
     jobs = db.query(TurnVideoAnalysisDB).filter(
         TurnVideoAnalysisDB.medical_interview_id == interview_id
     ).order_by(TurnVideoAnalysisDB.queued_at).all()
-    counts = {state: 0 for state in ("queued", "processing", "completed", "failed")}
+    counts = {state.value: 0 for state in TurnVideoAnalysisStatus}
     items = []
     for job in jobs:
         counts[job.status] = counts.get(job.status, 0) + 1

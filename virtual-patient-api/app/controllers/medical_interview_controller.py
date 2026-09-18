@@ -8,7 +8,7 @@ from app.models.medical_interview import (
     InterviewStatus, MedicalInterviewComplete, InterviewMessage
 )
 from app.models.user import UserDB, User
-from app.multimodal.calibration import read_personal_baseline
+from app.multimodal.calibration import calibration_passed
 from app.models.clinical_case import ClinicalCase
 from app.controllers.clinical_case_controller import ClinicalCaseController
 from app.controllers.message_controller import MessageController
@@ -253,11 +253,10 @@ class MedicalInterviewController:
             return MedicalInterview.from_orm(interview)
 
         # The calibration draft is persisted into ``interview_metadata.calibration``
-        # before start. A passed calibration always carries a valid personal
-        # baseline (validated on save), so its presence is the start gate.
-        calibration = (interview.interview_metadata or {}).get("calibration")
-        calibration_passed = isinstance(calibration, dict) and calibration.get("status") == "passed"
-        if not calibration_passed or read_personal_baseline(interview) is None:
+        # before start. The central ``calibration_passed`` accessor checks the
+        # stored block is ``passed`` and carries a valid personal baseline, so
+        # the gate never reaches into the metadata dict directly.
+        if not calibration_passed(interview):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A passed multimodal calibration must be saved before the interview starts",

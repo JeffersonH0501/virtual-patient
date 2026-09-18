@@ -173,6 +173,36 @@ def read_calibration_profile(interview: _MetadataCarrier | None) -> dict[str, An
     return profile if isinstance(profile, dict) else None
 
 
+def read_calibration(interview: _MetadataCarrier | None) -> dict[str, Any] | None:
+    """Read the stored calibration block from ``interview_metadata.calibration``.
+
+    This is the single accessor for the whole persisted calibration record (its
+    ``status``, ``profile``, ``personal_baseline`` and remaining metadata), so
+    callers that need the block itself do not scatter nested-dict access across
+    the codebase. Returns ``None`` when no calibration block is stored.
+    """
+    if interview is None:
+        return None
+    metadata = getattr(interview, "interview_metadata", None) or {}
+    calibration = metadata.get("calibration")
+    return calibration if isinstance(calibration, dict) else None
+
+
+def calibration_passed(interview: _MetadataCarrier | None) -> bool:
+    """Report whether the interview carries a passed calibration usable to start.
+
+    A calibration is usable when its persisted block is marked ``passed`` and a
+    valid :class:`PersonalBaseline` can be read back. This mirrors the guarantee
+    made at save time (a passed calibration always carries a valid baseline) and
+    centralizes the interview-start gate so it does not reach into the metadata
+    dict directly.
+    """
+    calibration = read_calibration(interview)
+    if not calibration or calibration.get("status") != "passed":
+        return False
+    return read_personal_baseline(interview) is not None
+
+
 def _derive_audio_metrics(
     audio_path: Path | None,
     *,

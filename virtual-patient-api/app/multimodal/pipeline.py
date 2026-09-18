@@ -65,7 +65,9 @@ from app.models.medical_interview import (
     MediaAssetKind,
     MedicalInterviewDB,
     TurnVideoAnalysisDB,
+    TurnVideoAnalysisStatus,
 )
+from app.multimodal.constants import NONVERBAL_GAZE_QUEUE_CAPACITY
 from app.multimodal.turn_video_queue import enqueue_turn_video_analysis
 from app.multimodal.calibration import read_calibration_profile, read_personal_baseline
 from app.multimodal.config_loader import (
@@ -559,7 +561,11 @@ def _extract_nonverbal(
         context_by_turn: dict[str, str] = {}
         for turn in turns:
             job = jobs_by_turn.get(turn.id)
-            if job is None or job.status != "completed" or not job.result:
+            if (
+                job is None
+                or job.status != TurnVideoAnalysisStatus.COMPLETED.value
+                or not job.result
+            ):
                 outcome.note_gap()
                 continue
             try:
@@ -607,7 +613,7 @@ def _extract_nonverbal(
         observations = extract_nonverbal_video_observations_parallel(
             video_path,
             tracker=tracker,
-            queue_capacity=32,
+            queue_capacity=NONVERBAL_GAZE_QUEUE_CAPACITY,
         )
         try:
             nod_analysis = analyze_nods([item.shared for item in observations])
@@ -688,10 +694,14 @@ async def _wait_for_turn_video_jobs(
             TurnVideoAnalysisDB.medical_interview_id == interview_id,
         ).all()
         for job in jobs:
-            if job.status == "queued" and job.id not in requeued:
+            if job.status == TurnVideoAnalysisStatus.QUEUED.value and job.id not in requeued:
                 enqueue_turn_video_analysis(job.id)
                 requeued.add(job.id)
-        pending = [job for job in jobs if job.status in {"queued", "processing"}]
+        pending_statuses = {
+            TurnVideoAnalysisStatus.QUEUED.value,
+            TurnVideoAnalysisStatus.PROCESSING.value,
+        }
+        pending = [job for job in jobs if job.status in pending_statuses]
         if not pending:
             return
         if loop.time() >= deadline:

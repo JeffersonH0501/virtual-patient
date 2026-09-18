@@ -36,6 +36,13 @@ class RecordingStatus(str, enum.Enum):
     FAILED = "failed"
 
 
+class TurnVideoAnalysisStatus(str, enum.Enum):
+    QUEUED = "queued"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
 class MediaAssetKind(str, enum.Enum):
     STUDENT_AUDIO = "student_audio"
     STUDENT_VIDEO = "student_video"
@@ -185,7 +192,12 @@ class TurnVideoAnalysisDB(Base):
     content_type = Column(String(100), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
     sha256 = Column(String(64), nullable=False)
-    status = Column(String(20), nullable=False, default="queued", index=True)
+    status = Column(
+        String(20),
+        nullable=False,
+        default=TurnVideoAnalysisStatus.QUEUED.value,
+        index=True,
+    )
     result = Column(JSON, nullable=True)
     roi_snapshots = Column(JSON, nullable=False, default=list)
     error = Column(Text, nullable=True)

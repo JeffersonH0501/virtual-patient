@@ -14,7 +14,7 @@ from .medical_interview import (
     MedicalInterviewWithSummary, MedicalInterviewComplete,
     InterviewStatus, SenderType, NoteType,
     InterviewRecordingDB, InterviewMediaAssetDB, InterviewTurnDB, TurnVideoAnalysisDB,
-    RecordingStatus, MediaAssetKind
+    RecordingStatus, TurnVideoAnalysisStatus, MediaAssetKind
 )
 
 __all__ = [
@@ -32,5 +32,5 @@ __all__ = [
     "MedicalInterviewWithSummary", "MedicalInterviewComplete",
     "InterviewStatus", "SenderType", "NoteType",
     "InterviewRecordingDB", "InterviewMediaAssetDB", "InterviewTurnDB", "TurnVideoAnalysisDB",
-    "RecordingStatus", "MediaAssetKind",
+    "RecordingStatus", "TurnVideoAnalysisStatus", "MediaAssetKind",
 ]

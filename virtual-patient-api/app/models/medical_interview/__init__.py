@@ -11,6 +11,7 @@ from .interview_recording import (
     InterviewRecordingDB,
     InterviewTurnDB,
     TurnVideoAnalysisDB,
+    TurnVideoAnalysisStatus,
     MediaAssetKind,
     RecapTurn,
     RecordingStartRequest,
@@ -36,7 +37,7 @@ __all__ = [
     "ProgressSummaryDB", "ProgressSummary", "ProgressSummaryCreate", "ProgressSummaryUpdate",
     "InterviewEvaluationDB", "InterviewEvaluation", "InterviewEvaluationCreate",
     "InterviewRecordingDB", "InterviewMediaAssetDB", "InterviewTurnDB", "TurnVideoAnalysisDB",
-    "RecordingStatus", "MediaAssetKind", "RecordingStartRequest",
+    "RecordingStatus", "TurnVideoAnalysisStatus", "MediaAssetKind", "RecordingStartRequest",
     "RecordingUnavailableRequest", "TurnUpsertRequest", "RecordingStateResponse",
     "RecapTurn", "InterviewRecapResponse",
     
