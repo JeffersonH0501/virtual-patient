@@ -154,6 +154,25 @@ def read_personal_baseline(interview: _MetadataCarrier | None) -> PersonalBaseli
         return None
 
 
+def read_calibration_profile(interview: _MetadataCarrier | None) -> dict[str, Any] | None:
+    """Read the stored calibration ``profile`` dict from the interview metadata.
+
+    The profile holds the gaze affine matrix and other visual references the
+    multimodal pipeline needs to reconstruct the participant-specific gaze
+    tracker. It lives alongside the personal baseline under
+    ``interview_metadata.calibration``. Returns ``None`` when no profile is
+    stored so the pipeline can fall back to an uncalibrated tracker.
+    """
+    if interview is None:
+        return None
+    metadata = getattr(interview, "interview_metadata", None) or {}
+    calibration = metadata.get("calibration")
+    if not isinstance(calibration, dict):
+        return None
+    profile = calibration.get("profile")
+    return profile if isinstance(profile, dict) else None
+
+
 def _derive_audio_metrics(
     audio_path: Path | None,
     *,

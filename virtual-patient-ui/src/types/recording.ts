@@ -29,20 +29,11 @@ export type RecapTurn = {
 };
 
 // The backend recap endpoint returns, for each turn's `paraverbal` and
-// `nonverbal_features`, a NORMALIZED read view produced by
-// `app/multimodal/legacy_adapter.normalize_observation`. The API serializes
-// snake_case JSON which the recordings service converts recursively to
-// camelCase (see utils/apiTransform). The types below model that camelCased
-// read view. Two shapes coexist behind a discriminated union on `schema`:
-//   - "layered": the new pipeline output with staged layers.
-//   - "legacy":  a pre-refactor flat payload wrapped into the layered shape by
-//     the backend adapter (raw/baseLabels null, only the temporal integrated
-//     label may carry a genuine value, versions/configHash null).
-// The union keeps legacy payloads renderable without a destructive migration
-// (Requirements 22.1, 22.3, 23.1). Backend `_without_none` strips keys whose
-// value is null, so every layered field is modelled as optional.
-
-export type ObservationSchema = 'layered' | 'legacy';
+// `nonverbal_features`, the canonical layered observation written by the current
+// multimodal pipeline. The API serializes snake_case JSON which the recordings
+// service converts recursively to camelCase (see utils/apiTransform). The types
+// below model that single camelCased read view. Backend `_without_none` strips
+// keys whose value is null, so every layered field is modelled as optional.
 
 // Outcome status shared by family labels and modality layers. Mirrors the
 // backend `OutcomeStatus` enum; kept as a widened string so an unforeseen
@@ -100,7 +91,6 @@ export type ParaverbalBaseLabels = {
 };
 
 export type ParaverbalObservation = {
-  schema?: ObservationSchema;
   modality?: 'paraverbal';
   raw?: Record<string, unknown> | null;
   processed?: ParaverbalProcessed;
@@ -111,9 +101,6 @@ export type ParaverbalObservation = {
   configHash?: string | null;
   status?: ObservationStatus;
   reason?: string | null;
-  // Present only on normalized legacy payloads: the original interpretability
-  // block, kept so a detail view can surface the legacy temporal reasoning.
-  legacyInterpretability?: Record<string, unknown> | null;
   // Interaction context ("speaking" | "listening") when the backend resolved it.
   context?: string | null;
 };
@@ -144,7 +131,6 @@ export type NonverbalBaseLabels = {
 };
 
 export type NonverbalObservation = {
-  schema?: ObservationSchema;
   modality?: 'nonverbal';
   raw?: Record<string, unknown> | null;
   processed?: NonverbalProcessed;

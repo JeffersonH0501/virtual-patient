@@ -1,73 +1,17 @@
-"""Persistence and API contracts for reproducible calibration attempts."""
+"""Persistence and API contracts for reproducible calibration attempts.""""""Calibration capture contracts.
+
+The multimodal calibration is processed temporarily and never persisted as its
+own database rows (see ``app/routers/calibration.py``). Only the browser capture
+metadata contracts live here; there is no ``CalibrationAttemptDB`` /
+``CalibrationMediaAssetDB`` lifecycle. The passed calibration result is stored
+inside ``interview_metadata.calibration`` when the interview starts.
+"""
 
 from __future__ import annotations
 
-import enum
-import uuid
-from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, String, UniqueConstraint, text
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
-
-from app.core.database import Base
-
-
-class CalibrationStatus(str, enum.Enum):
-    NOT_STARTED = "not_started"
-    CAPTURE_VALIDATION = "capture_validation"
-    GAZE_TARGETS = "gaze_targets"
-    CAMERA_REFERENCE = "camera_reference"
-    VOICE_BASELINE = "voice_baseline"
-    PROCESSING = "processing"
-    PASSED = "passed"
-    FAILED = "failed"
-
-
-class CalibrationAttemptDB(Base):
-    __tablename__ = "calibration_attempts"
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
-    medical_interview_id = Column(Integer, ForeignKey("medical_interviews.id", ondelete="CASCADE"), nullable=True)
-    status = Column(String(32), nullable=False, default=CalibrationStatus.NOT_STARTED.value)
-    failure_reason = Column(String(80), nullable=True)
-    is_active = Column(Boolean, nullable=False, default=False)
-    calibration_version = Column(String(80), nullable=False, default="multimodal_calibration_v1")
-    calibration_metadata = Column("metadata", JSON, nullable=False, default=dict)
-    profile = Column(JSON, nullable=True)
-    quality = Column(JSON, nullable=True)
-    started_at = Column(DateTime(timezone=True), nullable=False)
-    completed_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    media_assets = relationship("CalibrationMediaAssetDB", back_populates="attempt", cascade="all, delete-orphan")
-    __table_args__ = (
-        CheckConstraint("NOT is_active OR (status = 'passed' AND medical_interview_id IS NOT NULL)", name="ck_calibration_active_passed_linked"),
-        Index("ix_calibration_attempt_user", "user_id"),
-        Index("ix_calibration_attempt_interview", "medical_interview_id"),
-        Index("uq_calibration_active_interview", "medical_interview_id", unique=True, postgresql_where=text("is_active"), sqlite_where=text("is_active = 1")),
-    )
-
-
-class CalibrationMediaAssetDB(Base):
-    __tablename__ = "calibration_media_assets"
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
-    calibration_attempt_id = Column(String(36), ForeignKey("calibration_attempts.id", ondelete="CASCADE"), nullable=False)
-    kind = Column(String(30), nullable=False)
-    storage_key = Column(String(500), nullable=False, unique=True)
-    content_type = Column(String(100), nullable=False)
-    size_bytes = Column(BigInteger, nullable=False)
-    duration_ms = Column(BigInteger, nullable=False)
-    sha256 = Column(String(64), nullable=False)
-    asset_metadata = Column("metadata", JSON, nullable=False, default=dict)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    attempt = relationship("CalibrationAttemptDB", back_populates="media_assets")
-    __table_args__ = (
-        UniqueConstraint("calibration_attempt_id", "kind", name="uq_calibration_media_kind"),
-        Index("ix_calibration_media_attempt", "calibration_attempt_id"),
-    )
 
 
 class CalibrationTarget(BaseModel):

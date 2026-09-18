@@ -3,7 +3,8 @@ import {Navigate, useLocation, useNavigate, useParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {useInterviewMedia} from '../../contexts/interviewMedia';
 import {useTechnicalCalibration} from '../../hooks/useTechnicalCalibration';
-import {createCalibrationAttempt, getInterview, linkCalibrationAttempt, processCalibrationAttempt, startInterview} from '../../services/interviews';
+import {getInterview, processTemporaryCalibration, saveCalibrationResult, startInterview} from '../../services/interviews';
+import {CalibrationDraft, CalibrationResultPayload} from '../../services/interviews/calibration';
 import {createInterview} from '../../services/interviews/createInterview';
 import {CompleteInterviewResponse} from '../../types/interview';
 import {CalibrationRouteState, interviewPath, ROUTES} from '../../utils/routes';
@@ -22,7 +23,9 @@ export const InterviewCalibration = () => {
   const calibration = useTechnicalCalibration(media.microphoneStream, media.cameraStream);
   const videoRef = useRef<HTMLVideoElement>(null); const processedMediaRef = useRef<Blob | null>(null);
   const [interview, setInterview] = useState<CompleteInterviewResponse | null>(null);
-  const [attemptId, setAttemptId] = useState<string | null>(null);
+  // The calibration draft lives only in memory. A refresh, cancel, or navigation
+  // away discards it and the user must repeat calibration -- intentional.
+  const draftRef = useRef<CalibrationDraft | null>(null);
   const [result, setResult] = useState<'passed' | 'failed' | null>(null);
   const [failureReason, setFailureReason] = useState<string | null>(null);
   const [processing, setProcessing] = useState(false); const [starting, setStarting] = useState(false);
@@ -44,34 +47,62 @@ export const InterviewCalibration = () => {
 
   useEffect(() => {
     const capture = calibration.media;
-    if (!capture || !attemptId || processedMediaRef.current === capture.blob) return;
+    if (!capture || processedMediaRef.current === capture.blob) return;
     processedMediaRef.current = capture.blob; setProcessing(true); setError(null);
-    void processCalibrationAttempt(attemptId, capture.blob, capture.durationMs, capture.metadata)
-      .then((attempt) => { setResult(attempt.status === 'passed' ? 'passed' : 'failed'); setFailureReason(attempt.failureReason); })
-      .catch(() => setError('processing'))
+    void processTemporaryCalibration(capture.blob, capture.durationMs, capture.metadata)
+      .then((draft) => {
+        // Replace any previous draft (a repeated calibration discards the old
+        // one). Nothing is persisted server-side yet.
+        draftRef.current = draft;
+        setResult(draft.status === 'passed' ? 'passed' : 'failed');
+        setFailureReason(draft.failureReason);
+      })
+      .catch(() => {
+        draftRef.current = null;
+        setError('processing');
+      })
       .finally(() => setProcessing(false));
-  }, [attemptId, calibration.media]);
+  }, [calibration.media]);
 
   const begin = useCallback(async () => {
-    setError(null); setResult(null); setFailureReason(null); processedMediaRef.current = null;
-    try { const attempt = await createCalibrationAttempt(); setAttemptId(attempt.id); await calibration.start(); }
-    catch { setError('start'); }
+    setError(null); setResult(null); setFailureReason(null);
+    processedMediaRef.current = null; draftRef.current = null;
+    try {
+      await calibration.start();
+    } catch {
+      setError('start');
+    }
   }, [calibration]);
 
   const continueToInterview = async () => {
-    if (!attemptId || result !== 'passed' || starting) return;
+    const draft = draftRef.current;
+    if (!draft || draft.status !== 'passed' || result !== 'passed' || starting) return;
     setStarting(true); setError(null);
     try {
       let id = existingId;
       if (id === null) {
         if (!routeConfig) throw new Error('missing configuration');
         const created = await createInterview({clinical_case_id: String(routeConfig.clinicalCaseId), patient_response_language: routeConfig.patientResponseLanguage, patient_gender: routeConfig.gender || undefined, personality_id: routeConfig.personalityId || undefined});
-        if (!created) throw new Error('missing interview'); id = Number(created.id);
+        if (!created) throw new Error('missing interview');
+        id = Number(created.id);
       }
-      await linkCalibrationAttempt(attemptId, id);
+      // Persist the calibration into the interview BEFORE starting it. If this
+      // fails, the interview is not started and the draft is kept for retry.
+      const payload: CalibrationResultPayload = {
+        version: draft.calibrationVersion,
+        status: draft.status,
+        failureReason: draft.failureReason,
+        profile: draft.profile,
+        quality: draft.quality,
+        personalBaseline: draft.personalBaseline,
+      };
+      await saveCalibrationResult(id, payload);
       await startInterview(id);
       navigate(interviewPath(id, 'session'), {replace: true, state: {justStarted: true}});
-    } catch { setError('startInterview'); setStarting(false); }
+    } catch {
+      setError('startInterview');
+      setStarting(false);
+    }
   };
 
   if (missingConfig) return <Navigate to={ROUTES.clinicalCases} replace />;

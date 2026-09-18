@@ -205,42 +205,6 @@
       "clippingPending": "Saturación pendiente de comprobar",
       "noClipping": "Sin saturación de audio",
       "clippingDetected": "Saturación de audio detectada"
-    },
-    "debug": {
-      "label": "MODO DEPURACIÓN",
-      "on": "ACTIVADO",
-      "off": "DESACTIVADO",
-      "title": "DEPURACIÓN MULTIMODAL EN CRUDO",
-      "na": "—",
-      "yes": "SÍ",
-      "no": "NO",
-      "sections": {
-        "openface": "OpenFace 3.0",
-        "opensmile": "OpenSMILE"
-      },
-      "fields": {
-        "faceDetected": "Rostro detectado",
-        "faceConfidence": "Confianza del rostro",
-        "gazeYaw": "Guiñada de la mirada",
-        "gazePitch": "Cabeceo de la mirada",
-        "headYaw": "Guiñada de la cabeza",
-        "headPitch": "Cabeceo de la cabeza",
-        "headRoll": "Alabeo de la cabeza",
-        "au12": "AU12 (elevador de comisuras)",
-        "frameTimestamp": "Marca de tiempo del cuadro",
-        "processingFps": "FPS de muestreo / latencia",
-        "f0": "F0",
-        "loudness": "Sonoridad",
-        "voicing": "Sonoridad de voz"
-      },
-      "reason": {
-        "openface_unavailable": "Extractor OpenFace 3.0 no disponible",
-        "opensmile_unavailable": "Extractor OpenSMILE no disponible",
-        "face_not_detected": "No se detectó rostro en este cuadro",
-        "no_audio_frames": "No hay cuadros de audio en este fragmento",
-        "low_quality": "Señal de baja calidad, valor no disponible",
-        "unavailable": "No disponible"
-      }
     }
   },
   "clinicalChat": {

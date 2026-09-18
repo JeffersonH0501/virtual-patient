@@ -67,7 +67,7 @@ from app.models.medical_interview import (
     TurnVideoAnalysisDB,
 )
 from app.multimodal.turn_video_queue import enqueue_turn_video_analysis
-from app.multimodal.calibration import read_personal_baseline
+from app.multimodal.calibration import read_calibration_profile, read_personal_baseline
 from app.multimodal.config_loader import (
     ConfigError,
     MethodologyConfig,
@@ -99,7 +99,6 @@ from app.nonverbal.video_observations import (
     extract_nonverbal_video_observations_parallel,
     segment_nonverbal_observations_by_turn,
 )
-from app.models.calibration import CalibrationAttemptDB, CalibrationStatus
 from app.nonverbal.ccdbhg import NodAnalysis, analyze_nods
 from app.nonverbal.gaze import create_tracker
 from app.paraverbal.opensmile_extractor import (
@@ -278,14 +277,11 @@ def _run_pipeline(
 
     # Step 3: read the personal baseline (may be None -> missing_calibration).
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_CALIBRATION)
-    calibration_attempt = db.query(CalibrationAttemptDB).filter(
-        CalibrationAttemptDB.medical_interview_id == interview_id,
-        CalibrationAttemptDB.status == CalibrationStatus.PASSED.value,
-        CalibrationAttemptDB.is_active.is_(True),
-    ).first()
-    baseline_payload = (calibration_attempt.profile or {}).get("personal_baseline") if calibration_attempt else None
+    # Calibration lives in ``interview_metadata.calibration``: the personal
+    # baseline (read via the single accessor) and the gaze affine profile.
+    calibration_profile = read_calibration_profile(interview)
     try:
-        baseline = PersonalBaseline.model_validate(baseline_payload) if baseline_payload else read_personal_baseline(interview)
+        baseline = read_personal_baseline(interview)
     except Exception:  # noqa: BLE001 - malformed stored calibration is unavailable.
         baseline = None
     baseline_available = baseline is not None
@@ -340,7 +336,7 @@ def _run_pipeline(
         recording_id=recording_id,
         turns=turns,
         outcome=outcome,
-        calibration_attempt=calibration_attempt,
+        calibration_profile=calibration_profile,
         use_full_video=use_full_video,
     )
 
@@ -538,7 +534,7 @@ def _extract_nonverbal(
     recording_id: str,
     turns: Sequence[InterviewTurnDB],
     outcome: "_OutcomeTracker",
-    calibration_attempt: CalibrationAttemptDB | None = None,
+    calibration_profile: dict | None = None,
     use_full_video: bool = False,
 ) -> tuple[dict[str, NonverbalRawFeatures], dict[str, str]]:
     """Load turn jobs, or explicitly recover from the canonical full video."""
@@ -606,7 +602,7 @@ def _extract_nonverbal(
             )
             for turn in turns
         ]
-        profile = calibration_attempt.profile if calibration_attempt else None
+        profile = calibration_profile
         tracker = create_tracker(affine_matrix=profile.get("affine_matrix")) if profile else create_tracker()
         observations = extract_nonverbal_video_observations_parallel(
             video_path,

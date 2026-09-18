@@ -30,7 +30,6 @@ from sqlalchemy.exc import IntegrityError
 from app.core.auth import get_current_user_from_token
 from app.core.database import get_db
 from app.media import LocalMediaStorage, get_media_storage
-from app.multimodal.legacy_adapter import normalize_observation
 from app.multimodal.pipeline import process_multimodal_interview
 from app.multimodal.reprocess import reprocess_interview_evaluation
 from app.multimodal.turn_video_queue import enqueue_turn_video_analysis, queue_depth
@@ -826,18 +825,15 @@ def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
         input_source=turn.input_source,
         timing_source=turn.timing_source,
         timing_quality=turn.timing_quality,
-        # Normalize each stored observation into the layered read shape so the
-        # recap renders both new layered rows and legacy flat rows uniformly
-        # (Requirements 22.1, 22.2, 23.1). This is a read-time transform only:
-        # stored JSON is never rewritten, so there is no destructive migration
-        # (Requirement 22.3). Layered rows pass through unchanged apart from a
-        # ``schema`` marker; legacy rows are wrapped without fabricating labels.
-        paraverbal=_without_none(
-            normalize_observation(turn.paraverbal, modality="paraverbal")
-        ),
-        nonverbal_features=_without_none(
-            normalize_observation(turn.nonverbal_features, modality="nonverbal")
-        ),
+        # Return the stored per-turn observations as-is. Every row is written by
+        # the current multimodal pipeline in the canonical layered shape
+        # (``raw``/``processed``/``base_labels``/``integrated_labels``/
+        # ``quality``/``versions``/``config_hash``/``status``/``reason``), so the
+        # recap serves that single contract directly. ``_without_none`` only
+        # drops unavailable optional measurements from the payload; a patient
+        # turn's absent paraverbal layer stays ``None``.
+        paraverbal=_without_none(turn.paraverbal),
+        nonverbal_features=_without_none(turn.nonverbal_features),
     )
 
 

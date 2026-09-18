@@ -8,13 +8,10 @@ import { TeacherFeedback } from './teacherFeedback';
 
 export type Status = 'in_progress' | 'processing' | 'completed' | 'interrupted';
 
-export type CalibrationInputLevel = 'low' | 'adequate' | 'high';
-
-// Per-participant numeric reference derived from calibration media by the
-// backend `POST /calibration/baseline` endpoint (camelCased from the backend
+// Per-participant numeric reference derived from the calibration media by the
+// backend temporary-processing worker (camelCased from the backend
 // `PersonalBaseline` schema). Fundamental frequency is in semitones only, never
-// Hertz. Both gaze axes are required; when any required metric is unavailable,
-// the whole baseline is null and calibration is still allowed to be saved.
+// Hertz. Both gaze axes are required; a passed calibration always carries one.
 export type PersonalBaseline = {
   baselineF0Semitones: number;
   baselineLoudness: number;
@@ -25,28 +22,17 @@ export type PersonalBaseline = {
   neutralGazePitch: number;
 };
 
+// The calibration result persisted into an interview when it starts. It is the
+// draft produced by `POST /calibration/process` plus a server completion time.
+// A passed calibration carries the numeric personal baseline and the profile
+// (including the gaze affine matrix) the multimodal pipeline consumes.
 export type CalibrationResult = {
-  version: 'technical_v2';
+  version: string;
   status: 'passed' | 'failed';
+  failureReason?: string | null;
   completedAt: string;
-  durationMs: number;
-  recordingSupported: boolean;
-  audio: {
-    microphoneAvailable: boolean;
-    streamActive: boolean;
-    voiceDetected: boolean;
-    inputLevel: CalibrationInputLevel;
-    clippingDetected: boolean;
-  };
-  video: {
-    cameraAvailable: boolean;
-    streamActive: boolean;
-    faceDetected: boolean;
-    faceDetectionRate: number;
-    qualityStatus: 'adequate' | 'inadequate';
-  };
-  // Derived from the calibration media by the baseline endpoint. Null when
-  // derivation was unavailable (or not attempted); calibration still saves.
+  profile?: Record<string, unknown> | null;
+  quality?: Record<string, unknown> | null;
   personalBaseline?: PersonalBaseline | null;
 };
 

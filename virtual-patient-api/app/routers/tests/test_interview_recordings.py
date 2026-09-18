@@ -134,3 +134,92 @@ class ObservationContractTests(unittest.TestCase):
         })
 
         self.assertEqual(payload, {"visual_alignment_ratio": 0, "nested": {}})
+
+
+class TurnResponseContractTests(unittest.TestCase):
+    """The recap serves the single canonical layered observation schema.
+
+    Per-turn observations are written by the current multimodal pipeline in the
+    layered shape (``raw``/``processed``/``base_labels``/``integrated_labels``/
+    ``quality``/``versions``/``config_hash``/``status``/``reason``). The recap
+    returns that shape verbatim, only stripping unavailable (``None``) optional
+    measurements. No legacy conversion happens anymore.
+    """
+
+    def _layered_paraverbal(self) -> dict:
+        return {
+            "raw": {"word_count": 12, "voiced_duration_ms": 3200},
+            "processed": {"speech_rate_wpm": 142.0, "articulation_rate_wpm": None},
+            "base_labels": {"temporal": {"speech_rate_wpm": {"status": "ok", "value": "measured_pace"}}},
+            "integrated_labels": {"temporal": {"status": "ok", "value": "measured_pace", "reason": None}},
+            "quality": {"validRatio": 0.94, "issues": []},
+            "versions": {"processing": "1", "thresholds": "1", "label_rules": "1"},
+            "config_hash": "abc123",
+            "status": "ok",
+            "reason": None,
+        }
+
+    def _layered_nonverbal(self, status_value: str = "ok") -> dict:
+        return {
+            "raw": {"sampled_frame_count": 20},
+            "processed": {"visual_alignment_ratio": 0.7, "nod_count": 0, "median_visual_alignment_dwell_ms": None},
+            "base_labels": {"visual_orientation": {"visual_alignment_ratio": {"status": "ok", "value": "oriented"}}},
+            "integrated_labels": {"visual_orientation": {"status": status_value, "value": "oriented" if status_value == "ok" else None}},
+            "quality": {"sampledFrameCount": 20, "validFrameCount": 18, "issues": []},
+            "versions": {"processing": "1", "thresholds": "1", "label_rules": "1"},
+            "config_hash": "abc123",
+            "status": status_value,
+            "reason": None if status_value == "ok" else "insufficient_signal",
+        }
+
+    def _turn(self, **overrides):
+        base = dict(
+            id="t1", message_id=1, speaker="student", start_ms=0, end_ms=4000,
+            transcript="hello", input_source="azure_openai_stt",
+            timing_source="client_audio_activity", timing_quality="provisional",
+            paraverbal=self._layered_paraverbal(), nonverbal_features=self._layered_nonverbal(),
+        )
+        base.update(overrides)
+        return SimpleNamespace(**base)
+
+    def test_student_turn_passes_through_canonical_layered_shape(self) -> None:
+        from app.routers.interview_recordings import _turn_response
+
+        response = _turn_response(self._turn())
+
+        # The layered layers survive verbatim (minus null optional metrics).
+        self.assertEqual(response.paraverbal["processed"]["speech_rate_wpm"], 142.0)
+        self.assertNotIn("articulation_rate_wpm", response.paraverbal["processed"])  # None stripped
+        self.assertEqual(response.paraverbal["integrated_labels"]["temporal"]["value"], "measured_pace")
+        self.assertEqual(response.paraverbal["versions"]["processing"], "1")
+        self.assertEqual(response.paraverbal["config_hash"], "abc123")
+        self.assertEqual(response.nonverbal_features["processed"]["visual_alignment_ratio"], 0.7)
+        self.assertEqual(response.nonverbal_features["processed"]["nod_count"], 0)  # zero preserved
+        # No legacy schema marker is added by the recap anymore.
+        self.assertNotIn("schema", response.paraverbal)
+        self.assertNotIn("schema", response.nonverbal_features)
+
+    def test_patient_turn_has_no_paraverbal_layer(self) -> None:
+        from app.routers.interview_recordings import _turn_response
+
+        response = _turn_response(self._turn(speaker="patient", paraverbal=None))
+
+        self.assertIsNone(response.paraverbal)
+        self.assertIsNotNone(response.nonverbal_features)
+
+    def test_missing_modality_still_renders(self) -> None:
+        # A current-schema modality reported unavailable/partial must still be
+        # served (not confused with a legacy shape and not dropped).
+        from app.routers.interview_recordings import _turn_response
+
+        response = _turn_response(
+            self._turn(nonverbal_features=self._layered_nonverbal(status_value="unavailable"))
+        )
+
+        self.assertEqual(response.nonverbal_features["status"], "unavailable")
+        self.assertEqual(response.nonverbal_features["reason"], "insufficient_signal")
+        self.assertEqual(response.nonverbal_features["integrated_labels"]["visual_orientation"]["status"], "unavailable")
+
+
+if __name__ == "__main__":
+    unittest.main()

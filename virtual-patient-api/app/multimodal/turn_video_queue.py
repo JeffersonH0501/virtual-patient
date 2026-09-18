@@ -10,8 +10,12 @@ from time import perf_counter
 
 from app.core.database import SessionLocal
 from app.media.storage import get_media_storage
-from app.models.calibration import CalibrationAttemptDB, CalibrationStatus
-from app.models.medical_interview import InterviewRecordingDB, TurnVideoAnalysisDB
+from app.multimodal.calibration import read_calibration_profile
+from app.models.medical_interview import (
+    InterviewRecordingDB,
+    MedicalInterviewDB,
+    TurnVideoAnalysisDB,
+)
 from app.nonverbal.ccdbhg import NodAnalysis, analyze_nods
 from app.nonverbal.gaze import create_tracker
 from app.nonverbal.video_observations import (
@@ -108,12 +112,10 @@ def _process_job(job_id: str) -> None:
         if not storage_key:
             raise FileNotFoundError("Turn video segment is unavailable")
 
-        attempt = db.query(CalibrationAttemptDB).filter(
-            CalibrationAttemptDB.medical_interview_id == job.medical_interview_id,
-            CalibrationAttemptDB.status == CalibrationStatus.PASSED.value,
-            CalibrationAttemptDB.is_active.is_(True),
+        interview = db.query(MedicalInterviewDB).filter(
+            MedicalInterviewDB.id == job.medical_interview_id,
         ).first()
-        profile = attempt.profile if attempt else None
+        profile = read_calibration_profile(interview)
         tracker = create_tracker(affine_matrix=profile.get("affine_matrix")) if profile else create_tracker()
         observations = extract_nonverbal_video_observations_parallel(
             storage.resolve(storage_key), tracker=tracker, queue_capacity=32

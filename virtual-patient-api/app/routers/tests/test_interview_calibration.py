@@ -1,4 +1,10 @@
-"""Tests for the pre-interview technical calibration lifecycle."""
+"""Tests for the calibration draft contract and the interview start gate.
+
+Calibration is processed temporarily (``POST /calibration/process``) and its
+passed result is persisted into ``interview_metadata.calibration`` only when the
+interview starts. There is no durable calibration table, so these tests exercise
+the draft request contract and the metadata-based start gate.
+"""
 
 from types import SimpleNamespace
 import unittest
@@ -8,75 +14,71 @@ from fastapi import HTTPException, status
 from pydantic import ValidationError
 
 from app.controllers.medical_interview_controller import MedicalInterviewController
-from app.models.calibration import CalibrationAttemptDB
 from app.models.medical_interview import InterviewStatus
 from app.routers.medical_interviews import CalibrationResultRequest
 
 
+_VALID_BASELINE = {
+    "baseline_f0_semitones": 4.5,
+    "baseline_loudness": 0.6,
+    "neutral_head_yaw": 0.1,
+    "neutral_head_pitch": 0.2,
+    "neutral_head_roll": 0.0,
+    "neutral_gaze_yaw": 0.05,
+    "neutral_gaze_pitch": 0.07,
+}
+
+
 def calibration_payload(**overrides):
     payload = {
-        "version": "technical_v2",
+        "version": "multimodal_calibration_v1",
         "status": "passed",
-        "duration_ms": 20_000,
-        "recording_supported": True,
-        "audio": {
-            "microphone_available": True,
-            "stream_active": True,
-            "voice_detected": True,
-            "input_level": "adequate",
-            "clipping_detected": False,
-        },
-        "video": {
-            "camera_available": True,
-            "stream_active": True,
-            "face_detected": True,
-            "face_detection_rate": 95.0,
-            "quality_status": "adequate",
-        },
-        "personal_baseline": None,
+        "failure_reason": None,
+        "profile": {"affine_matrix": [[1, 0, 0], [0, 1, 0]], "personal_baseline": dict(_VALID_BASELINE)},
+        "quality": {"face_valid_ratio": 0.95},
+        "personal_baseline": dict(_VALID_BASELINE),
     }
     payload.update(overrides)
     return payload
 
 
 class CalibrationContractTests(unittest.TestCase):
-    def test_passed_result_requires_voice_and_both_live_devices(self):
-        payload = calibration_payload()
-        payload["audio"]["voice_detected"] = False
-
+    def test_passed_result_requires_baseline_and_profile(self):
+        # A passed calibration without a personal baseline is rejected.
         with self.assertRaises(ValidationError):
-            CalibrationResultRequest.model_validate(payload)
+            CalibrationResultRequest.model_validate(
+                calibration_payload(personal_baseline=None)
+            )
 
-    def test_personal_baseline_cannot_be_invented(self):
+    def test_passed_result_requires_profile(self):
+        with self.assertRaises(ValidationError):
+            CalibrationResultRequest.model_validate(calibration_payload(profile=None))
+
+    def test_personal_baseline_cannot_be_malformed(self):
         with self.assertRaises(ValidationError):
             CalibrationResultRequest.model_validate(
                 calibration_payload(personal_baseline={"baseline_loudness": 0.5})
             )
 
-    def test_failed_result_can_preserve_diagnostic_summary(self):
-        payload = calibration_payload(status="failed")
-        payload["audio"]["voice_detected"] = False
+    def test_passed_result_is_accepted_with_baseline_and_profile(self):
+        result = CalibrationResultRequest.model_validate(calibration_payload())
+        self.assertEqual(result.status, "passed")
+        self.assertIsNotNone(result.personal_baseline)
+        self.assertEqual(result.personal_baseline.baseline_f0_semitones, 4.5)
 
-        result = CalibrationResultRequest.model_validate(payload)
-
+    def test_failed_result_can_omit_baseline_and_profile(self):
+        result = CalibrationResultRequest.model_validate(
+            calibration_payload(
+                status="failed",
+                failure_reason="insufficient_audio",
+                profile=None,
+                quality=None,
+                personal_baseline=None,
+            )
+        )
         self.assertEqual(result.status, "failed")
-        self.assertFalse(result.audio.voice_detected)
-
-    def test_passed_result_requires_face_detection(self):
-        payload = calibration_payload()
-        payload["video"]["face_detected"] = False
-        payload["video"]["quality_status"] = "inadequate"
-
-        with self.assertRaises(ValidationError):
-            CalibrationResultRequest.model_validate(payload)
-
-    def test_passed_result_requires_adequate_input_without_clipping(self):
-        payload = calibration_payload()
-        payload["audio"]["input_level"] = "high"
-        payload["audio"]["clipping_detected"] = True
-
-        with self.assertRaises(ValidationError):
-            CalibrationResultRequest.model_validate(payload)
+        self.assertEqual(result.failure_reason, "insufficient_audio")
+        self.assertIsNone(result.personal_baseline)
 
 
 class Query:
@@ -91,13 +93,12 @@ class Query:
 
 
 class Database:
-    def __init__(self, interview, calibration=None):
+    def __init__(self, interview):
         self.interview = interview
-        self.calibration = calibration
         self.commit_count = 0
 
     def query(self, model):
-        return Query(self.calibration if model is CalibrationAttemptDB else self.interview)
+        return Query(self.interview)
 
     def commit(self):
         self.commit_count += 1
@@ -122,7 +123,9 @@ class InterviewStartTests(unittest.TestCase):
 
         self.assertEqual(context.exception.status_code, status.HTTP_409_CONFLICT)
 
-    def test_start_sets_clock_once_and_is_idempotent(self):
+    def test_passed_status_without_valid_baseline_cannot_start(self):
+        # A calibration block marked passed but missing a valid baseline must not
+        # satisfy the gate.
         interview = SimpleNamespace(
             id=7,
             user_id=2,
@@ -130,7 +133,24 @@ class InterviewStartTests(unittest.TestCase):
             start_time=None,
             interview_metadata={"calibration": {"status": "passed"}},
         )
-        database = Database(interview, SimpleNamespace(status="passed", is_active=True))
+        controller = MedicalInterviewController(Database(interview))
+
+        with self.assertRaises(HTTPException) as context:
+            controller.start_interview(7)
+
+        self.assertEqual(context.exception.status_code, status.HTTP_409_CONFLICT)
+
+    def test_start_sets_clock_once_and_is_idempotent(self):
+        interview = SimpleNamespace(
+            id=7,
+            user_id=2,
+            status=InterviewStatus.IN_PROGRESS,
+            start_time=None,
+            interview_metadata={
+                "calibration": {"status": "passed", "personal_baseline": dict(_VALID_BASELINE)}
+            },
+        )
+        database = Database(interview)
         controller = MedicalInterviewController(database)
         response = SimpleNamespace(start_time=None)
 

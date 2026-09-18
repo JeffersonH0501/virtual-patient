@@ -32,7 +32,7 @@ import torch
 
 from app.core.database import SessionLocal
 from app.media import get_media_storage
-from app.models.calibration import CalibrationAttemptDB, CalibrationStatus
+
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
     InterviewRecordingDB,
@@ -362,11 +362,7 @@ def main() -> None:
         audio_path = storage.resolve(audio_asset.storage_key)
         video_path = storage.resolve(video_asset.storage_key)
         probe_ms = 0.0
-        calibration = db.query(CalibrationAttemptDB).filter(
-            CalibrationAttemptDB.medical_interview_id == interview.id,
-            CalibrationAttemptDB.status == CalibrationStatus.PASSED.value,
-            CalibrationAttemptDB.is_active.is_(True),
-        ).first()
+        calibration = (interview.interview_metadata or {}).get("calibration") if isinstance(interview.interview_metadata, dict) else None
         config = timer.call("post.config", load_methodology_config)
         variant = os.environ.get("PROFILE_VARIANT", "baseline")
         parallel_video = variant in {"b16", "b32", "ab16", "ab32"}
@@ -439,7 +435,7 @@ def main() -> None:
                 "patient_speaking_ms": sum(t.end_ms - t.start_ms for t in turns if t.speaker == "patient"),
                 "file_size": video_asset.size_bytes, "probe_ms": probe_ms,
             },
-            "calibration": None if calibration is None else {"id": calibration.id, "status": calibration.status, "version": calibration.calibration_version},
+            "calibration": None if not calibration else {"status": calibration.get("status"), "version": calibration.get("version")},
             "environment": {"python": sys.version, "torch": torch.__version__, "cpu_count": os.cpu_count(), "platform": platform.platform()},
             "variant": variant,
             "startup": {"imports_ms": IMPORT_MS, "until_main_ms": (PROCESS_STARTED - PROCESS_STARTED) * 1000.0},

@@ -108,7 +108,6 @@ Nonverbal (all turn windows):
 | Orchestration (single background pass) | `pipeline.py` |
 | Config load / validate / version / hash | `config_loader.py` |
 | Personal baseline (derive + read) | `calibration.py` |
-| Legacy flat-JSON read compatibility | `legacy_adapter.py` |
 | Typed stage contracts (Pydantic, not SQL) | `schemas.py` |
 | Methodology configuration | `config/processing.yaml`, `config/thresholds.yaml`, `config/label_rules.yaml` |
 | Relabel stored turns without re-extraction | `../scripts/relabel_multimodal.py` |
@@ -207,10 +206,8 @@ JSON columns — no schema migration. Each layer carries
 turns; the nonverbal layer is present for all turns. Unavailable values are
 `null` plus a `status` and `reason`, never a fabricated measurement.
 
-`legacy_adapter.py` normalizes pre-refactor flat JSON into the layered read shape
-so old rows keep rendering. Legacy families that were never computed are surfaced
-as `unavailable` with a reason; only the genuine legacy `temporal_profile` is
-surfaced as the `temporal` integrated label.
+The recap serves this single layered schema directly: every stored row is
+written by the current pipeline, so no read-time schema conversion exists.
 
 ## Entry point
 

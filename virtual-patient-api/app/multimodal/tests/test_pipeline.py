@@ -9,7 +9,7 @@ layer, deterministic and matching the loaded methodology config).
 Isolation strategy
 ------------------
 ``process_multimodal_interview`` normally opens a real ``SessionLocal`` DB
-session, reads media assets, and drives OpenSMILE / Py-Feat over real media.
+session, reads media assets, and drives OpenSMILE / MediaPipe over real media.
 None of that is available (or desirable) in a unit-test environment, so these
 tests patch, on the ``app.multimodal.pipeline`` module:
 
@@ -18,9 +18,9 @@ tests patch, on the ``app.multimodal.pipeline`` module:
   ``.commit()`` calls are counted.
 * ``get_media_storage`` -> returns a stub storage whose ``.resolve(key)`` yields
   a dummy path (never touched, because the extractors are also patched).
-* ``analyze_student_turns`` / ``analyze_openface_student_turn_videos`` -> return
+* ``analyze_student_turns`` / the shared MediaPipe video extraction -> return
   in-memory raw features (real ``ParaverbalRawFeatures`` objects and the raw
-  OpenFace 3.0 payload dict shape) so no media / OpenSMILE / OpenFace 3.0 runs.
+  nonverbal payload dict shape) so no media / OpenSMILE / MediaPipe runs.
 * ``read_personal_baseline`` -> returns a real ``PersonalBaseline`` or ``None``
   (missing-calibration case).
 
@@ -234,9 +234,9 @@ def _paraverbal_raw(turn_duration_ms: int = 4000) -> ParaverbalRawFeatures:
 
 
 def _nonverbal_payload(conversation_speaker: str, turn_duration_ms: int = 4000) -> dict:
-    """The raw OpenFace 3.0 per-turn payload shape: NonverbalRawFeatures dump + context.
+    """The raw nonverbal per-turn payload shape: NonverbalRawFeatures dump + context.
 
-    Matches ``analyze_openface_student_turn_videos`` output: a
+    Matches the shared MediaPipe/BlazeGaze/CCDb-HG video extraction output: a
     ``NonverbalRawFeatures.model_dump()`` plus an ``observationContext`` block.
     Enough frames are provided that preprocessing can run; features that depend on
     null methodology params (gaze tolerance, AU12 threshold, nod params) will be
@@ -255,7 +255,7 @@ def _nonverbal_payload(conversation_speaker: str, turn_duration_ms: int = 4000) 
         "frame_timestamps_ms": timestamps,
         "sample_fps": 2.0,
         "turn_duration_ms": turn_duration_ms,
-        "extractor": {"name": "openface", "version": "test"},
+        "extractor": {"name": "mediapipe_face_landmarker", "version": "test"},
         "video_quality": {"detected_frames": 8, "issues": []},
         "observationContext": {
             "observedParticipant": "student",

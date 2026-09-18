@@ -1,40 +1,19 @@
-"""Tests for personal-baseline calibration (Requirements 28.8, 15.3, 15.4, 15.5).
+"""Tests for the temporary calibration flow and personal-baseline accessors.
 
-These tests exercise three layers of the calibration feature:
+Calibration is processed temporarily (``POST /calibration/process``) with no
+database row and no permanent media, and its passed result is persisted into
+``interview_metadata.calibration`` only when the interview starts. These tests
+cover:
 
-* the pure helpers in ``app.multimodal.calibration``
-  (:func:`read_personal_baseline`, :func:`derive_personal_baseline`),
-* the relaxed :class:`CalibrationResultRequest` schema guard, and
-* the stateless ``POST /calibration/baseline`` endpoint logic, and
-* the legacy ``POST /{interview_id}/calibration/baseline`` endpoint logic.
-
-Unit vs endpoint coverage
--------------------------
-Most cases are unit-level and need neither a live database nor a FastAPI
-``TestClient``:
-
-* ``read_personal_baseline`` is tested against lightweight stub objects that only
-  expose ``interview_metadata`` (the sole attribute the helper reads).
-* ``CalibrationResultRequest`` validation is tested by validating dict payloads
-  directly (mirroring ``app/routers/tests/test_interview_calibration.py``).
-* ``derive_personal_baseline`` is tested on its guaranteed ``None`` path (no media
-  provided), which returns before any extractor import, so it runs without the
-  OpenSMILE/Py-Feat dependencies.
-
-The endpoint behaviours (temp media never persisted, values saved, overwrite
-guard, calibration allowed before start) are covered by invoking the endpoint
-coroutine ``derive_calibration_baseline`` directly with a fake ``Session`` and a
-stub interview -- the same lightweight-stub approach used by the existing router
-tests -- while mocking :func:`derive_personal_baseline` so no real extractor or
-media processing is required. This exercises the real endpoint logic (auth-scoped
-lookup, ``start_time`` guard, temp-file streaming + ``finally`` deletion, metadata
-persistence) without a live DB or external Azure environment.
-
-These tests deliberately do not spin up a FastAPI ``TestClient`` against a real
-database: that would require Postgres/Azure configuration that is not
-part of a unit-test environment, per the workspace validation rules. Calling the
-endpoint coroutine directly gives the strongest feasible coverage of the endpoint
-contract without fabricating an environment.
+* the pipeline accessors :func:`read_personal_baseline` and
+  :func:`read_calibration_profile`;
+* the no-fabrication guarantee of :func:`derive_personal_baseline`;
+* the draft :class:`CalibrationResultRequest` schema guard;
+* the result assembly (:func:`_assemble_result`) shared with the old durable flow
+  so a valid calibration is functionally equivalent; and
+* the temporary-processing endpoint contract (temp file always deleted on pass,
+  fail, and worker failure) exercised by calling the endpoint coroutine directly
+  with mocked isolated workers -- no live DB, media, or external environment.
 """
 
 from __future__ import annotations
@@ -46,29 +25,25 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import UploadFile
 from pydantic import ValidationError
 from starlette.datastructures import Headers
 
 from app.multimodal.calibration import (
     derive_personal_baseline,
+    read_calibration_profile,
     read_personal_baseline,
 )
 from app.multimodal.schemas import PersonalBaseline
-from app.routers import medical_interviews
-from app.routers.medical_interviews import (
-    CalibrationResultRequest,
-    derive_calibration_baseline,
-    derive_unbound_calibration_baseline,
-)
+from app.routers import calibration as calibration_router
+from app.routers.calibration import _assemble_result, process_calibration
+from app.routers.medical_interviews import CalibrationResultRequest
 
 
 # ---------------------------------------------------------------------------
-# Test fixtures / helpers
+# Fixtures
 # ---------------------------------------------------------------------------
 
-# A fully-specified, numeric-only baseline used across the tests. Fundamental
-# frequency is in semitones only (never Hertz), matching the schema.
 _VALID_BASELINE_METRICS = {
     "baseline_f0_semitones": 4.5,
     "baseline_loudness": 0.62,
@@ -79,100 +54,92 @@ _VALID_BASELINE_METRICS = {
     "neutral_gaze_pitch": -0.2,
 }
 
+# Worker outputs that, combined, produce a passing calibration. These mirror the
+# shapes emitted by app/nonverbal/calibration_worker.py.
+_VIDEO_RESULT_PASS = {
+    "profile": {"affine_matrix": [[1, 0, 0], [0, 1, 0]], "camera_reference_center": [0.1, -0.2]},
+    "quality": {"face_valid_ratio": 0.95},
+    "passed": True,
+    "failure_reason": None,
+    "neutral_head": {"neutral_head_yaw": -1.2, "neutral_head_pitch": 2.3, "neutral_head_roll": 0.4},
+    "performance": {},
+}
+_AUDIO_RESULT_PASS = {
+    "voiced_duration_ms": 9000,
+    "clipping_detected": False,
+    "baseline_f0_semitones": 4.5,
+    "baseline_loudness": 0.62,
+}
 
-def _valid_baseline() -> PersonalBaseline:
-    return PersonalBaseline(**_VALID_BASELINE_METRICS)
 
-
-def calibration_payload(**overrides):
-    """Build a valid ``CalibrationResultRequest`` payload.
-
-    Mirrors the helper in ``app/routers/tests/test_interview_calibration.py`` so
-    the two suites agree on what a well-formed calibration summary looks like.
-    """
+def draft_payload(**overrides):
     payload = {
-        "version": "technical_v2",
+        "version": "multimodal_calibration_v1",
         "status": "passed",
-        "duration_ms": 20_000,
-        "recording_supported": True,
-        "audio": {
-            "microphone_available": True,
-            "stream_active": True,
-            "voice_detected": True,
-            "input_level": "adequate",
-            "clipping_detected": False,
-        },
-        "video": {
-            "camera_available": True,
-            "stream_active": True,
-            "face_detected": True,
-            "face_detection_rate": 95.0,
-            "quality_status": "adequate",
-        },
-        "personal_baseline": None,
+        "failure_reason": None,
+        "profile": {"affine_matrix": [[1, 0, 0], [0, 1, 0]], "personal_baseline": dict(_VALID_BASELINE_METRICS)},
+        "quality": {"face_valid_ratio": 0.95},
+        "personal_baseline": dict(_VALID_BASELINE_METRICS),
     }
     payload.update(overrides)
     return payload
 
 
 def _make_upload(content: bytes, *, filename: str, content_type: str) -> UploadFile:
-    """Build a real Starlette ``UploadFile`` backed by an in-memory buffer.
-
-    The endpoint reads the upload through ``await upload.seek/read``; a real
-    ``UploadFile`` over a ``BytesIO`` exercises that streaming path without a
-    multipart HTTP request.
-    """
     headers = Headers({"content-type": content_type})
     return UploadFile(file=io.BytesIO(content), filename=filename, headers=headers)
 
 
-class _Query:
-    """Minimal SQLAlchemy ``Query`` stub returning a fixed interview."""
-
-    def __init__(self, interview):
-        self._interview = interview
-
-    def filter(self, *args, **kwargs):
-        return self
-
-    def first(self):
-        return self._interview
-
-
-class _Database:
-    """Minimal ``Session`` stub recording commits."""
-
-    def __init__(self, interview):
-        self._interview = interview
-        self.commit_count = 0
-
-    def query(self, model):
-        return _Query(self._interview)
-
-    def commit(self):
-        self.commit_count += 1
+def _valid_metadata_json() -> str:
+    """A calibration metadata JSON that satisfies the 9-target protocol."""
+    ids = ["CENTER", "TOP_LEFT", "BOTTOM_RIGHT", "TOP_RIGHT", "BOTTOM_LEFT", "TOP_CENTER", "BOTTOM_CENTER", "MIDDLE_LEFT", "MIDDLE_RIGHT"]
+    targets = []
+    for index, target_id in enumerate(ids):
+        start = 2500 + index * 2000
+        targets.append({
+            "target_id": target_id,
+            "target_order": index + 1,
+            "target_normalized_x": 0.5,
+            "target_normalized_y": 0.5,
+            "target_pixel_x": 640.0,
+            "target_pixel_y": 360.0,
+            "presentation_start_ms": start,
+            "presentation_end_ms": start + 2000,
+            "observation_window_start_ms": start + 250,
+            "observation_window_end_ms": start + 2000,
+        })
+    camera_start = 2500 + 9 * 2000
+    metadata = {
+        "geometry": {
+            "viewport_width": 1280, "viewport_height": 720, "device_pixel_ratio": 1.0,
+            "orientation": "landscape", "video_width": 1280, "video_height": 720,
+        },
+        "targets": targets,
+        "camera_reference_start_ms": camera_start,
+        "camera_reference_end_ms": camera_start + 3000,
+        "voice_baseline_start_ms": camera_start + 3000,
+        "voice_baseline_end_ms": camera_start + 3000 + 9000,
+        "geometry_stable": True,
+    }
+    import json
+    return json.dumps(metadata)
 
 
 def _run(coro):
-    """Run an async endpoint coroutine to completion for a sync test."""
     return asyncio.run(coro)
 
 
 # ---------------------------------------------------------------------------
-# read_personal_baseline -- the pipeline's single baseline accessor
+# read_personal_baseline / read_calibration_profile -- pipeline accessors
 # ---------------------------------------------------------------------------
 
 
 class ReadPersonalBaselineTests(unittest.TestCase):
     def test_reads_valid_baseline_from_metadata(self):
         interview = SimpleNamespace(
-            interview_metadata={
-                "calibration": {"personal_baseline": dict(_VALID_BASELINE_METRICS)}
-            }
+            interview_metadata={"calibration": {"personal_baseline": dict(_VALID_BASELINE_METRICS)}}
         )
-
         baseline = read_personal_baseline(interview)
-
         self.assertIsInstance(baseline, PersonalBaseline)
         self.assertEqual(baseline.baseline_f0_semitones, 4.5)
         self.assertEqual(baseline.neutral_gaze_yaw, 0.1)
@@ -181,82 +148,74 @@ class ReadPersonalBaselineTests(unittest.TestCase):
         self.assertIsNone(read_personal_baseline(None))
 
     def test_returns_none_when_metadata_absent(self):
-        interview = SimpleNamespace(interview_metadata=None)
-        self.assertIsNone(read_personal_baseline(interview))
+        self.assertIsNone(read_personal_baseline(SimpleNamespace(interview_metadata=None)))
 
     def test_returns_none_when_calibration_block_absent(self):
-        interview = SimpleNamespace(interview_metadata={"other": {}})
-        self.assertIsNone(read_personal_baseline(interview))
+        self.assertIsNone(read_personal_baseline(SimpleNamespace(interview_metadata={"other": {}})))
 
     def test_returns_none_when_baseline_absent(self):
-        interview = SimpleNamespace(
-            interview_metadata={"calibration": {"status": "passed"}}
-        )
+        interview = SimpleNamespace(interview_metadata={"calibration": {"status": "passed"}})
         self.assertIsNone(read_personal_baseline(interview))
 
     def test_returns_none_when_stored_payload_is_malformed(self):
-        # Missing the required ``baseline_f0_semitones`` -> schema validation fails
-        # and the helper degrades to ``None`` rather than raising.
         interview = SimpleNamespace(
-            interview_metadata={
-                "calibration": {"personal_baseline": {"baseline_loudness": 0.5}}
-            }
+            interview_metadata={"calibration": {"personal_baseline": {"baseline_loudness": 0.5}}}
         )
         self.assertIsNone(read_personal_baseline(interview))
 
     def test_returns_none_when_stored_payload_is_not_a_dict(self):
-        interview = SimpleNamespace(
-            interview_metadata={"calibration": {"personal_baseline": "nope"}}
-        )
+        interview = SimpleNamespace(interview_metadata={"calibration": {"personal_baseline": "nope"}})
         self.assertIsNone(read_personal_baseline(interview))
 
 
-# ---------------------------------------------------------------------------
-# CalibrationResultRequest -- relaxed schema guard (Requirement 15.5)
-# ---------------------------------------------------------------------------
+class ReadCalibrationProfileTests(unittest.TestCase):
+    def test_reads_profile_from_metadata(self):
+        interview = SimpleNamespace(
+            interview_metadata={"calibration": {"profile": {"affine_matrix": [[1, 0, 0], [0, 1, 0]]}}}
+        )
+        profile = read_calibration_profile(interview)
+        self.assertIsInstance(profile, dict)
+        self.assertIn("affine_matrix", profile)
 
-
-class CalibrationResultRequestBaselineTests(unittest.TestCase):
-    def test_accepts_valid_numeric_baseline(self):
-        # The old "not implemented" rejection is gone: a well-formed, numeric-only
-        # baseline no longer raises.
-        result = CalibrationResultRequest.model_validate(
-            calibration_payload(personal_baseline=dict(_VALID_BASELINE_METRICS))
+    def test_returns_none_when_absent_or_invalid(self):
+        self.assertIsNone(read_calibration_profile(None))
+        self.assertIsNone(read_calibration_profile(SimpleNamespace(interview_metadata={})))
+        self.assertIsNone(
+            read_calibration_profile(SimpleNamespace(interview_metadata={"calibration": {"profile": "nope"}}))
         )
 
+
+# ---------------------------------------------------------------------------
+# CalibrationResultRequest -- draft schema guard
+# ---------------------------------------------------------------------------
+
+
+class CalibrationResultRequestTests(unittest.TestCase):
+    def test_accepts_passed_draft_with_baseline_and_profile(self):
+        result = CalibrationResultRequest.model_validate(draft_payload())
+        self.assertEqual(result.status, "passed")
         self.assertIsInstance(result.personal_baseline, PersonalBaseline)
-        self.assertEqual(result.personal_baseline.baseline_f0_semitones, 4.5)
 
-    def test_rejects_baseline_without_required_gaze(self):
-        metrics = {
-            k: v
-            for k, v in _VALID_BASELINE_METRICS.items()
-            if k not in {"neutral_gaze_yaw", "neutral_gaze_pitch"}
-        }
+    def test_rejects_passed_without_baseline(self):
+        with self.assertRaises(ValidationError):
+            CalibrationResultRequest.model_validate(draft_payload(personal_baseline=None))
+
+    def test_rejects_passed_without_profile(self):
+        with self.assertRaises(ValidationError):
+            CalibrationResultRequest.model_validate(draft_payload(profile=None))
+
+    def test_rejects_malformed_baseline(self):
         with self.assertRaises(ValidationError):
             CalibrationResultRequest.model_validate(
-                calibration_payload(personal_baseline=metrics)
+                draft_payload(personal_baseline={"baseline_loudness": 0.5})
             )
 
-    def test_none_baseline_is_still_accepted(self):
+    def test_accepts_failed_without_baseline(self):
         result = CalibrationResultRequest.model_validate(
-            calibration_payload(personal_baseline=None)
+            draft_payload(status="failed", failure_reason="insufficient_audio", profile=None, quality=None, personal_baseline=None)
         )
+        self.assertEqual(result.status, "failed")
         self.assertIsNone(result.personal_baseline)
-
-    def test_rejects_baseline_missing_required_field(self):
-        with self.assertRaises(ValidationError):
-            CalibrationResultRequest.model_validate(
-                calibration_payload(personal_baseline={"baseline_loudness": 0.5})
-            )
-
-    def test_rejects_baseline_with_wrong_types(self):
-        bad = dict(_VALID_BASELINE_METRICS)
-        bad["baseline_f0_semitones"] = "not-a-number"
-        with self.assertRaises(ValidationError):
-            CalibrationResultRequest.model_validate(
-                calibration_payload(personal_baseline=bad)
-            )
 
 
 # ---------------------------------------------------------------------------
@@ -266,325 +225,179 @@ class CalibrationResultRequestBaselineTests(unittest.TestCase):
 
 class DerivePersonalBaselineTests(unittest.TestCase):
     def test_returns_none_when_no_media_provided(self):
-        # With neither audio nor video, the required metric groups cannot be
-        # derived; the helper returns None before importing any extractor, so
-        # this path holds even without the OpenSMILE/Py-Feat dependencies.
-        self.assertIsNone(
-            derive_personal_baseline(audio_path=None, video_path=None)
-        )
+        self.assertIsNone(derive_personal_baseline(audio_path=None, video_path=None))
 
     def test_returns_none_and_does_not_fabricate_values(self):
-        result = derive_personal_baseline(
-            audio_path=None, video_path=None, min_voiced_duration_ms=300
-        )
-        # No PersonalBaseline object is fabricated when media is unavailable.
+        result = derive_personal_baseline(audio_path=None, video_path=None, min_voiced_duration_ms=300)
         self.assertNotIsInstance(result, PersonalBaseline)
         self.assertIsNone(result)
 
 
 # ---------------------------------------------------------------------------
-# POST /calibration/baseline -- stateless endpoint logic
+# _assemble_result -- functional equivalence with the old durable assembly
 # ---------------------------------------------------------------------------
 
 
-class DeriveUnboundCalibrationBaselineEndpointTests(unittest.TestCase):
-    def test_derives_complete_baseline_without_an_interview_or_database(self):
-        video = _make_upload(
-            b"combined-audio-video-bytes",
-            filename="calibration.webm",
-            content_type="video/webm",
+class AssembleResultTests(unittest.TestCase):
+    def test_passed_assembles_personal_baseline_and_status(self):
+        status_, reason, profile, quality, baseline = _assemble_result(
+            dict(_VIDEO_RESULT_PASS), dict(_AUDIO_RESULT_PASS)
         )
-        derived = _valid_baseline()
+        self.assertEqual(status_, "passed")
+        self.assertIsNone(reason)
+        self.assertIsNotNone(baseline)
+        # Baseline merges neutral head + audio F0/loudness + gaze from camera center.
+        self.assertEqual(baseline["baseline_f0_semitones"], 4.5)
+        self.assertEqual(baseline["baseline_loudness"], 0.62)
+        self.assertEqual(baseline["neutral_gaze_yaw"], 0.1)
+        self.assertEqual(baseline["neutral_gaze_pitch"], -0.2)
+        self.assertEqual(baseline["neutral_head_yaw"], -1.2)
+        # Quality is patched with the audio-derived fields.
+        self.assertEqual(quality["valid_speech_duration_ms"], 9000)
+        self.assertFalse(quality["clipping_detected"])
 
-        with patch.object(
-            medical_interviews,
-            "derive_personal_baseline",
-            return_value=derived,
-        ) as mock_derive:
-            response = _run(
-                derive_unbound_calibration_baseline(
-                    audio=None,
-                    video=video,
-                    current_user=SimpleNamespace(id=42),
-                )
-            )
-
-        self.assertEqual(response.status, "ok")
-        self.assertEqual(response.personal_baseline, derived)
-        _, kwargs = mock_derive.call_args
-        self.assertEqual(kwargs["audio_path"], kwargs["video_path"])
-        self.assertFalse(os.path.exists(kwargs["video_path"]))
-
-    def test_unavailable_signal_returns_no_fabricated_baseline(self):
-        audio = _make_upload(
-            b"audio-bytes",
-            filename="calibration.webm",
-            content_type="audio/webm",
+    def test_failed_when_audio_insufficient(self):
+        audio = dict(_AUDIO_RESULT_PASS, voiced_duration_ms=1000)
+        status_, reason, profile, quality, baseline = _assemble_result(
+            dict(_VIDEO_RESULT_PASS), audio
         )
+        self.assertEqual(status_, "failed")
+        self.assertIsNone(baseline)
+        self.assertEqual(reason, "insufficient_audio")
 
-        with patch.object(
-            medical_interviews,
-            "derive_personal_baseline",
-            return_value=None,
-        ):
-            response = _run(
-                derive_unbound_calibration_baseline(
-                    audio=audio,
-                    video=None,
-                    current_user=SimpleNamespace(id=42),
-                )
-            )
+    def test_failed_when_clipping_detected(self):
+        audio = dict(_AUDIO_RESULT_PASS, clipping_detected=True)
+        status_, reason, profile, quality, baseline = _assemble_result(
+            dict(_VIDEO_RESULT_PASS), audio
+        )
+        self.assertEqual(status_, "failed")
+        self.assertIsNone(baseline)
 
-        self.assertEqual(response.status, "unavailable")
-        self.assertIsNone(response.personal_baseline)
+    def test_failed_propagates_video_failure_reason(self):
+        video = dict(_VIDEO_RESULT_PASS, passed=False, failure_reason="gaze_coverage")
+        status_, reason, profile, quality, baseline = _assemble_result(
+            video, dict(_AUDIO_RESULT_PASS)
+        )
+        self.assertEqual(status_, "failed")
+        self.assertEqual(reason, "gaze_coverage")
 
 
 # ---------------------------------------------------------------------------
-# POST /{interview_id}/calibration/baseline -- endpoint logic
+# POST /calibration/process -- temporary processing endpoint contract
 # ---------------------------------------------------------------------------
 
 
-class DeriveCalibrationBaselineEndpointTests(unittest.TestCase):
-    def _interview(self, **overrides):
-        base = {
-            "id": 7,
-            "user_id": 42,
-            "status": "in_progress",
-            "start_time": None,
-            "interview_metadata": {},
-        }
-        base.update(overrides)
-        return SimpleNamespace(**base)
-
+class ProcessCalibrationEndpointTests(unittest.TestCase):
     def _current_user(self):
         return SimpleNamespace(id=42)
 
-    def test_requires_at_least_one_media(self):
-        interview = self._interview()
-        db = _Database(interview)
-
-        with self.assertRaises(HTTPException) as ctx:
-            _run(
-                derive_calibration_baseline(
-                    interview_id=7,
-                    audio=None,
-                    video=None,
-                    current_user=self._current_user(),
-                    db=db,
-                )
-            )
-
-        self.assertEqual(ctx.exception.status_code, status.HTTP_400_BAD_REQUEST)
-
-    def test_rejects_when_interview_not_found(self):
-        db = _Database(None)
-        audio = _make_upload(b"x", filename="c.wav", content_type="audio/wav")
-
-        with self.assertRaises(HTTPException) as ctx:
-            _run(
-                derive_calibration_baseline(
-                    interview_id=7,
-                    audio=audio,
-                    video=None,
-                    current_user=self._current_user(),
-                    db=db,
-                )
-            )
-
-        self.assertEqual(ctx.exception.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_allows_calibration_before_start_and_saves_numeric_values(self):
-        # Overwrite guard: calibration is allowed while start_time is None.
-        interview = self._interview(start_time=None)
-        db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
-        video = _make_upload(b"video-bytes", filename="c.mp4", content_type="video/mp4")
-
-        derived = _valid_baseline()
-        with patch.object(
-            medical_interviews, "derive_personal_baseline", return_value=derived
-        ) as mock_derive, patch.object(
-            medical_interviews, "flag_modified"
-        ):
-            response = _run(
-                derive_calibration_baseline(
-                    interview_id=7,
-                    audio=audio,
-                    video=video,
-                    current_user=self._current_user(),
-                    db=db,
-                )
-            )
-
-        # Endpoint reports success and echoes the derived baseline.
-        self.assertEqual(response.status, "ok")
-        self.assertEqual(response.personal_baseline, derived)
-
-        # Values saved: numeric metrics land under
-        # interview_metadata.calibration.personal_baseline.
-        stored = interview.interview_metadata["calibration"]["personal_baseline"]
-        self.assertEqual(stored, _VALID_BASELINE_METRICS)
-        self.assertEqual(db.commit_count, 1)
-
-        # Baseline accessible from the pipeline: the stored payload round-trips
-        # through the pipeline's single accessor.
-        pipeline_view = read_personal_baseline(interview)
-        self.assertEqual(pipeline_view, derived)
-
-        # The derivation was invoked with a real temp audio and video path.
-        _, kwargs = mock_derive.call_args
-        self.assertIsNotNone(kwargs["audio_path"])
-        self.assertIsNotNone(kwargs["video_path"])
-
-    def test_combined_video_is_reused_as_audio_source(self):
-        interview = self._interview(start_time=None)
-        db = _Database(interview)
-        video = _make_upload(
-            b"combined-audio-video-bytes",
-            filename="calibration.webm",
-            content_type="video/webm",
-        )
-
-        with patch.object(
-            medical_interviews,
-            "derive_personal_baseline",
-            return_value=_valid_baseline(),
-        ) as mock_derive, patch.object(
-            medical_interviews, "flag_modified"
-        ):
-            response = _run(
-                derive_calibration_baseline(
-                    interview_id=7,
-                    audio=None,
-                    video=video,
-                    current_user=self._current_user(),
-                    db=db,
-                )
-            )
-
-        self.assertEqual(response.status, "ok")
-        _, kwargs = mock_derive.call_args
-        self.assertEqual(kwargs["audio_path"], kwargs["video_path"])
-        self.assertFalse(os.path.exists(kwargs["video_path"]))
-
-    def test_media_not_persisted_temp_files_deleted(self):
-        # Media is never persisted (Requirement 15.4): the temp files handed to
-        # the extractor must not exist once the endpoint returns.
-        interview = self._interview()
-        db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
-        video = _make_upload(b"video-bytes", filename="c.mp4", content_type="video/mp4")
-
+    def test_passes_and_deletes_temp_file(self):
+        video = _make_upload(b"combined-webm-bytes", filename="c.webm", content_type="video/webm")
         captured = {}
 
-        def _capture(*, audio_path, video_path, min_voiced_duration_ms=None):
-            # Files exist while the extractor runs...
-            captured["audio_path"] = audio_path
-            captured["video_path"] = video_path
-            captured["audio_exists_during"] = os.path.exists(audio_path)
-            captured["video_exists_during"] = os.path.exists(video_path)
-            return _valid_baseline()
+        async def _fake_worker(path, metadata, mode):
+            captured.setdefault("paths", []).append(str(path))
+            captured["exists_during"] = os.path.exists(path)
+            return dict(_VIDEO_RESULT_PASS) if mode == "video" else dict(_AUDIO_RESULT_PASS)
 
-        with patch.object(
-            medical_interviews, "derive_personal_baseline", side_effect=_capture
-        ), patch.object(
-            medical_interviews, "flag_modified"
-        ):
-            _run(
-                derive_calibration_baseline(
-                    interview_id=7,
-                    audio=audio,
+        with patch.object(calibration_router, "_run_isolated_worker", side_effect=_fake_worker):
+            response = _run(
+                process_calibration(
                     video=video,
+                    duration_ms=33000,
+                    metadata_json=_valid_metadata_json(),
                     current_user=self._current_user(),
-                    db=db,
+                    db=SimpleNamespace(),
                 )
             )
 
-        self.assertTrue(captured["audio_exists_during"])
-        self.assertTrue(captured["video_exists_during"])
-        # ...and are removed by the finally block once the endpoint returns.
-        self.assertFalse(os.path.exists(captured["audio_path"]))
-        self.assertFalse(os.path.exists(captured["video_path"]))
+        self.assertEqual(response.status, "passed")
+        self.assertIsNone(response.failure_reason)
+        self.assertIsNotNone(response.personal_baseline)
+        # The same temp path was used by both workers and is removed afterwards.
+        self.assertTrue(captured["exists_during"])
+        self.assertFalse(os.path.exists(captured["paths"][0]))
 
-    def test_temp_files_deleted_even_when_derivation_fails(self):
-        interview = self._interview()
-        db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
-
+    def test_failed_result_still_deletes_temp_file(self):
+        video = _make_upload(b"combined-webm-bytes", filename="c.webm", content_type="video/webm")
         captured = {}
 
-        def _boom(*, audio_path, video_path, min_voiced_duration_ms=None):
-            captured["audio_path"] = audio_path
-            raise RuntimeError("extractor blew up")
+        async def _fake_worker(path, metadata, mode):
+            captured["path"] = str(path)
+            if mode == "video":
+                return dict(_VIDEO_RESULT_PASS, passed=False, failure_reason="gaze_coverage")
+            return dict(_AUDIO_RESULT_PASS)
 
-        with patch.object(
-            medical_interviews, "derive_personal_baseline", side_effect=_boom
-        ):
-            with self.assertRaises(HTTPException) as ctx:
-                _run(
-                    derive_calibration_baseline(
-                        interview_id=7,
-                        audio=audio,
-                        video=None,
-                        current_user=self._current_user(),
-                        db=db,
-                    )
-                )
-
-        self.assertEqual(
-            ctx.exception.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY
-        )
-        # The temp file is deleted by the finally block despite the failure.
-        self.assertFalse(os.path.exists(captured["audio_path"]))
-
-    def test_unavailable_baseline_is_not_fabricated(self):
-        interview = self._interview()
-        db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.webm", content_type="audio/webm")
-
-        with patch.object(
-            medical_interviews, "derive_personal_baseline", return_value=None
-        ):
+        with patch.object(calibration_router, "_run_isolated_worker", side_effect=_fake_worker):
             response = _run(
-                derive_calibration_baseline(
-                    interview_id=7,
-                    audio=audio,
-                    video=None,
+                process_calibration(
+                    video=video,
+                    duration_ms=33000,
+                    metadata_json=_valid_metadata_json(),
                     current_user=self._current_user(),
-                    db=db,
+                    db=SimpleNamespace(),
                 )
             )
 
-        self.assertEqual(response.status, "unavailable")
+        self.assertEqual(response.status, "failed")
+        self.assertEqual(response.failure_reason, "gaze_coverage")
         self.assertIsNone(response.personal_baseline)
-        # Nothing persisted and no baseline invented.
-        self.assertNotIn("calibration", interview.interview_metadata)
-        self.assertEqual(db.commit_count, 0)
+        self.assertFalse(os.path.exists(captured["path"]))
 
-    def test_overwrite_prevented_once_started(self):
-        # Overwrite guard: once start_time is set, the baseline endpoint rejects
-        # with 409 before touching media.
-        interview = self._interview(start_time="2024-01-01T00:00:00+00:00")
-        db = _Database(interview)
-        audio = _make_upload(b"audio-bytes", filename="c.wav", content_type="audio/wav")
+    def test_worker_failure_returns_controlled_result_and_deletes_temp(self):
+        video = _make_upload(b"combined-webm-bytes", filename="c.webm", content_type="video/webm")
+        captured = {}
 
-        with patch.object(
-            medical_interviews, "derive_personal_baseline"
-        ) as mock_derive:
-            with self.assertRaises(HTTPException) as ctx:
-                _run(
-                    derive_calibration_baseline(
-                        interview_id=7,
-                        audio=audio,
-                        video=None,
-                        current_user=self._current_user(),
-                        db=db,
-                    )
+        async def _boom(path, metadata, mode):
+            captured["path"] = str(path)
+            raise RuntimeError("native worker crashed")
+
+        with patch.object(calibration_router, "_run_isolated_worker", side_effect=_boom):
+            response = _run(
+                process_calibration(
+                    video=video,
+                    duration_ms=33000,
+                    metadata_json=_valid_metadata_json(),
+                    current_user=self._current_user(),
+                    db=SimpleNamespace(),
                 )
+            )
 
-        self.assertEqual(ctx.exception.status_code, status.HTTP_409_CONFLICT)
-        # The guard short-circuits before any derivation attempt.
-        mock_derive.assert_not_called()
+        self.assertEqual(response.status, "failed")
+        self.assertEqual(response.failure_reason, "processing_failed")
+        self.assertIsNone(response.personal_baseline)
+        # The temp file is deleted even when a worker crashes.
+        self.assertFalse(os.path.exists(captured["path"]))
+
+    def test_rejects_unsupported_media_type(self):
+        from fastapi import HTTPException
+        video = _make_upload(b"x", filename="c.avi", content_type="video/avi")
+        with self.assertRaises(HTTPException) as ctx:
+            _run(
+                process_calibration(
+                    video=video,
+                    duration_ms=33000,
+                    metadata_json=_valid_metadata_json(),
+                    current_user=self._current_user(),
+                    db=SimpleNamespace(),
+                )
+            )
+        self.assertEqual(ctx.exception.status_code, 415)
+
+    def test_rejects_invalid_metadata(self):
+        from fastapi import HTTPException
+        video = _make_upload(b"x", filename="c.webm", content_type="video/webm")
+        with self.assertRaises(HTTPException) as ctx:
+            _run(
+                process_calibration(
+                    video=video,
+                    duration_ms=30000,
+                    metadata_json="{not valid json",
+                    current_user=self._current_user(),
+                    db=SimpleNamespace(),
+                )
+            )
+        self.assertEqual(ctx.exception.status_code, 422)
 
 
 if __name__ == "__main__":

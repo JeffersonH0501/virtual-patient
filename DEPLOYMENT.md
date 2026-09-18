@@ -74,21 +74,20 @@ static content.
 Playback is authorized by the API and supports HTTP Range requests.
 
 Post-interview observations run through the staged multimodal pipeline, which
-uses OpenSMILE for student audio and Py-Feat 2.1.1 for student video. The
-pipeline is scheduled as a background task when a recording is finalized. Its
-methodology (derivation parameters, threshold bands, and label rules) lives in
-versioned YAML under `app/multimodal/config/`. Extractor runtime constants live
-beside their implementations: OpenSMILE uses eGeMAPSv02 LLDs over mono 16 kHz
-PCM, while Py-Feat uses Detectorv2 at 3 FPS with batches of 8 and stores
-downloaded resources in the persistent `/app/pyfeat` volume. The API image uses
-the official PyTorch CUDA 12.6 runtime and both Compose modes expose the NVIDIA
-GPU to the API. Py-Feat selects CUDA automatically, reduces its batch through
-`8, 4, 2, 1` if the device rejects the initial batch, and finally retries on CPU.
-Pascal GPU use native CUDA convolution kernels; newer GPU retain cuDNN. A GPU
-deployment therefore requires an NVIDIA driver and Docker GPU support, but no
-host-side Python or CUDA toolkit installation.
+uses OpenSMILE for student audio and a shared server-side video path for student
+video: MediaPipe Face Landmarker, BlazeGaze/WebEyeTrack gaze and CCDb-HG
+head-gesture inference, plus the smile blendshape logic. The pipeline is
+scheduled as a background task when a recording is finalized. Its methodology
+(derivation parameters, threshold bands, and label rules) lives in versioned
+YAML under `app/multimodal/config/`. Extractor runtime constants live beside
+their implementations: OpenSMILE uses eGeMAPSv02 LLDs over mono 16 kHz PCM, and
+the visual extractors ship their model assets in-repo (under
+`app/nonverbal/models/`) or via pip. All video inference is CPU-only: the API
+image installs the CPU PyTorch build, and neither Compose mode requires or
+exposes an NVIDIA GPU, so no host-side Python or CUDA toolkit installation is
+needed.
 
-Methodology values such as the gaze alignment tolerance and AU12 active
+Methodology values such as the gaze alignment tolerance and smile activation
 threshold are configured in `app/multimodal/config/processing.yaml`, not in
 `.env`. They remain `null` (undecided) until the research procedure defines
 them, and their dependent features are reported as unavailable rather than

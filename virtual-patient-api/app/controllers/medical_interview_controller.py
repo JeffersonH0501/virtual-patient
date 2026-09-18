@@ -8,7 +8,7 @@ from app.models.medical_interview import (
     InterviewStatus, MedicalInterviewComplete, InterviewMessage
 )
 from app.models.user import UserDB, User
-from app.models.calibration import CalibrationAttemptDB, CalibrationStatus
+from app.multimodal.calibration import read_personal_baseline
 from app.models.clinical_case import ClinicalCase
 from app.controllers.clinical_case_controller import ClinicalCaseController
 from app.controllers.message_controller import MessageController
@@ -252,16 +252,15 @@ class MedicalInterviewController:
         if interview.start_time is not None:
             return MedicalInterview.from_orm(interview)
 
-        calibration = self.db.query(CalibrationAttemptDB).filter(
-            CalibrationAttemptDB.medical_interview_id == interview.id,
-            CalibrationAttemptDB.user_id == interview.user_id,
-            CalibrationAttemptDB.status == CalibrationStatus.PASSED.value,
-            CalibrationAttemptDB.is_active.is_(True),
-        ).first()
-        if calibration is None:
+        # The calibration draft is persisted into ``interview_metadata.calibration``
+        # before start. A passed calibration always carries a valid personal
+        # baseline (validated on save), so its presence is the start gate.
+        calibration = (interview.interview_metadata or {}).get("calibration")
+        calibration_passed = isinstance(calibration, dict) and calibration.get("status") == "passed"
+        if not calibration_passed or read_personal_baseline(interview) is None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="An active passed multimodal calibration must be linked before the interview starts",
+                detail="A passed multimodal calibration must be saved before the interview starts",
             )
 
         interview.start_time = datetime.now(timezone.utc)

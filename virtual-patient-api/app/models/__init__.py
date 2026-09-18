@@ -3,7 +3,7 @@ from .organization import OrganizationDB, Organization, OrganizationCreate, Orga
 from .clinical_case import ClinicalCaseDB, ClinicalCase, ClinicalCaseCreate, ClinicalCaseUpdate, ClinicalCaseWithOrganization, CaseType
 from .personality import PersonalityDB, Personality, PersonalityCreate, PersonalityUpdate
 from .teacher_feedback import TeacherFeedbackDB, TeacherFeedback, TeacherFeedbackCreate
-from .calibration import CalibrationAttemptDB, CalibrationMediaAssetDB, CalibrationStatus
+
 from .medical_interview import (
     MedicalInterviewDB, MedicalInterview, MedicalInterviewCreate, MedicalInterviewUpdate,
     InterviewMessageDB, InterviewMessage, InterviewMessageCreate,
@@ -33,5 +33,4 @@ __all__ = [
     "InterviewStatus", "SenderType", "NoteType",
     "InterviewRecordingDB", "InterviewMediaAssetDB", "InterviewTurnDB", "TurnVideoAnalysisDB",
     "RecordingStatus", "MediaAssetKind",
-    "CalibrationAttemptDB", "CalibrationMediaAssetDB", "CalibrationStatus",
 ]

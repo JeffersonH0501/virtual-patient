@@ -1,16 +1,11 @@
 import logging
-import os
-import tempfile
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Annotated, List, Dict, Any, Literal, Optional
+from typing import List, Dict, Any, Literal, Optional
 from fastapi import (
     APIRouter,
     Depends,
-    File,
     HTTPException,
     Query,
-    UploadFile,
     status,
 )
 from sqlalchemy.orm import Session
@@ -18,7 +13,6 @@ from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, Field, model_validator
 from app.core.database import get_db
 from app.core.auth import get_current_active_user
-from app.multimodal.calibration import derive_personal_baseline
 from app.multimodal.schemas import PersonalBaseline
 from app.models.user import User, UserRole
 from app.models.medical_interview import (
@@ -48,24 +42,6 @@ router = APIRouter(
     responses={404: {"description": "Interview not found"}},
 )
 
-# Accepted calibration-media content types mapped to a safe temp-file suffix.
-# The calibration upload reuses the same container formats the recording pipeline
-# accepts. The suffix is only used to name the temporary file for the extractors;
-# the media itself is never persisted (Requirement 15.4).
-_CALIBRATION_AUDIO_CONTENT_TYPES = {
-    "audio/webm": ".webm",
-    "audio/ogg": ".ogg",
-    "audio/mp4": ".m4a",
-}
-_CALIBRATION_VIDEO_CONTENT_TYPES = {
-    "video/webm": ".webm",
-    "video/mp4": ".mp4",
-}
-# Provisional cap on a single calibration upload. Calibration is a short clip;
-# this bound protects the temp filesystem from an oversized upload without being
-# a clinical or methodology parameter.
-_CALIBRATION_MAX_UPLOAD_BYTES = 50 * 1024 * 1024  # 50 MiB
-_CALIBRATION_UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1 MiB
 
 class InterviewResponse(BaseModel):
     interview: MedicalInterview | None
@@ -119,51 +95,29 @@ def _required_multimodal_processing_pending(
     return observation.get("status") in _PENDING_OBSERVATION_STATUSES
 
 
-class CalibrationAudioResult(BaseModel):
-    microphone_available: bool
-    stream_active: bool
-    voice_detected: bool
-    input_level: Literal["low", "adequate", "high"]
-    clipping_detected: bool
-
-
-class CalibrationVideoResult(BaseModel):
-    camera_available: bool
-    stream_active: bool
-    face_detected: bool
-    face_detection_rate: float = Field(ge=0, le=100)
-    quality_status: Literal["adequate", "inadequate"]
-
-
 class CalibrationResultRequest(BaseModel):
-    version: Literal["technical_v2"] = "technical_v2"
+    """A calibration draft persisted into an interview before it starts.
+
+    This mirrors the temporary-processing result the client keeps in memory
+    (``POST /calibration/process``). Only a ``passed`` calibration carries the
+    numeric ``personal_baseline`` and the ``profile`` needed by the multimodal
+    pipeline (including the gaze affine matrix). The ``personal_baseline`` is
+    validated against the strong :class:`PersonalBaseline` schema: an ill-formed
+    payload is rejected, and a passed calibration must carry both a baseline and
+    a profile so the interview always has a usable calibration once started.
+    """
+
+    version: str = "multimodal_calibration_v1"
     status: Literal["passed", "failed"]
-    duration_ms: int = Field(ge=1_000, le=60_000)
-    recording_supported: bool
-    audio: CalibrationAudioResult
-    video: CalibrationVideoResult
-    # The personal baseline is validated against the strong ``PersonalBaseline``
-    # schema (Requirement 15.5): a non-null payload is no longer rejected, but an
-    # ill-formed one is. Pydantic coerces the incoming JSON object into a
-    # ``PersonalBaseline`` and raises a validation error for a bad shape.
+    failure_reason: str | None = None
+    profile: Dict[str, Any] | None = None
+    quality: Dict[str, Any] | None = None
     personal_baseline: PersonalBaseline | None = None
 
     @model_validator(mode="after")
     def validate_passed_result(self):
-        required_checks = (
-            self.recording_supported,
-            self.audio.microphone_available,
-            self.audio.stream_active,
-            self.audio.voice_detected,
-            self.audio.input_level == "adequate",
-            not self.audio.clipping_detected,
-            self.video.camera_available,
-            self.video.stream_active,
-            self.video.face_detected,
-            self.video.quality_status == "adequate",
-        )
-        if self.status == "passed" and not all(required_checks):
-            raise ValueError("A passed calibration must satisfy every required technical check")
+        if self.status == "passed" and (self.personal_baseline is None or self.profile is None):
+            raise ValueError("A passed calibration must carry a personal baseline and profile")
         return self
 
 def translate_interview_personality(interview_dict: Dict[str, Any], user_language: str) -> None:
@@ -255,7 +209,20 @@ async def save_calibration_result(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    """Save the latest technical calibration summary without retaining media."""
+    """Persist a calibration draft into an interview before it starts.
+
+    The draft is produced by the temporary ``POST /calibration/process`` flow and
+    kept in the client's memory. This endpoint stores the whole calibration
+    result (status, profile, quality, personal baseline) into
+    ``interview_metadata.calibration`` so the multimodal pipeline can read the
+    gaze affine profile and personal baseline from a single canonical location
+    (``read_personal_baseline``). No calibration media is retained and no
+    calibration table row is created.
+
+    Calibration can only be saved before the interview starts: the request is
+    rejected with 409 once ``start_time`` is set, preventing an arbitrary
+    overwrite of the calibration an in-progress session already relies on.
+    """
     interview = db.query(MedicalInterviewDB).filter(
         MedicalInterviewDB.id == interview_id,
         MedicalInterviewDB.user_id == current_user.id,
@@ -267,279 +234,19 @@ async def save_calibration_result(
     if interview.start_time is not None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The interview has already started")
 
+    # ``personal_baseline`` is serialized as a plain dict so
+    # ``read_personal_baseline`` reads it back through the ``PersonalBaseline``
+    # schema. The profile (including the gaze affine matrix) is preserved for the
+    # multimodal pipeline.
     result = calibration.model_dump()
     result["completed_at"] = datetime.now(timezone.utc).isoformat()
     metadata = dict(interview.interview_metadata or {})
     metadata["calibration"] = result
     interview.interview_metadata = metadata
+    flag_modified(interview, "interview_metadata")
     db.commit()
     db.refresh(interview)
     return MedicalInterview.from_orm(interview)
-
-
-class CalibrationBaselineResponse(BaseModel):
-    """Response of the calibration baseline endpoint.
-
-    ``personal_baseline`` carries the derived numeric-only baseline when it could
-    be derived; when it is ``None`` the derivation was ``unavailable`` and
-    ``reason`` explains why. The client uses the returned baseline to populate the
-    subsequent ``PUT /calibration`` payload; the baseline is also persisted
-    server-side per the design flow.
-    """
-
-    status: Literal["ok", "unavailable"]
-    personal_baseline: PersonalBaseline | None = None
-    reason: str | None = None
-
-
-async def _write_calibration_upload_to_temp(
-    upload: UploadFile,
-    allowed_content_types: Dict[str, str],
-    field_name: str,
-) -> Path:
-    """Validate a calibration upload and stream it to a temporary file.
-
-    Rejects an unsupported content type (415) and an oversized upload (413), and
-    caps the bytes read so a mismatched ``Content-Length`` cannot exhaust the
-    temp filesystem. The caller owns deleting the returned path.
-    """
-    content_type = (upload.content_type or "").split(";", 1)[0].strip().lower()
-    suffix = allowed_content_types.get(content_type)
-    if suffix is None:
-        raise HTTPException(
-            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail=f"Unsupported {field_name} content type: {content_type or 'unknown'}",
-        )
-
-    handle = tempfile.NamedTemporaryFile(
-        delete=False, prefix="virtual-patient-calibration-", suffix=suffix
-    )
-    temp_path = Path(handle.name)
-    total_bytes = 0
-    try:
-        await upload.seek(0)
-        while True:
-            chunk = await upload.read(_CALIBRATION_UPLOAD_CHUNK_BYTES)
-            if not chunk:
-                break
-            total_bytes += len(chunk)
-            if total_bytes > _CALIBRATION_MAX_UPLOAD_BYTES:
-                raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"Calibration {field_name} exceeds the maximum allowed size",
-                )
-            handle.write(chunk)
-        handle.flush()
-    except HTTPException:
-        handle.close()
-        _delete_calibration_temp(temp_path)
-        raise
-    except Exception:
-        handle.close()
-        _delete_calibration_temp(temp_path)
-        raise
-    finally:
-        if not handle.closed:
-            handle.close()
-
-    if total_bytes == 0:
-        _delete_calibration_temp(temp_path)
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Calibration {field_name} upload is empty",
-        )
-    return temp_path
-
-
-def _delete_calibration_temp(path: Optional[Path]) -> None:
-    """Delete a temporary calibration media file, ignoring an already-gone file.
-
-    Calibration media is never persisted (Requirement 15.4); this is always
-    invoked from a ``finally`` block so a derivation failure still removes it.
-    """
-    if path is None:
-        return
-    try:
-        os.remove(path)
-    except FileNotFoundError:
-        pass
-    except OSError:
-        logger.warning(
-            "calibration_baseline_event event=temp_delete_failed path=%s", path
-        )
-
-
-async def _derive_uploaded_personal_baseline(
-    audio: Optional[UploadFile],
-    video: Optional[UploadFile],
-) -> PersonalBaseline | None:
-    """Derive a baseline from temporary uploads and always delete the media."""
-    audio_path: Optional[Path] = None
-    video_path: Optional[Path] = None
-    try:
-        if audio is not None:
-            audio_path = await _write_calibration_upload_to_temp(
-                audio, _CALIBRATION_AUDIO_CONTENT_TYPES, "audio"
-            )
-        if video is not None:
-            video_path = await _write_calibration_upload_to_temp(
-                video, _CALIBRATION_VIDEO_CONTENT_TYPES, "video"
-            )
-        # Browser calibration uses one WebM container carrying both tracks.
-        return derive_personal_baseline(
-            audio_path=audio_path or video_path,
-            video_path=video_path,
-        )
-    finally:
-        _delete_calibration_temp(audio_path)
-        _delete_calibration_temp(video_path)
-
-
-@router.post("/calibration/baseline", response_model=CalibrationBaselineResponse)
-async def derive_unbound_calibration_baseline(
-    audio: Annotated[Optional[UploadFile], File()] = None,
-    video: Annotated[Optional[UploadFile], File()] = None,
-    current_user: User = Depends(get_current_active_user),
-):
-    """Derive an authenticated baseline without creating an interview."""
-    if audio is None and video is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one of audio or video calibration media is required",
-        )
-    try:
-        baseline = await _derive_uploaded_personal_baseline(audio, video)
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception(
-            "calibration_baseline_event event=derivation_error user_id=%s",
-            current_user.id,
-        )
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Failed to derive a personal baseline from the calibration media",
-        )
-    if baseline is None:
-        return CalibrationBaselineResponse(
-            status="unavailable",
-            personal_baseline=None,
-            reason="insufficient_signal",
-        )
-    return CalibrationBaselineResponse(status="ok", personal_baseline=baseline)
-
-
-@router.post(
-    "/{interview_id}/calibration/baseline",
-    response_model=CalibrationBaselineResponse,
-)
-async def derive_calibration_baseline(
-    interview_id: int,
-    audio: Annotated[Optional[UploadFile], File()] = None,
-    video: Annotated[Optional[UploadFile], File()] = None,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Derive a numeric-only personal baseline from calibration media.
-
-    Authenticated and owner-only. Accepts calibration audio and/or video as
-    multipart uploads, writes each to a temporary server file, runs the OpenSMILE
-    and shared MediaPipe/BlazeGaze extractors via ``derive_personal_baseline``, stores the resulting
-    numeric-only :class:`PersonalBaseline` into
-    ``interview_metadata.calibration.personal_baseline``, and always deletes the
-    temporary media. The media is never persisted (Requirement 15.3, 15.4).
-
-    Baseline calibration is only allowed before the interview starts: the request
-    is rejected with 409 once ``start_time`` is set, mirroring the ``PUT
-    /calibration`` guard and preventing arbitrary overwrite once started
-    (Requirement 15.7, 28.8). When the baseline cannot be derived, the endpoint
-    returns an ``unavailable`` status with a reason and does not fabricate a
-    baseline.
-    """
-    if audio is None and video is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="At least one of audio or video calibration media is required",
-        )
-
-    interview = db.query(MedicalInterviewDB).filter(
-        MedicalInterviewDB.id == interview_id,
-        MedicalInterviewDB.user_id == current_user.id,
-    ).first()
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
-    if interview.status != "in_progress":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview is not in progress")
-    if interview.start_time is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="The interview has already started",
-        )
-
-    audio_path: Optional[Path] = None
-    video_path: Optional[Path] = None
-    try:
-        if audio is not None:
-            audio_path = await _write_calibration_upload_to_temp(
-                audio, _CALIBRATION_AUDIO_CONTENT_TYPES, "audio"
-            )
-        if video is not None:
-            video_path = await _write_calibration_upload_to_temp(
-                video, _CALIBRATION_VIDEO_CONTENT_TYPES, "video"
-            )
-
-        try:
-            # Browsers record calibration as one WebM container carrying both
-            # tracks. When no separate audio upload is supplied, FFmpeg/openSMILE
-            # can read its audio track directly from the video container.
-            baseline = derive_personal_baseline(
-                audio_path=audio_path or video_path,
-                video_path=video_path,
-            )
-        except Exception:
-            logger.exception(
-                "calibration_baseline_event event=derivation_error interview_id=%s user_id=%s",
-                interview_id,
-                current_user.id,
-            )
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="Failed to derive a personal baseline from the calibration media",
-            )
-    finally:
-        _delete_calibration_temp(audio_path)
-        _delete_calibration_temp(video_path)
-
-    if baseline is None:
-        logger.info(
-            "calibration_baseline_event event=unavailable interview_id=%s user_id=%s",
-            interview_id,
-            current_user.id,
-        )
-        return CalibrationBaselineResponse(
-            status="unavailable",
-            personal_baseline=None,
-            reason="insufficient_signal",
-        )
-
-    # Persist numeric-only metrics into the existing metadata JSON (no new table,
-    # Requirement 15.8). Follows the design flow step 5: store the derived
-    # baseline under interview_metadata.calibration.personal_baseline.
-    metadata = dict(interview.interview_metadata or {})
-    calibration_block = dict(metadata.get("calibration") or {})
-    calibration_block["personal_baseline"] = baseline.model_dump()
-    calibration_block["baseline_derived_at"] = datetime.now(timezone.utc).isoformat()
-    metadata["calibration"] = calibration_block
-    interview.interview_metadata = metadata
-    flag_modified(interview, "interview_metadata")
-    db.commit()
-
-    logger.info(
-        "calibration_baseline_event event=stored interview_id=%s user_id=%s",
-        interview_id,
-        current_user.id,
-    )
-    return CalibrationBaselineResponse(status="ok", personal_baseline=baseline)
 
 
 @router.post("/{interview_id}/start", response_model=MedicalInterview)

@@ -4,7 +4,7 @@ Maps per-feature Base_Labels to exactly one Integrated_Label per family using
 ``label_rules.yaml``. The engine is intentionally declarative and small: it
 evaluates ordered rules against base labels, and never contains a mini
 programming language. It references only base labels and configuration; it does
-not touch OpenSMILE, Py-Feat, media, or any raw/signal internals
+not touch OpenSMILE, MediaPipe, media, or any raw/signal internals
 (Requirement 12.3).
 
 Rule grammar (see ``config/label_rules.yaml``):

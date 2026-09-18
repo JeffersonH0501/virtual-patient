@@ -12,7 +12,7 @@ Design boundaries preserved here (Requirement 11.1-11.4, 12.3):
   There is no per-feature ``if/elif`` branching and no signal-specific code.
 * Config-driven only. The engine reads processed *feature names* and the
   ``thresholds`` section of the loaded :class:`MethodologyConfig`. It never
-  references OpenSMILE, Py-Feat, media, or raw feature internals.
+  references OpenSMILE, MediaPipe, media, or raw feature internals.
 * Descriptive-only. The produced labels are behavioural/contextual observations
   (the raw strings declared in the config), never measures of empathy,
   attention, warmth, or any psychological state.

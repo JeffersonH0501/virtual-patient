@@ -4,7 +4,6 @@ export const ROUTES = {
   resetPassword: '/reset-password',
   signUp: '/signup',
   clinicalCases: '/cases',
-  clinicalSession: '/session',
   createCase: '/cases/create',
   editCase: '/cases/:caseId/edit',
   // Pre-interview calibration. The interview row is only created once the
