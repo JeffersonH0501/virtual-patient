@@ -15,4 +15,5 @@ class SharedFrameObservation:
     blendshapes: dict[str, float] | None = None
     facial_transformation_matrix: Any | None = None
     reason: str | None = None
-
+    frame_width: int | None = None
+    frame_height: int | None = None

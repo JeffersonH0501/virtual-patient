@@ -157,8 +157,12 @@ export const ConversationTable = () => {
       {renderTableControls()}
       <div className="w-full px-4 pb-4 pt-0">
         <div className="w-full overflow-hidden bg-white max-md:overflow-x-auto">
-          <table className="w-full [&_thead_tr]:border-t-0">
-            <TableHeader columns={COLUMN_HEADERS} columnClassNames={COLUMN_CLASS_NAMES} />
+          <table className="w-full table-fixed [&_thead_tr]:border-t-0">
+            <TableHeader
+              columns={COLUMN_HEADERS}
+              columnClassNames={COLUMN_CLASS_NAMES}
+              rowClassName="conversation-table-columns"
+            />
             <tbody>
               {isLoading ? (
                 <ConversationTableSkeleton />

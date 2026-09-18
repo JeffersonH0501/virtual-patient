@@ -163,6 +163,45 @@ class InterviewTurnDB(Base):
     )
 
 
+class TurnVideoAnalysisDB(Base):
+    """Durable lifecycle for one temporary nonverbal turn segment."""
+
+    __tablename__ = "turn_video_analyses"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    medical_interview_id = Column(
+        Integer, ForeignKey("medical_interviews.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    recording_id = Column(
+        String(36), ForeignKey("interview_recordings.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    turn_id = Column(
+        String(36), ForeignKey("interview_turns.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    speaker = Column(String(20), nullable=False)
+    start_ms = Column(BigInteger, nullable=False)
+    end_ms = Column(BigInteger, nullable=False)
+    storage_key = Column(String(500), nullable=True, unique=True)
+    content_type = Column(String(100), nullable=False)
+    size_bytes = Column(BigInteger, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    status = Column(String(20), nullable=False, default="queued", index=True)
+    result = Column(JSON, nullable=True)
+    roi_snapshots = Column(JSON, nullable=False, default=list)
+    error = Column(Text, nullable=True)
+    queued_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("recording_id", "turn_id", name="uq_turn_video_analysis_recording_turn"),
+        CheckConstraint("end_ms >= start_ms", name="ck_turn_video_analysis_window"),
+        CheckConstraint("size_bytes >= 0", name="ck_turn_video_analysis_size"),
+    )
+
+
 class RecordingStartRequest(BaseModel):
     started_at: datetime
     capture_config: Dict[str, Any] = Field(default_factory=dict)

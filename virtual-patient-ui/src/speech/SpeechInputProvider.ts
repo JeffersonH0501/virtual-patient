@@ -5,6 +5,7 @@ export type SpeechInputState = 'idle' | 'listening' | 'paused';
 export type SpeechInputCallbacks = {
   onInterimTranscript: (text: string) => void;
   onUtteranceCaptured?: () => void;
+  onSpeechStart?: () => void;
   onFinalTranscript: (text: string, timing?: SpeechTiming) => void;
   onStateChange: (state: SpeechInputState) => void;
   onError: (errorCode: string | null) => void;

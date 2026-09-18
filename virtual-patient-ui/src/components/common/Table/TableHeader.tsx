@@ -3,12 +3,17 @@ import {FC} from 'react';
 type TableHeaderProps = {
   columns: readonly string[];
   columnClassNames?: readonly string[];
+  rowClassName?: string;
 };
 
-export const TableHeader: FC<TableHeaderProps> = ({columns, columnClassNames}) => {
+export const TableHeader: FC<TableHeaderProps> = ({
+  columns,
+  columnClassNames,
+  rowClassName,
+}) => {
   return (
     <thead>
-      <tr className="flex px-0 py-3.5 bg-gray-50 border-b border-solid border-t border-gray-200 max-md:min-w-table">
+      <tr className={`${rowClassName ? '' : 'flex'} px-0 py-3.5 bg-gray-50 border-b border-solid border-t border-gray-200 max-md:min-w-table ${rowClassName ?? ''}`}>
         {columns.map((column, idx) => (
           <th
             key={column}

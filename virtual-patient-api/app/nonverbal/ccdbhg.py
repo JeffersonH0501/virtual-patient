@@ -125,7 +125,12 @@ def load_default_bundle() -> tuple[dict, np.ndarray, CNNLmkHp]:
 
 
 def landmark_features(observation: SharedFrameObservation) -> np.ndarray:
-    height, width = observation.frame.shape[:2]
+    if observation.frame_width is not None and observation.frame_height is not None:
+        width, height = observation.frame_width, observation.frame_height
+    elif observation.frame is not None:
+        height, width = observation.frame.shape[:2]
+    else:
+        raise ValueError("Frame geometry is unavailable for CCDb-HG landmarks")
     points = np.asarray([[p.x*width, p.y*height, p.z*width] for p in observation.landmarks], dtype=np.float64)
     return np.concatenate([points[indexes].mean(axis=0) for indexes in LANDMARK_GROUPS.values()])
 

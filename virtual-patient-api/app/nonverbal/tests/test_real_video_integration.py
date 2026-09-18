@@ -110,7 +110,9 @@ def test_product_pipeline_reads_stored_video_and_persists_nonverbal_features(tmp
     with patch.object(pipeline_module, "SessionLocal", return_value=session), \
             patch.object(pipeline_module, "get_media_storage", return_value=storage), \
             patch.object(pipeline_module, "read_personal_baseline", return_value=None):
-        asyncio.run(pipeline_module.process_multimodal_interview(interview.id, recording.id))
+        asyncio.run(pipeline_module.process_multimodal_interview(
+            interview.id, recording.id, use_full_video=True
+        ))
 
     persisted = turn.nonverbal_features
     assert persisted["raw"]["extractor"]["name"] == "mediapipe_blazegaze_ccdbhg"

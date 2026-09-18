@@ -5,6 +5,7 @@ import {
   markInterviewRecordingUnavailable,
   saveInterviewTurn,
   startInterviewRecording,
+  uploadTurnVideo,
 } from '../services/recordings';
 import {createRecordingBuffer, RecordingBuffer} from '../recording/RecordingBuffer';
 import {
@@ -33,6 +34,12 @@ type PatientTurn = {
   sequence: number;
   transcript: string;
   startedAt: number;
+};
+
+type TurnSegment = {
+  speaker: 'student' | 'patient';
+  recorder: MediaRecorder;
+  chunks: Blob[];
 };
 
 type UseInterviewRecordingOptions = {
@@ -104,7 +111,11 @@ export const useInterviewRecording = ({
   const captureFailureRef = useRef<string | null>(null);
   const turnWritesRef = useRef(Promise.resolve());
   const patientRoiTimerRef = useRef<number | null>(null);
-  const patientRoiSamplesRef = useRef<Array<Record<string, number>>>([]);
+  const patientRoiSamplesRef = useRef<Record<string, number>[]>([]);
+  const studentVideoStreamRef = useRef<MediaStream | null>(null);
+  const turnVideoMimeRef = useRef<string | null>(null);
+  const turnSegmentRef = useRef<TurnSegment | null>(null);
+  const pendingStudentSegmentRef = useRef<Promise<File | null> | null>(null);
 
   microphoneEnabledRef.current = microphoneEnabled;
   patientAudioEnabledRef.current = patientAudioEnabled;
@@ -148,6 +159,36 @@ export const useInterviewRecording = ({
     if (origin === null) return 0;
     const activePause = pausedAtRef.current === null ? 0 : Math.max(0, timestamp - pausedAtRef.current);
     return Math.max(0, Math.round(timestamp - origin - pausedDurationRef.current - activePause));
+  }, []);
+
+  const startTurnSegment = useCallback((speaker: 'student' | 'patient') => {
+    const stream = studentVideoStreamRef.current;
+    const mimeType = turnVideoMimeRef.current;
+    if (!stream || !mimeType || turnSegmentRef.current) return;
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(stream, {mimeType, videoBitsPerSecond: 2_500_000});
+    recorder.addEventListener('dataavailable', (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+    recorder.addEventListener('error', () => setErrorCode('turn-video-recorder-failed'));
+    turnSegmentRef.current = {speaker, recorder, chunks};
+    recorder.start();
+  }, []);
+
+  const stopTurnSegment = useCallback(async (
+    expectedSpeaker: 'student' | 'patient',
+  ): Promise<File | null> => {
+    const segment = turnSegmentRef.current;
+    if (!segment || segment.speaker !== expectedSpeaker) return null;
+    turnSegmentRef.current = null;
+    await new Promise<void>((resolve) => {
+      if (segment.recorder.state === 'inactive') return resolve();
+      segment.recorder.addEventListener('stop', () => resolve(), {once: true});
+      segment.recorder.stop();
+    });
+    if (segment.chunks.length === 0) return null;
+    const mimeType = turnVideoMimeRef.current ?? 'video/webm';
+    return new File(segment.chunks, `turn${extensionForMime(mimeType)}`, {type: mimeType});
   }, []);
 
   const stopRuntime = useCallback(async (): Promise<CapturedMedia | null> => {
@@ -196,6 +237,11 @@ export const useInterviewRecording = ({
     setPatientAudioLevel(0);
     const runtimes = recordersRef.current;
     recordersRef.current = [];
+    const activeTurnSegment = turnSegmentRef.current;
+    turnSegmentRef.current = null;
+    if (activeTurnSegment?.recorder.state !== 'inactive') activeTurnSegment?.recorder.stop();
+    studentVideoStreamRef.current = null;
+    turnVideoMimeRef.current = null;
     runtimes.forEach(({recorder}) => {
       if (recorder.state !== 'inactive') recorder.stop();
       recorder.stream.getTracks().forEach((track) => track.stop());
@@ -339,10 +385,11 @@ export const useInterviewRecording = ({
       };
       draw();
 
+      const studentVideoStream = studentCanvas.captureStream(VIDEO_FRAME_RATE);
       const streams: Record<RecordingAssetKind, MediaStream> = {
         student_audio: studentDestination.stream,
         patient_audio: patientDestination.stream,
-        student_video: studentCanvas.captureStream(VIDEO_FRAME_RATE),
+        student_video: studentVideoStream,
         patient_video: patientCanvas.captureStream(VIDEO_FRAME_RATE),
       };
       const mimeTypes: Record<RecordingAssetKind, string> = {
@@ -379,6 +426,8 @@ export const useInterviewRecording = ({
         return;
       }
       recordersRef.current = runtimes;
+      studentVideoStreamRef.current = studentVideoStream;
+      turnVideoMimeRef.current = videoMime;
       originRef.current = performance.now();
       pausedDurationRef.current = 0;
       pausedAtRef.current = null;
@@ -488,7 +537,8 @@ export const useInterviewRecording = ({
   const beginPatientTurn = useCallback((messageId: number, sequence: number, transcript: string) => {
     patientSpeakingRef.current = true;
     patientTurnsRef.current.set(messageId, {messageId, sequence, transcript, startedAt: performance.now()});
-  }, []);
+    startTurnSegment('patient');
+  }, [startTurnSegment]);
 
   const endPatientTurn = useCallback((messageId: number) => {
     patientSpeakingRef.current = false;
@@ -499,19 +549,33 @@ export const useInterviewRecording = ({
     const turn = patientTurnsRef.current.get(messageId);
     if (!turn || !interviewId) return;
     patientTurnsRef.current.delete(messageId);
+    const segmentPromise = stopTurnSegment('patient');
     turnWritesRef.current = turnWritesRef.current
-      .then(() => saveInterviewTurn(interviewId, messageId, {
-        speaker: 'patient',
-        sequence: turn.sequence,
-        startMs: elapsedAt(turn.startedAt),
-        endMs: elapsedAt(),
-        transcript: turn.transcript,
-        inputSource: 'tts',
-        timingSource: 'tts_playback',
-        timingQuality: 'measured',
-      }))
+      .then(async () => {
+        const segment = await segmentPromise;
+        const persisted = await saveInterviewTurn(interviewId, messageId, {
+          speaker: 'patient',
+          sequence: turn.sequence,
+          startMs: elapsedAt(turn.startedAt),
+          endMs: elapsedAt(),
+          transcript: turn.transcript,
+          inputSource: 'tts',
+          timingSource: 'tts_playback',
+          timingQuality: 'measured',
+        });
+        if (segment) {
+          await uploadTurnVideo(
+            interviewId,
+            persisted.turnId,
+            segment,
+            patientRoiSamplesRef.current
+              .filter((sample) => sample.timestampMs >= (persisted.startMs ?? 0) && sample.timestampMs <= (persisted.endMs ?? 0))
+              .map((sample) => ({...sample, timestampMs: sample.timestampMs - (persisted.startMs ?? 0)})),
+          );
+        }
+      })
       .catch(() => setErrorCode('turn-storage-failed'));
-  }, [elapsedAt, interviewId]);
+  }, [elapsedAt, interviewId, stopTurnSegment]);
 
   const recordStudentTurn = useCallback((
     messageId: number,
@@ -521,19 +585,34 @@ export const useInterviewRecording = ({
   ) => {
     if (!interviewId) return;
     const now = performance.now();
+    const segmentPromise = pendingStudentSegmentRef.current ?? stopTurnSegment('student');
+    pendingStudentSegmentRef.current = null;
     turnWritesRef.current = turnWritesRef.current
-      .then(() => saveInterviewTurn(interviewId, messageId, {
-        speaker: 'student',
-        sequence,
-        startMs: elapsedAt(timing?.startedAt ?? now),
-        endMs: elapsedAt(timing?.endedAt ?? now),
-        transcript,
-        inputSource: timing?.inputSource ?? (timing ? 'browser_speech' : 'text_input'),
-        timingSource: timing?.timingSource ?? (timing ? 'browser_speech_events' : 'text_input'),
-        timingQuality: timing ? 'provisional' : 'estimated',
-      }))
+      .then(async () => {
+        const segment = await segmentPromise;
+        const persisted = await saveInterviewTurn(interviewId, messageId, {
+          speaker: 'student',
+          sequence,
+          startMs: elapsedAt(timing?.startedAt ?? now),
+          endMs: elapsedAt(timing?.endedAt ?? now),
+          transcript,
+          inputSource: timing?.inputSource ?? (timing ? 'browser_speech' : 'text_input'),
+          timingSource: timing?.timingSource ?? (timing ? 'browser_speech_events' : 'text_input'),
+          timingQuality: timing ? 'provisional' : 'estimated',
+        });
+        if (segment) {
+          await uploadTurnVideo(
+            interviewId,
+            persisted.turnId,
+            segment,
+            patientRoiSamplesRef.current
+              .filter((sample) => sample.timestampMs >= (persisted.startMs ?? 0) && sample.timestampMs <= (persisted.endMs ?? 0))
+              .map((sample) => ({...sample, timestampMs: sample.timestampMs - (persisted.startMs ?? 0)})),
+          );
+        }
+      })
       .catch(() => setErrorCode('turn-storage-failed'));
-  }, [elapsedAt, interviewId]);
+  }, [elapsedAt, interviewId, stopTurnSegment]);
 
   const finalize = useCallback(async (): Promise<boolean> => {
     if (!interviewId || finalizedRef.current) return status === 'ready' || status === 'partial';
@@ -587,6 +666,15 @@ export const useInterviewRecording = ({
     resumeAudioGraph,
     beginPatientTurn,
     endPatientTurn,
+    beginStudentTurn: () => startTurnSegment('student'),
+    endStudentTurn: () => {
+      if (!pendingStudentSegmentRef.current) {
+        pendingStudentSegmentRef.current = stopTurnSegment('student');
+      }
+    },
+    discardStudentTurn: () => {
+      pendingStudentSegmentRef.current = null;
+    },
     recordStudentTurn,
   };
 };

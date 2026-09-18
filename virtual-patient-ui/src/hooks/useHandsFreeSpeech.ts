@@ -9,6 +9,7 @@ type UseHandsFreeSpeechOptions = {
   autoStart?: boolean;
   microphoneStream?: MediaStream | null;
   onUtteranceCommitted?: () => void;
+  onSpeechStart?: () => void;
   onUtteranceFailed?: () => void;
   onUtterance: (text: string, timing?: SpeechTiming) => void | Promise<void>;
 };
@@ -20,6 +21,7 @@ export const useHandsFreeSpeech = ({
   autoStart = false,
   microphoneStream = null,
   onUtteranceCommitted,
+  onSpeechStart,
   onUtteranceFailed,
   onUtterance,
 }: UseHandsFreeSpeechOptions) => {
@@ -83,6 +85,7 @@ export const useHandsFreeSpeech = ({
           setIsSubmittingUtterance(true);
           onUtteranceCommitted?.();
         },
+        onSpeechStart,
         onFinalTranscript: (text, timing) => {
           if (!acceptingInputRef.current && !awaitingCommittedTranscriptRef.current) return;
           acceptingInputRef.current = false;
@@ -134,7 +137,7 @@ export const useHandsFreeSpeech = ({
       provider.dispose();
       providerRef.current = null;
     };
-  }, [disabled, flushBuffer, isEnabled, language, microphoneStream, onUtteranceCommitted, onUtteranceFailed]);
+  }, [disabled, flushBuffer, isEnabled, language, microphoneStream, onSpeechStart, onUtteranceCommitted, onUtteranceFailed]);
 
   useEffect(() => {
     const provider = providerRef.current;

@@ -4,12 +4,21 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
+from queue import Empty, Full, Queue
+from threading import Event, Thread
 from time import perf_counter
 from typing import Any, Iterable, Sequence
 
 from app.multimodal.schemas import NonverbalRawFeatures
 from app.nonverbal.ccdbhg import NodAnalysis, NodEvent
-from app.nonverbal.gaze import GazeObservation, create_tracker, extract_gaze
+from app.nonverbal.gaze import (
+    GAZE_BATCH_SIZE,
+    GazeObservation,
+    create_tracker,
+    create_batch_buffers,
+    extract_gaze,
+    extract_gaze_batch,
+)
 from app.nonverbal.gaze_calibration import classify_gaze
 from app.nonverbal.mediapipe_extractor import extract_video
 from app.nonverbal.shared_observations import SharedFrameObservation
@@ -42,24 +51,153 @@ def extract_nonverbal_video_observations(
     """Decode the complete video once and fan out one MediaPipe result per frame."""
     gaze_tracker = tracker or create_tracker()
     observations = []
-    for shared in extract_video(video_path, sample_fps=sample_fps, landmarker=landmarker, timings=timings):
-        started = perf_counter()
-        smile = extract_smile(shared)
+    pending = []
+    batch_buffers = create_batch_buffers()
+
+    def flush() -> None:
+        if not pending:
+            return
+        gaze_started = perf_counter()
+        if hasattr(gaze_tracker, "batched_infer_fn"):
+            gazes = extract_gaze_batch(
+                pending,
+                gaze_tracker,
+                timings=timings,
+                batch_buffers=batch_buffers,
+            )
+        else:
+            gazes = [
+                extract_gaze(item, gaze_tracker, timings=timings)
+                if timings is not None
+                else extract_gaze(item, gaze_tracker)
+                for item in pending
+            ]
         if timings is not None:
-            timings.setdefault("smile", []).append((perf_counter() - started) * 1000)
-        started = perf_counter()
-        gaze = (
-            extract_gaze(shared, gaze_tracker, timings=timings)
-            if timings is not None
-            else extract_gaze(shared, gaze_tracker)
+            elapsed_ms = (perf_counter() - gaze_started) * 1000
+            timings.setdefault("gaze_batch_total", []).append(elapsed_ms)
+            timings.setdefault("gaze_total", []).extend(
+                [elapsed_ms / len(pending)] * len(pending)
+            )
+        for shared, gaze in zip(pending, gazes):
+            started = perf_counter()
+            smile = extract_smile(shared)
+            if timings is not None:
+                timings.setdefault("smile", []).append(
+                    (perf_counter() - started) * 1000
+                )
+            observations.append(
+                EnrichedFrameObservation(replace(shared, frame=None), smile, gaze)
+            )
+        pending.clear()
+
+    for shared in extract_video(
+        video_path, sample_fps=sample_fps, landmarker=landmarker, timings=timings
+    ):
+        pending.append(shared)
+        if len(pending) == GAZE_BATCH_SIZE:
+            flush()
+    flush()
+    return observations
+
+
+def extract_nonverbal_video_observations_parallel(
+    video_path: Path,
+    *,
+    sample_fps: float = 10.0,
+    tracker: Any | None = None,
+    timings: dict[str, list[float]] | None = None,
+    queue_capacity: int = 16,
+) -> list[EnrichedFrameObservation]:
+    """Overlap sequential MediaPipe production with ordered gaze consumption."""
+    if queue_capacity <= 0:
+        raise ValueError("queue_capacity must be positive")
+    gaze_tracker = tracker or create_tracker()
+    batch_buffers = create_batch_buffers()
+    queue: Queue[Any] = Queue(maxsize=queue_capacity)
+    cancelled = Event()
+    sentinel = object()
+    producer_error: list[BaseException] = []
+
+    def put(item: Any) -> bool:
+        while not cancelled.is_set():
+            try:
+                queue.put(item, timeout=0.1)
+                return True
+            except Full:
+                continue
+        return False
+
+    def produce() -> None:
+        try:
+            for shared in extract_video(video_path, sample_fps=sample_fps, timings=timings):
+                if not put(shared):
+                    return
+            if not put(sentinel):
+                return
+        except BaseException as error:  # noqa: BLE001 - propagate across thread.
+            producer_error.append(error)
+        finally:
+            if producer_error:
+                put(sentinel)
+
+    producer = Thread(target=produce, name="mediapipe-producer", daemon=False)
+    producer.start()
+    observations: list[EnrichedFrameObservation] = []
+    pending: list[SharedFrameObservation] = []
+
+    def flush() -> None:
+        if not pending:
+            return
+        gaze_started = perf_counter()
+        gazes = extract_gaze_batch(
+            pending,
+            gaze_tracker,
+            timings=timings,
+            batch_buffers=batch_buffers,
         )
         if timings is not None:
-            timings.setdefault("gaze_total", []).append((perf_counter() - started) * 1000)
-        # The decoded HD frame is needed only by BlazeGaze. Retaining it for the
-        # complete video can consume gigabytes and destabilize native libraries;
-        # downstream smile/nod/quality stages use landmarks and matrices only.
-        observations.append(EnrichedFrameObservation(replace(shared, frame=None), smile, gaze))
-    return observations
+            elapsed_ms = (perf_counter() - gaze_started) * 1000
+            timings.setdefault("gaze_batch_total", []).append(elapsed_ms)
+            timings.setdefault("gaze_total", []).extend(
+                [elapsed_ms / len(pending)] * len(pending)
+            )
+        for shared, gaze in zip(pending, gazes):
+            started = perf_counter()
+            smile = extract_smile(shared)
+            if timings is not None:
+                timings.setdefault("smile", []).append(
+                    (perf_counter() - started) * 1000
+                )
+            observations.append(
+                EnrichedFrameObservation(replace(shared, frame=None), smile, gaze)
+            )
+        pending.clear()
+
+    try:
+        while True:
+            try:
+                item = queue.get(timeout=0.1)
+            except Empty:
+                if not producer.is_alive() and queue.empty():
+                    break
+                continue
+            if item is sentinel:
+                break
+            pending.append(item)
+            if len(pending) == GAZE_BATCH_SIZE:
+                flush()
+        flush()
+        if producer_error:
+            raise producer_error[0]
+        return observations
+    except BaseException:  # noqa: BLE001 - cancel producer and preserve error.
+        cancelled.set()
+        raise
+    finally:
+        cancelled.set()
+        producer.join(timeout=5.0)
+        if producer.is_alive():
+            raise RuntimeError("MediaPipe producer did not terminate")
 
 
 def segment_nonverbal_observations_by_turn(

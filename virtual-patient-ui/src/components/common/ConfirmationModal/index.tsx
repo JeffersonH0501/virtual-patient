@@ -8,9 +8,24 @@ type Props = {
   onCancel: () => void;
   onConfirm: () => void;
   isLoading?: boolean;
+  /** Overrides the default cancel button label. */
+  cancelLabel?: string;
+  /** Overrides the default confirm button label. */
+  confirmLabel?: string;
+  /** Visual style of the confirm button. Defaults to the primary style. */
+  confirmVariant?: 'primary' | 'warning';
 };
 
-export const ConfirmationModal: FC<Props> = ({title, description, onCancel, onConfirm, isLoading = false}) => {
+export const ConfirmationModal: FC<Props> = ({
+  title,
+  description,
+  onCancel,
+  onConfirm,
+  isLoading = false,
+  cancelLabel,
+  confirmLabel,
+  confirmVariant = 'primary',
+}) => {
   const {t} = useTranslation();
 
   return (
@@ -24,10 +39,10 @@ export const ConfirmationModal: FC<Props> = ({title, description, onCancel, onCo
       <footer className="dialog-footer">
         <div className="dialog-actions">
           <ModalButton variant="secondary" onClick={onCancel}>
-            {t('clinicalChat.cancel')}
+            {cancelLabel ?? t('clinicalChat.cancel')}
           </ModalButton>
-          <ModalButton variant="primary" onClick={onConfirm} disabled={isLoading}>
-            {isLoading ? t('clinicalChat.submitting') : t('clinicalChat.confirm')}
+          <ModalButton variant={confirmVariant} onClick={onConfirm} disabled={isLoading}>
+            {isLoading ? t('clinicalChat.submitting') : (confirmLabel ?? t('clinicalChat.confirm'))}
           </ModalButton>
         </div>
       </footer>

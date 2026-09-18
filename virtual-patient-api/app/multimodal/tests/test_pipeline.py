@@ -323,7 +323,7 @@ class _PipelineHarness:
                 patch.object(pipeline_module, "analyze_student_turns", side_effect=fake_paraverbal), \
                 patch.object(
                     pipeline_module,
-                    "extract_nonverbal_video_observations",
+                    "extract_nonverbal_video_observations_parallel",
                     side_effect=fake_nonverbal,
                 ), \
                 patch.object(
@@ -337,7 +337,7 @@ class _PipelineHarness:
                 ):
             asyncio.run(
                 pipeline_module.process_multimodal_interview(
-                    self.interview.id, self.recording.id
+                    self.interview.id, self.recording.id, use_full_video=True
                 )
             )
 

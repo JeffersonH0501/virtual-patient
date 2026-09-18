@@ -76,6 +76,7 @@ export class BrowserSpeechRecognitionProvider implements SpeechInputProvider {
     this.recognition.onspeechstart = () => {
       this.speechStartedAt = performance.now();
       this.speechEndedAt = null;
+      this.callbacks.onSpeechStart?.();
     };
     this.recognition.onspeechend = () => {
       this.speechEndedAt = performance.now();

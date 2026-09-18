@@ -1,7 +1,7 @@
 import {useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {ArrowsClockwise, ComparisonIcon} from '../../icons';
-import {EvaluationScore, Skeleton} from '../common';
+import {ConfirmationModal, EvaluationScore, Modal, Skeleton} from '../common';
 import {useUser} from '../../hooks/useUser';
 import {EvaluationResult, InterviewEvaluationResponse} from '../../types/evaluation';
 import {ClinicalCaseComparisonModal} from './ClinicalCaseComparisonModal';
@@ -41,6 +41,15 @@ export const EvaluationResultsPanel = ({
   const {interview, evaluationResults} = evaluationData;
   const [hoveredAspect, setHoveredAspect] = useState<EvaluationResult['aspect'] | null>(null);
   const [isComparisonOpen, setIsComparisonOpen] = useState(false);
+  // Regeneration is expensive (it re-runs the multimodal analysis before the
+  // text evaluation), so the click first opens a confirmation dialog that warns
+  // it may take a while, and only "Aceptar" actually triggers onRegenerate.
+  const [isRegenerateConfirmOpen, setIsRegenerateConfirmOpen] = useState(false);
+
+  const confirmRegenerate = () => {
+    setIsRegenerateConfirmOpen(false);
+    onRegenerate?.();
+  };
   const sortedResults = sortEvaluationResults(evaluationResults);
   const averageScore = evaluationResults.length
     ? evaluationResults.reduce((sum, result) => sum + result.score, 0) /
@@ -60,7 +69,7 @@ export const EvaluationResultsPanel = ({
           {canRegenerate && (
             <button
               type="button"
-              onClick={onRegenerate}
+              onClick={() => setIsRegenerateConfirmOpen(true)}
               disabled={isRegenerating}
               className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control border-0 bg-slate-100 text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-100 disabled:hover:text-slate-700 [&_svg]:h-5 [&_svg]:w-5"
               title={t('evaluation.regenerateEvaluation')}
@@ -199,6 +208,18 @@ export const EvaluationResultsPanel = ({
           hypotheses={interview.hypotheses}
         />
       )}
+
+      <Modal open={isRegenerateConfirmOpen} closeAction={() => setIsRegenerateConfirmOpen(false)}>
+        <ConfirmationModal
+          title={t('evaluation.regenerateEvaluation')}
+          description={t('evaluation.regenerateEvaluationWarning')}
+          cancelLabel={t('common.cancel')}
+          confirmLabel={t('common.accept')}
+          confirmVariant="warning"
+          onCancel={() => setIsRegenerateConfirmOpen(false)}
+          onConfirm={confirmRegenerate}
+        />
+      </Modal>
     </>
   );
 };

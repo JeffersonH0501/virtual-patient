@@ -186,6 +186,7 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
     if (rms >= threshold) {
       if (this.speechStartedAt === null) {
         this.speechStartedAt = now;
+        this.callbacks.onSpeechStart?.();
         this.callbacks.onInterimTranscript('…');
       }
       return;

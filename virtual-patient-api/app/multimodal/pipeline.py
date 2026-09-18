@@ -52,6 +52,7 @@ Design boundaries preserved here:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Sequence
 
@@ -63,7 +64,9 @@ from app.models.medical_interview import (
     InterviewTurnDB,
     MediaAssetKind,
     MedicalInterviewDB,
+    TurnVideoAnalysisDB,
 )
+from app.multimodal.turn_video_queue import enqueue_turn_video_analysis
 from app.multimodal.calibration import read_personal_baseline
 from app.multimodal.config_loader import (
     ConfigError,
@@ -93,7 +96,7 @@ from app.nonverbal.preprocessing import preprocess_nonverbal_turn
 from app.nonverbal.video_observations import (
     TurnWindow,
     build_turn_raw_features,
-    extract_nonverbal_video_observations,
+    extract_nonverbal_video_observations_parallel,
     segment_nonverbal_observations_by_turn,
 )
 from app.models.calibration import CalibrationAttemptDB, CalibrationStatus
@@ -156,6 +159,8 @@ _CONTEXT_LISTENING = "listening"
 async def process_multimodal_interview(
     interview_id: int,
     recording_id: str,
+    *,
+    use_full_video: bool = False,
 ) -> None:
     """Run the full multimodal pipeline for one finalized recording.
 
@@ -210,12 +215,15 @@ async def process_multimodal_interview(
             STAGE_QUEUED,
         )
 
+        if not use_full_video:
+            await _wait_for_turn_video_jobs(db, interview_id, recording_id)
         _run_pipeline(
             db=db,
             interview=interview,
             recording=recording,
             interview_id=interview_id,
             recording_id=recording_id,
+            use_full_video=use_full_video,
         )
     except ConfigError as error:
         # A misconfiguration is a whole-pipeline failure: no result can be
@@ -256,6 +264,7 @@ def _run_pipeline(
     recording: InterviewRecordingDB,
     interview_id: int,
     recording_id: str,
+    use_full_video: bool = False,
 ) -> None:
     """Execute steps 2-16 of the flow with a single batched commit at the end."""
 
@@ -332,6 +341,7 @@ def _run_pipeline(
         turns=turns,
         outcome=outcome,
         calibration_attempt=calibration_attempt,
+        use_full_video=use_full_video,
     )
 
     # Step 9: nonverbal preprocessing per turn. Gaze tolerance, AU12 activation,
@@ -529,8 +539,9 @@ def _extract_nonverbal(
     turns: Sequence[InterviewTurnDB],
     outcome: "_OutcomeTracker",
     calibration_attempt: CalibrationAttemptDB | None = None,
+    use_full_video: bool = False,
 ) -> tuple[dict[str, NonverbalRawFeatures], dict[str, str]]:
-    """Extract the full video once, then segment shared observations by turn."""
+    """Load turn jobs, or explicitly recover from the canonical full video."""
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_NONVERBAL_EXTRACTION)
     if not turns:
         logger.info(
@@ -542,6 +553,34 @@ def _extract_nonverbal(
             "no_turns",
         )
         return {}, {}
+
+    if not use_full_video:
+        jobs = db.query(TurnVideoAnalysisDB).filter(
+            TurnVideoAnalysisDB.recording_id == recording_id
+        ).all()
+        jobs_by_turn = {job.turn_id: job for job in jobs}
+        raw_by_turn: dict[str, NonverbalRawFeatures] = {}
+        context_by_turn: dict[str, str] = {}
+        for turn in turns:
+            job = jobs_by_turn.get(turn.id)
+            if job is None or job.status != "completed" or not job.result:
+                outcome.note_gap()
+                continue
+            try:
+                raw_by_turn[turn.id] = NonverbalRawFeatures.model_validate(job.result)
+                context_by_turn[turn.id] = _context_for_speaker(turn.speaker)
+            except Exception:  # noqa: BLE001 - malformed durable result is unavailable.
+                outcome.note_gap()
+                logger.exception(
+                    "multimodal_pipeline interview_id=%s turn_id=%s modality=nonverbal result=invalid_turn_job",
+                    interview_id, turn.id,
+                )
+        logger.info(
+            "multimodal_pipeline interview_id=%s recording_id=%s stage=%s modality=nonverbal "
+            "source=turn_jobs turn_count=%s observed=%s",
+            interview_id, recording_id, STAGE_NONVERBAL_EXTRACTION, len(turns), len(raw_by_turn),
+        )
+        return raw_by_turn, context_by_turn
 
     storage = get_media_storage()
     asset = _ready_asset(db, recording.id, MediaAssetKind.STUDENT_VIDEO.value)
@@ -569,7 +608,11 @@ def _extract_nonverbal(
         ]
         profile = calibration_attempt.profile if calibration_attempt else None
         tracker = create_tracker(affine_matrix=profile.get("affine_matrix")) if profile else create_tracker()
-        observations = extract_nonverbal_video_observations(video_path, tracker=tracker)
+        observations = extract_nonverbal_video_observations_parallel(
+            video_path,
+            tracker=tracker,
+            queue_capacity=32,
+        )
         try:
             nod_analysis = analyze_nods([item.shared for item in observations])
         except Exception:  # noqa: BLE001 - preserve other visual branches.
@@ -633,6 +676,35 @@ def _extract_nonverbal(
         len(raw_by_turn),
     )
     return raw_by_turn, context_by_turn
+
+
+async def _wait_for_turn_video_jobs(
+    db: Any, interview_id: int, recording_id: str, timeout_seconds: float = 900.0
+) -> None:
+    """Wait only for durable queued/processing turn jobs before final assembly."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    requeued: set[str] = set()
+    while True:
+        db.expire_all()
+        jobs = db.query(TurnVideoAnalysisDB).filter(
+            TurnVideoAnalysisDB.recording_id == recording_id,
+            TurnVideoAnalysisDB.medical_interview_id == interview_id,
+        ).all()
+        for job in jobs:
+            if job.status == "queued" and job.id not in requeued:
+                enqueue_turn_video_analysis(job.id)
+                requeued.add(job.id)
+        pending = [job for job in jobs if job.status in {"queued", "processing"}]
+        if not pending:
+            return
+        if loop.time() >= deadline:
+            logger.error(
+                "multimodal_pipeline interview_id=%s recording_id=%s result=turn_job_timeout pending=%s",
+                interview_id, recording_id, len(pending),
+            )
+            return
+        await asyncio.sleep(0.2)
 
 
 # ---------------------------------------------------------------------------

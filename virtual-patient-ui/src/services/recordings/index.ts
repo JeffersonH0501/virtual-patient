@@ -54,8 +54,8 @@ export const saveInterviewTurn = async (
     timingSource: string;
     timingQuality: 'measured' | 'provisional' | 'estimated';
   },
-): Promise<void> => {
-  await requireOk(await fetch(
+): Promise<RecapTurn> => {
+  const response = await requireOk(await fetch(
     `${API_URL}/medical-interviews/${interviewId}/recording/turns/${messageId}`,
     {
       method: 'PUT',
@@ -71,6 +71,22 @@ export const saveInterviewTurn = async (
         timing_quality: payload.timingQuality,
       }),
     },
+  ));
+  return transformToCamelCase(await response.json()) as RecapTurn;
+};
+
+export const uploadTurnVideo = async (
+  interviewId: number,
+  turnId: string,
+  video: File,
+  patientRoiSnapshots: Record<string, number>[],
+): Promise<void> => {
+  const form = new FormData();
+  form.append('video', video);
+  form.append('patient_roi_snapshots', JSON.stringify(patientRoiSnapshots));
+  await requireOk(await fetch(
+    `${API_URL}/medical-interviews/${interviewId}/recording/turns/${turnId}/video`,
+    {method: 'POST', headers: getAuthHeaders(), body: form},
   ));
 };
 

@@ -36,6 +36,17 @@ const formatTimestamp = (milliseconds?: number | null): string | null => {
   return `${minutes}:${remainder} (${milliseconds} ms)`;
 };
 
+// Total elapsed time of a turn (end - start), rendered like a timestamp with an
+// exact millisecond value. Returns null unless both bounds are numeric and the
+// span is non-negative, so a fabricated or malformed window is shown as "not
+// available" rather than a misleading duration.
+const formatDuration = (startMs?: number | null, endMs?: number | null): string | null => {
+  if (typeof startMs !== 'number' || typeof endMs !== 'number') return null;
+  const durationMs = endMs - startMs;
+  if (durationMs < 0) return null;
+  return formatTimestamp(durationMs);
+};
+
 const formatMetricValue = (value?: number | null): string | null => {
   if (typeof value !== 'number') return null;
   return Number.isInteger(value) ? String(value) : String(Number(value.toFixed(3)));
@@ -341,25 +352,71 @@ export const InterviewRecap = ({interviewId, messages, infoDisabled = false}: Pr
     t(`clinicalChat.recap.labelValues.${value}`, {defaultValue: value});
 
   // Resolve one FamilyLabel to its display text: the localized value when "ok",
-  // otherwise an "unavailable (reason)" string. No label is ever fabricated for
-  // a family/feature the backend did not compute.
+  // otherwise a plain "No disponible" (the raw reason code is intentionally not
+  // surfaced to the reader). No label is ever fabricated for a family/feature
+  // the backend did not compute.
   const labelDisplay = (label?: FamilyLabel): string => {
     const isOk = label?.status === 'ok' && Boolean(label?.value);
     if (isOk) return localizeLabelValue(label!.value as string);
-    const detail = label?.reason ?? label?.status;
-    return detail
-      ? t('clinicalChat.recap.labelUnavailableWithReason', {
-        reason: t(`clinicalChat.recap.observationStatus.${detail}`, {defaultValue: detail}),
-      })
-      : t('clinicalChat.recap.observationStatus.unavailable');
+    return observationUnavailable;
   };
 
-  // One label row (used for both initial base labels and the integrated label).
+  // Ordered level scales for the individual (base) labels. Instead of repeating
+  // the row label inside the value, each base label shows its full scale (e.g.
+  // baja · típica · alta) and highlights the observed level in bold. Each entry
+  // maps a backend value CODE suffix to a short `levels` i18n key.
+  const levelScales: Record<string, {code: string; levelKey: string}[]> = {
+    speechRateWpm: [{code: 'speech_rate_low', levelKey: 'low'}, {code: 'speech_rate_typical', levelKey: 'typical'}, {code: 'speech_rate_high', levelKey: 'high'}],
+    articulationRateWpm: [{code: 'articulation_rate_low', levelKey: 'low'}, {code: 'articulation_rate_typical', levelKey: 'typical'}, {code: 'articulation_rate_high', levelKey: 'high'}],
+    medianPauseDurationMs: [{code: 'pause_duration_brief', levelKey: 'brief'}, {code: 'pause_duration_typical', levelKey: 'typical'}, {code: 'pause_duration_long', levelKey: 'long'}],
+    pauseFrequencyPerMin: [{code: 'pause_frequency_low', levelKey: 'low'}, {code: 'pause_frequency_typical', levelKey: 'typical'}, {code: 'pause_frequency_high', levelKey: 'high'}],
+    pauseTimeRatio: [{code: 'pause_load_low', levelKey: 'low'}, {code: 'pause_load_typical', levelKey: 'typical'}, {code: 'pause_load_high', levelKey: 'high'}],
+    relativePitchShiftSt: [{code: 'relative_pitch_low', levelKey: 'lowM'}, {code: 'relative_pitch_typical', levelKey: 'typicalM'}, {code: 'relative_pitch_high', levelKey: 'highM'}],
+    medianLoudness: [{code: 'loudness_low', levelKey: 'low'}, {code: 'loudness_typical', levelKey: 'typical'}, {code: 'loudness_high', levelKey: 'high'}],
+    f0P20P80RangeSemitones: [{code: 'intonation_monotone', levelKey: 'monotone'}, {code: 'intonation_typical', levelKey: 'typical'}, {code: 'intonation_variable', levelKey: 'variable'}],
+    loudnessP20P80Range: [{code: 'loudness_variability_low', levelKey: 'low'}, {code: 'loudness_variability_typical', levelKey: 'typical'}, {code: 'loudness_variability_high', levelKey: 'high'}],
+    visualAlignmentRatio: [{code: 'visual_alignment_low', levelKey: 'low'}, {code: 'visual_alignment_mid', levelKey: 'mid'}, {code: 'visual_alignment_high', levelKey: 'high'}],
+    medianVisualAlignmentDwellMs: [{code: 'visual_dwell_brief', levelKey: 'brief'}, {code: 'visual_dwell_typical', levelKey: 'typical'}, {code: 'visual_dwell_sustained', levelKey: 'sustained'}],
+    nodPresent: [{code: 'nod_absent', levelKey: 'absent'}, {code: 'nod_observed', levelKey: 'observed'}],
+    nodRateMin: [{code: 'nod_rate_low', levelKey: 'low'}, {code: 'nod_rate_typical', levelKey: 'typical'}, {code: 'nod_rate_high', levelKey: 'high'}],
+    smileActivityRatio: [{code: 'smile_activity_absent', levelKey: 'absent'}, {code: 'smile_activity_sparse', levelKey: 'sparse'}, {code: 'smile_activity_moderate', levelKey: 'moderate'}, {code: 'smile_activity_frequent', levelKey: 'frequent'}],
+    meanSmileActivation: [{code: 'smile_activation_subtle', levelKey: 'subtle'}, {code: 'smile_activation_typical', levelKey: 'typical'}, {code: 'smile_activation_marked', levelKey: 'marked'}],
+  };
+
+  // Render a base label value as its full ordered scale, highlighting the
+  // observed level. When the label is unavailable, show a plain "No disponible".
+  const renderScaleValue = (featureKey: string, label?: FamilyLabel): ReactNode => {
+    const scale = levelScales[featureKey];
+    const activeCode = label?.status === 'ok' ? label?.value ?? undefined : undefined;
+    if (!scale || !activeCode) return observationUnavailable;
+    return (
+      <span className="turn-detail-scale">
+        {scale.map(({code, levelKey}) => (
+          <span
+            key={code}
+            className={code === activeCode ? 'turn-detail-scale-level is-active' : 'turn-detail-scale-level'}
+          >
+            {t(`clinicalChat.recap.levels.${levelKey}`)}
+          </span>
+        ))}
+      </span>
+    );
+  };
+
+  // Individual (base) label row: the left label stays, the value shows the
+  // level scale with the observed level highlighted. No unit column.
+  const renderBaseLabelRow = (labelKey: string, featureKey: string, label: FamilyLabel | undefined, key: string) => (
+    <div className="turn-detail-row turn-detail-row--label" key={key}>
+      <dt>{t(labelKey)}</dt>
+      <dd className="turn-detail-label-value">{renderScaleValue(featureKey, label)}</dd>
+    </div>
+  );
+
+  // Integrated label row: single localized value, no unit column.
   const renderLabelRow = (labelKey: string, label: FamilyLabel | undefined, key: string) => (
-    <div className="turn-detail-row" key={key}>
+    <div className="turn-detail-row turn-detail-row--label" key={key}>
       <dt>{t(labelKey)}</dt>
       <dd className="turn-detail-label-value">{labelDisplay(label)}</dd>
-      <span />
     </div>
   );
 
@@ -380,7 +437,7 @@ export const InterviewRecap = ({interviewId, messages, infoDisabled = false}: Pr
       <dl className="turn-detail-subgroup">{metricRows}</dl>
       <dl className="turn-detail-subgroup">
         {baseLabelFeatures.map(({featureKey, labelKey}) =>
-          renderLabelRow(labelKey, baseLabels?.[featureKey], `${familyKey}-base-${featureKey}`),
+          renderBaseLabelRow(labelKey, featureKey, baseLabels?.[featureKey], `${familyKey}-base-${featureKey}`),
         )}
       </dl>
       <dl className="turn-detail-subgroup">
@@ -573,6 +630,10 @@ export const InterviewRecap = ({interviewId, messages, infoDisabled = false}: Pr
                   <div className="turn-detail-general-item">
                     <dt>{t('clinicalChat.recap.end')}</dt>
                     <dd>{formatTimestamp(detailTurn.endMs) ?? t('clinicalChat.recap.notAvailable')}</dd>
+                  </div>
+                  <div className="turn-detail-general-item">
+                    <dt>{t('clinicalChat.recap.duration')}</dt>
+                    <dd>{formatDuration(detailTurn.startMs, detailTurn.endMs) ?? t('clinicalChat.recap.notAvailable')}</dd>
                   </div>
                   <div className="turn-detail-general-item">
                     <dt>{t('clinicalChat.recap.transcript')}</dt>

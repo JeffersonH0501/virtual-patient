@@ -1,6 +1,8 @@
 from types import SimpleNamespace
+from threading import enumerate as enumerate_threads
 
 import numpy as np
+import pytest
 
 from app.nonverbal.gaze import GazeObservation
 from app.nonverbal.shared_observations import SharedFrameObservation
@@ -10,6 +12,7 @@ from app.nonverbal.video_observations import (
     TurnWindow,
     build_turn_raw_features,
     extract_nonverbal_video_observations,
+    extract_nonverbal_video_observations_parallel,
     segment_nonverbal_observations_by_turn,
 )
 
@@ -58,3 +61,57 @@ def test_full_video_fans_out_each_shared_observation_without_second_detector(mon
     result = extract_nonverbal_video_observations(SimpleNamespace(), tracker=object())
     assert len(result) == 2
     assert calls == {"video": 1, "smile": 2, "gaze": 2}
+
+
+def test_parallel_video_preserves_order_and_cleans_up_producer(monkeypatch):
+    shared = [
+        SharedFrameObservation(index * 100, np.zeros((2, 2, 3)), False)
+        for index in range(40)
+    ]
+
+    monkeypatch.setattr(
+        "app.nonverbal.video_observations.extract_video",
+        lambda *args, **kwargs: iter(shared),
+    )
+    monkeypatch.setattr(
+        "app.nonverbal.video_observations.extract_gaze_batch",
+        lambda items, tracker, **kwargs: [
+            GazeObservation(item.timestamp_ms, False, "test") for item in items
+        ],
+    )
+    monkeypatch.setattr(
+        "app.nonverbal.video_observations.extract_smile", lambda item: None
+    )
+
+    result = extract_nonverbal_video_observations_parallel(
+        SimpleNamespace(), tracker=object(), queue_capacity=16
+    )
+
+    assert [item.shared.timestamp_ms for item in result] == [
+        item.timestamp_ms for item in shared
+    ]
+    assert all(item.shared.frame is None for item in result)
+    assert not any(thread.name == "mediapipe-producer" for thread in enumerate_threads())
+
+
+def test_parallel_video_propagates_producer_error_without_orphan_thread(monkeypatch):
+    def failing_video(*args, **kwargs):
+        yield SharedFrameObservation(0, np.zeros((2, 2, 3)), False)
+        raise RuntimeError("producer failed")
+
+    monkeypatch.setattr("app.nonverbal.video_observations.extract_video", failing_video)
+    monkeypatch.setattr(
+        "app.nonverbal.video_observations.extract_gaze_batch",
+        lambda items, tracker, **kwargs: [
+            GazeObservation(item.timestamp_ms, False, "test") for item in items
+        ],
+    )
+    monkeypatch.setattr(
+        "app.nonverbal.video_observations.extract_smile", lambda item: None
+    )
+
+    with pytest.raises(RuntimeError, match="producer failed"):
+        extract_nonverbal_video_observations_parallel(
+            SimpleNamespace(), tracker=object(), queue_capacity=1
+        )
+    assert not any(thread.name == "mediapipe-producer" for thread in enumerate_threads())

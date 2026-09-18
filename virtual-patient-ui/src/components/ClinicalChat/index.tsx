@@ -107,6 +107,9 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     finalize: () => Promise<boolean>;
     resumeAudioGraph: () => Promise<void>;
     recordStudentTurn: (messageId: number, sequence: number, transcript: string, timing?: SpeechTiming) => void;
+    beginStudentTurn: () => void;
+    endStudentTurn: () => void;
+    discardStudentTurn: () => void;
   } | null>(null);
   const media = useInterviewMedia();
 
@@ -459,9 +462,14 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const patientHasFloor = patientTurnActive || isLoading || isPatientSpeaking;
   const handleUtteranceCommitted = useCallback(() => {
     setPatientTurnActive(true);
+    recordingRef.current?.endStudentTurn();
   }, []);
   const handleUtteranceFailed = useCallback(() => {
     setPatientTurnActive(false);
+    recordingRef.current?.discardStudentTurn();
+  }, []);
+  const handleSpeechStart = useCallback(() => {
+    recordingRef.current?.beginStudentTurn();
   }, []);
   const speech = useHandsFreeSpeech({
     language: speechLanguage,
@@ -470,6 +478,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     autoStart: Boolean(isSimulationActive && isOwner),
     microphoneStream: media.microphoneStream,
     onUtteranceCommitted: handleUtteranceCommitted,
+    onSpeechStart: handleSpeechStart,
     onUtteranceFailed: handleUtteranceFailed,
     onUtterance: handleSendMessage,
   });

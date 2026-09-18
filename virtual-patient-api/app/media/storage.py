@@ -101,6 +101,36 @@ class LocalMediaStorage:
             await upload.close()
         return StoredMedia((relative_dir / filename).as_posix(), size, digest.hexdigest())
 
+    async def save_turn_video_upload(
+        self, interview_id: int, recording_id: str, turn_id: str, upload: UploadFile, extension: str
+    ) -> StoredMedia:
+        """Atomically store a temporary video segment for one conversation turn."""
+        self._ensure_free_space()
+        relative_dir = Path("interviews") / str(interview_id) / recording_id / "turns"
+        target_dir = (self.root / relative_dir).resolve()
+        self._assert_within_root(target_dir)
+        target_dir.mkdir(parents=True, exist_ok=True)
+        filename = f"{turn_id}-{uuid.uuid4().hex}{extension}"
+        target = target_dir / filename
+        temporary = target_dir / f".{filename}.{uuid.uuid4().hex}.tmp"
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with temporary.open("wb") as output:
+                while chunk := await upload.read(1024 * 1024):
+                    output.write(chunk)
+                    digest.update(chunk)
+                    size += len(chunk)
+                output.flush()
+                os.fsync(output.fileno())
+            temporary.replace(target)
+        except Exception:
+            temporary.unlink(missing_ok=True)
+            raise
+        finally:
+            await upload.close()
+        return StoredMedia((relative_dir / filename).as_posix(), size, digest.hexdigest())
+
     def resolve(self, storage_key: str) -> Path:
         path = (self.root / storage_key).resolve()
         self._assert_within_root(path)

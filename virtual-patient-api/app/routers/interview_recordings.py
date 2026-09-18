@@ -25,6 +25,7 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from sqlalchemy.exc import IntegrityError
 
 from app.core.auth import get_current_user_from_token
 from app.core.database import get_db
@@ -32,6 +33,7 @@ from app.media import LocalMediaStorage, get_media_storage
 from app.multimodal.legacy_adapter import normalize_observation
 from app.multimodal.pipeline import process_multimodal_interview
 from app.multimodal.reprocess import reprocess_interview_evaluation
+from app.multimodal.turn_video_queue import enqueue_turn_video_analysis, queue_depth
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
     InterviewRecapResponse,
@@ -46,6 +48,7 @@ from app.models.medical_interview import (
     RecordingUnavailableRequest,
     SenderType,
     TurnUpsertRequest,
+    TurnVideoAnalysisDB,
 )
 from app.models.medical_interview.interview_message import InterviewMessageDB
 from app.models.user import UserDB, UserRole
@@ -232,6 +235,123 @@ def upsert_turn(
     db.commit()
     db.refresh(turn)
     return _turn_response(turn)
+
+
+@router.post("/{interview_id}/recording/turns/{turn_id}/video")
+async def upload_turn_video(
+    interview_id: int,
+    turn_id: str,
+    video: Annotated[UploadFile, File()],
+    patient_roi_snapshots: Annotated[str, Form()] = "[]",
+    user: UserDB = Depends(_current_media_user),
+    db: Session = Depends(get_db),
+    storage: LocalMediaStorage = Depends(get_media_storage),
+) -> Dict[str, Any]:
+    """Persist and enqueue one idempotent temporary turn-video analysis."""
+    interview = _get_interview(db, interview_id)
+    _require_owner(interview, user)
+    recording = db.query(InterviewRecordingDB).filter(
+        InterviewRecordingDB.medical_interview_id == interview_id
+    ).first()
+    turn = db.query(InterviewTurnDB).filter(
+        InterviewTurnDB.id == turn_id,
+        InterviewTurnDB.medical_interview_id == interview_id,
+    ).first()
+    if recording is None or turn is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording turn not found")
+    content_type = (video.content_type or "").split(";", 1)[0].lower()
+    extension = ALLOWED_CONTENT_TYPES.get(content_type)
+    if extension not in {".webm", ".mp4"}:
+        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported turn video type")
+    try:
+        roi_snapshots = json.loads(patient_roi_snapshots)
+    except json.JSONDecodeError as error:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid patient ROI snapshots") from error
+    if not isinstance(roi_snapshots, list):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Patient ROI snapshots must be a list")
+
+    stored = await storage.save_turn_video_upload(
+        interview_id, recording.id, turn.id, video, extension
+    )
+    if stored.size_bytes == 0:
+        storage.delete(stored.storage_key)
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Turn video is empty")
+    existing = db.query(TurnVideoAnalysisDB).filter(
+        TurnVideoAnalysisDB.turn_id == turn.id
+    ).first()
+    if existing is not None:
+        if existing.sha256 != stored.sha256:
+            storage.delete(stored.storage_key)
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Turn video already has a different payload")
+        storage.delete(stored.storage_key)
+        return {"turn_id": turn.id, "status": existing.status, "queue_depth": queue_depth()}
+
+    job = TurnVideoAnalysisDB(
+        medical_interview_id=interview_id,
+        recording_id=recording.id,
+        turn_id=turn.id,
+        speaker=turn.speaker,
+        start_ms=turn.start_ms,
+        end_ms=turn.end_ms,
+        storage_key=stored.storage_key,
+        content_type=content_type,
+        size_bytes=stored.size_bytes,
+        sha256=stored.sha256,
+        status="queued",
+        roi_snapshots=roi_snapshots,
+    )
+    db.add(job)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        storage.delete(stored.storage_key)
+        existing = db.query(TurnVideoAnalysisDB).filter(
+            TurnVideoAnalysisDB.turn_id == turn.id
+        ).first()
+        if existing is None or existing.sha256 != stored.sha256:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Turn video already has a different payload",
+            )
+        return {"turn_id": turn.id, "status": existing.status, "queue_depth": queue_depth()}
+    db.refresh(job)
+    enqueue_turn_video_analysis(job.id)
+    logger.info(
+        "turn_video_analysis interview_id=%s turn_id=%s status=queued queue_depth=%s",
+        interview_id, turn.id, queue_depth(),
+    )
+    return {"turn_id": turn.id, "status": job.status, "queue_depth": queue_depth()}
+
+
+@router.get("/{interview_id}/recording/turn-video-analyses")
+def list_turn_video_analyses(
+    interview_id: int,
+    user: UserDB = Depends(_current_media_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Expose the durable per-turn queue lifecycle without returning media paths."""
+    interview = _get_interview(db, interview_id)
+    _require_owner(interview, user)
+    jobs = db.query(TurnVideoAnalysisDB).filter(
+        TurnVideoAnalysisDB.medical_interview_id == interview_id
+    ).order_by(TurnVideoAnalysisDB.queued_at).all()
+    counts = {state: 0 for state in ("queued", "processing", "completed", "failed")}
+    items = []
+    for job in jobs:
+        counts[job.status] = counts.get(job.status, 0) + 1
+        items.append({
+            "turn_id": job.turn_id,
+            "speaker": job.speaker,
+            "start_ms": job.start_ms,
+            "end_ms": job.end_ms,
+            "status": job.status,
+            "error": job.error,
+            "queued_at": job.queued_at,
+            "started_at": job.started_at,
+            "completed_at": job.completed_at,
+        })
+    return {"counts": counts, "jobs": items}
 
 
 @router.post("/{interview_id}/recording/finalize", response_model=RecordingStateResponse)

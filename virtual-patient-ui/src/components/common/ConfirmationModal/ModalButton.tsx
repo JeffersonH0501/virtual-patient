@@ -1,7 +1,7 @@
 import {FC, ReactNode} from 'react';
 
 type ModalButtonProps = {
-  variant: 'primary' | 'secondary';
+  variant: 'primary' | 'secondary' | 'warning';
   onClick: () => void;
   children: ReactNode;
   disabled?: boolean;
@@ -13,6 +13,7 @@ export const ModalButton: FC<ModalButtonProps> = ({variant, onClick, children, d
   const variantStyles = {
     primary: 'dialog-action--danger',
     secondary: 'dialog-action--secondary',
+    warning: 'dialog-action--warning',
   };
 
   return (

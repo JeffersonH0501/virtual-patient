@@ -1,11 +1,13 @@
 import {useEffect, useState} from 'react';
-import {Outlet, useLocation, matchPath} from 'react-router-dom';
+import {Outlet, useLocation, matchPath, useNavigate} from 'react-router-dom';
 import {Header} from '../Header';
 import {Footer} from '../Footer';
 import {TokenExpiredScreen} from '../../TokenExpiredScreen';
 import {useAuthError} from '../../../hooks/useAuthError';
-import {ROUTES} from '../../../utils/routes';
+import {interviewPath, ROUTES} from '../../../utils/routes';
 import {InterviewMediaProvider} from '../../../contexts/InterviewMediaContext';
+import {getActiveInterview} from '../../../services/interviews';
+import {useUser} from '../../../hooks/useUser';
 
 export type AppContainerOutletContext = {
   setClinicalSimulationActive: (active: boolean) => void;
@@ -13,6 +15,8 @@ export type AppContainerOutletContext = {
 
 export const AppContainer = () => {
   const { isTokenExpired } = useAuthError();
+  const {user, isLoading: isUserLoading} = useUser();
+  const navigate = useNavigate();
   const {pathname} = useLocation();
   const legacyCalibrationMatch = matchPath(ROUTES.interviewCalibration, pathname);
   const preInterviewCalibrationMatch = matchPath(ROUTES.calibration, pathname);
@@ -23,6 +27,37 @@ export const AppContainer = () => {
   const isClinicalChat = Boolean(sessionMatch || reviewMatch);
   const isInterviewFlow = Boolean(calibrationMatch || sessionMatch || reviewMatch);
   const [clinicalSimulationActive, setClinicalSimulationActive] = useState(false);
+  const [checkingActiveInterview, setCheckingActiveInterview] = useState(true);
+
+  useEffect(() => {
+    if (isUserLoading) return;
+    if (!user || user.role !== 'student' || isTokenExpired) {
+      setCheckingActiveInterview(false);
+      return;
+    }
+
+    let current = true;
+    setCheckingActiveInterview(true);
+    void getActiveInterview()
+      .then((activeInterview) => {
+        if (!current) return;
+        if (
+          activeInterview?.status === 'in_progress'
+          && activeInterview.startTime
+          && String(sessionMatch?.params.interviewId) !== String(activeInterview.id)
+        ) {
+          navigate(interviewPath(activeInterview.id, 'session'), {replace: true});
+          return;
+        }
+        setCheckingActiveInterview(false);
+      })
+      .catch(() => {
+        if (current) setCheckingActiveInterview(false);
+      });
+    return () => {
+      current = false;
+    };
+  }, [isTokenExpired, isUserLoading, navigate, pathname, sessionMatch?.params.interviewId, user]);
 
   useEffect(() => {
     if (!isClinicalChat) setClinicalSimulationActive(false);
@@ -30,6 +65,10 @@ export const AppContainer = () => {
 
   if (isTokenExpired) {
     return <TokenExpiredScreen />;
+  }
+
+  if (isUserLoading || checkingActiveInterview) {
+    return null;
   }
 
   return (

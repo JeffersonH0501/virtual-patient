@@ -71,7 +71,7 @@ async def reprocess_interview_evaluation(
     # Step 1: run the whole multimodal analysis to completion. It manages its own
     # DB session and the observation_processing lifecycle, and never raises.
     try:
-        await process_multimodal_interview(interview_id, recording_id)
+        await process_multimodal_interview(interview_id, recording_id, use_full_video=True)
     except Exception:  # noqa: BLE001 - defensive; the pipeline already guards.
         logger.exception(
             "reprocess_interview interview_id=%s recording_id=%s stage=multimodal "

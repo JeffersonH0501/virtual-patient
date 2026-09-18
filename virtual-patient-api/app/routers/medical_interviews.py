@@ -958,6 +958,8 @@ async def abandon_interview(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Interview not found"
         )
+    from app.multimodal.turn_video_queue import fail_pending_turn_video_jobs
+    fail_pending_turn_video_jobs(db, int(interview_id), "interview_interrupted")
     
     return interview
 

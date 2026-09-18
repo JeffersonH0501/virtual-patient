@@ -13,7 +13,7 @@ from .medical_interview import (
     MedicalInterviewWithMessages, MedicalInterviewWithHypotheses, MedicalInterviewWithNotes,
     MedicalInterviewWithSummary, MedicalInterviewComplete,
     InterviewStatus, SenderType, NoteType,
-    InterviewRecordingDB, InterviewMediaAssetDB, InterviewTurnDB,
+    InterviewRecordingDB, InterviewMediaAssetDB, InterviewTurnDB, TurnVideoAnalysisDB,
     RecordingStatus, MediaAssetKind
 )
 
@@ -31,7 +31,7 @@ __all__ = [
     "MedicalInterviewWithMessages", "MedicalInterviewWithHypotheses", "MedicalInterviewWithNotes",
     "MedicalInterviewWithSummary", "MedicalInterviewComplete",
     "InterviewStatus", "SenderType", "NoteType",
-    "InterviewRecordingDB", "InterviewMediaAssetDB", "InterviewTurnDB",
+    "InterviewRecordingDB", "InterviewMediaAssetDB", "InterviewTurnDB", "TurnVideoAnalysisDB",
     "RecordingStatus", "MediaAssetKind",
     "CalibrationAttemptDB", "CalibrationMediaAssetDB", "CalibrationStatus",
 ]

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
+from time import perf_counter
 import numpy as np
 from app.models.calibration import CalibrationCaptureMetadata
 
@@ -20,6 +21,7 @@ def summarize_timings(timings: dict[str, list[float]]) -> dict:
             "total_ms": float(values.sum()),
             "mean_ms": float(values.mean()),
             "p50_ms": float(np.percentile(values, 50)),
+            "p90_ms": float(np.percentile(values, 90)),
             "p95_ms": float(np.percentile(values, 95)),
             "max_ms": float(values.max()),
         }
@@ -27,26 +29,41 @@ def summarize_timings(timings: dict[str, list[float]]) -> dict:
 
 
 def process_video(path: Path, metadata: CalibrationCaptureMetadata) -> dict:
+    startup_timings: dict[str, list[float]] = {}
+    started = perf_counter()
     from app.nonverbal.ccdbhg import head_pose_features
     from app.nonverbal.gaze import create_tracker
     from app.nonverbal.gaze_calibration import build_profile
     from app.nonverbal.mediapipe_extractor import create_face_landmarker
     from app.nonverbal.video_observations import extract_nonverbal_video_observations
+    startup_timings["startup.video_module_imports"] = [(perf_counter() - started) * 1000]
 
-    landmarker = create_face_landmarker()
-    timings: dict[str, list[float]] = {}
-    observations = extract_nonverbal_video_observations(path, sample_fps=CALIBRATION_SAMPLE_FPS, tracker=create_tracker(kalman_enabled=False), landmarker=landmarker, timings=timings)
+    started = perf_counter()
+    landmarker = create_face_landmarker(timings=startup_timings)
+    startup_timings["startup.mediapipe_landmarker_creation"] = [(perf_counter() - started) * 1000]
+    started = perf_counter()
+    tracker = create_tracker(kalman_enabled=False, timings=startup_timings)
+    startup_timings["startup.webeyetrack_and_blazegaze_creation"] = [(perf_counter() - started) * 1000]
+    timings: dict[str, list[float]] = startup_timings
+    started = perf_counter()
+    try:
+        observations = extract_nonverbal_video_observations(path, sample_fps=CALIBRATION_SAMPLE_FPS, tracker=tracker, landmarker=landmarker, timings=timings)
+    finally:
+        landmarker.close()
+    timings["pipeline.video_extraction_wall"] = [(perf_counter() - started) * 1000]
     shared = [item.shared for item in observations]
     valid_faces = [item for item in shared if item.face_valid]
     # Voice is evaluated by a separate OpenSMILE-only process. Passing neutral
     # placeholders here lets this result represent only the visual gate.
+    started = perf_counter()
     profile, quality, passed, reason = build_profile([item.gaze for item in observations], metadata, face_valid_ratio=len(valid_faces) / len(shared) if shared else 0.0, voiced_duration_ms=3000, clipping=False)
     head = [head_pose_features(item.facial_transformation_matrix) for item in valid_faces if item.facial_transformation_matrix is not None]
     neutral_head = None
     if head:
         median_head = np.median(np.asarray(head), axis=0)
         neutral_head = {"neutral_head_yaw": float(median_head[0]), "neutral_head_pitch": float(median_head[2]), "neutral_head_roll": float(median_head[1])}
-    return {"profile": profile, "quality": quality, "passed": passed, "failure_reason": reason, "neutral_head": neutral_head, "performance": summarize_timings(timings)}
+    timings["pipeline.calibration_finalization"] = [(perf_counter() - started) * 1000]
+    return {"profile": profile, "quality": quality, "passed": passed, "failure_reason": reason, "neutral_head": neutral_head, "performance": summarize_timings(timings), "optimization_counters": tracker._optimization_counters}
 
 
 def process_audio(path: Path, metadata: CalibrationCaptureMetadata) -> dict:
