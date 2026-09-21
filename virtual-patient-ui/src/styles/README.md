@@ -20,7 +20,6 @@ semantic classes and variants rather than defining CSS values in JavaScript.
 | Audio visualization | `--wave-*`, `.voice-wave`, `.patient-voice-wave` |
 | Interview calibration | `.calibration-*` components and `--calibration-level` |
 | Recorded canvas appearance | `--recording-*` |
-| Icon development gallery | `.icon-gallery` scoped rules |
 
 `<Modal size="large">` still selects the large variant, but its width now comes
 from CSS. There is no `MODAL_SIZES` object to edit. Responsive utilities such as

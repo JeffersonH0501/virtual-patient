@@ -1,4 +1,4 @@
-"""Persistence and API contracts for reproducible calibration attempts.""""""Calibration capture contracts.
+"""Calibration capture contracts.
 
 The multimodal calibration is processed temporarily and never persisted as its
 own database rows (see ``app/routers/calibration.py``). Only the browser capture

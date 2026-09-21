@@ -844,118 +844,107 @@
   opacity: calc(var(--wave-active-opacity) + var(--wave-level, 0) * var(--wave-opacity-range));
 }
 .voice-wave span[data-wave-idle], .patient-voice-wave span[data-wave-idle] { opacity: var(--wave-idle-opacity); }
-/* WhatsApp-like calibration meter. Kept outside @layer so it overrides the
-   generic grid-based .voice-wave rules above (which force 80 columns and cause a
-   two-row wrap). New samples enter from the right; older bars scroll off the
-   left, so the meter fills any width with a single fluid row. */
-/* Calibration meter reuses the transcript waveform look, but updates each bar's
-   height instantly (no easing) so state changes are direct rather than gliding. */
-.voice-wave.calibration-waveform span {
-  transition: none;
-}
 .progress-fill { width: var(--progress-width, 0%); }
 .logo-text { white-space: pre; }
 
 @layer components {
-  .calibration-page { @apply mx-auto flex min-h-0 w-full max-w-content flex-col overflow-hidden rounded-panel bg-surface shadow-card; }
+  .calibration-experience { @apply mx-auto flex min-h-full w-full max-w-content flex-1 items-stretch; }
+  .calibration-shell { @apply relative mx-auto flex min-h-full w-full flex-1 flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-card; }
   .calibration-target-layer { @apply fixed inset-0 z-[100] pointer-events-none; }
-  .calibration-target { @apply absolute h-7 w-7 -translate-x-1/2 -translate-y-1/2 rounded-full border-4 border-white bg-brand-600 shadow-lg; }
-  .calibration-header { @apply border-b border-border px-5 py-4 text-center lg:px-7; }
-  .calibration-eyebrow { @apply mb-1 text-xs font-semibold uppercase tracking-wider text-brand-600; }
-  .calibration-title { @apply text-xl font-bold text-content sm:text-2xl; }
-  .calibration-description { @apply mx-auto mt-1 max-w-3xl text-sm text-content-muted; }
-  .calibration-description strong { @apply whitespace-nowrap font-semibold text-content; }
-  .calibration-grid { @apply grid min-h-0 grid-cols-1 content-start gap-3 p-4 lg:px-6 lg:py-4; }
-  .calibration-preview-card, .calibration-panel { @apply min-w-0 rounded-card; }
-  .calibration-preview-card { @apply flex flex-col overflow-hidden border border-border bg-surface; }
-  .calibration-preview { @apply relative flex aspect-video min-h-0 max-h-[50dvh] flex-1 items-center justify-center overflow-hidden bg-neutral-900; }
-  .calibration-preview video { @apply h-full w-full -scale-x-100 object-contain; }
-  .calibration-preview__empty { @apply flex flex-col items-center gap-3 px-5 text-center text-sm text-neutral-200; }
-  .calibration-preview__empty svg { @apply h-12 w-12; }
-  .calibration-recording-badge { @apply absolute left-3 top-3 rounded-full bg-danger-600 px-3 py-1 text-xs font-semibold text-white; }
-  .calibration-countdown { @apply pointer-events-none absolute left-1/2 top-4 -translate-x-1/2 text-6xl font-bold leading-none text-danger-500 tabular-nums drop-shadow-lg lg:text-7xl; }
-  .calibration-meter { @apply border-t border-border bg-surface px-4 py-2; }
-  .calibration-panel { @apply flex flex-col gap-3; }
-  .calibration-device-columns { @apply grid gap-3 sm:grid-cols-2; }
-  .calibration-device-columns section { @apply rounded-card border border-border bg-surface px-4 py-3 shadow-panel-subtle; }
-  .calibration-device-columns h2 { @apply mb-2 flex items-center gap-2 text-sm font-semibold text-content; }
-  .calibration-device-columns h2 svg { @apply h-5 w-5 text-brand-600; }
-  .calibration-device-columns ul { @apply space-y-1.5; }
-  .calibration-check { @apply flex items-center gap-2 text-sm text-content-muted; }
-  .calibration-check__dot { @apply h-2.5 w-2.5 shrink-0 rounded-full; }
-  .calibration-check__dot--ready { @apply bg-success-500; }
-  .calibration-check__dot--warning { @apply bg-warning-500; }
-  .calibration-check__dot--unavailable { @apply bg-danger-500; }
-  .calibration-message { @apply flex items-center gap-2 rounded-card px-4 py-3 text-sm; }
-  .calibration-message svg { @apply h-5 w-5 shrink-0; }
-  .calibration-message button { @apply ml-auto font-semibold underline; }
-  .calibration-message--error { @apply bg-danger-50 text-danger-700; }
-  .calibration-result { @apply rounded-card px-4 py-3; }
-  .calibration-result h2 { @apply text-sm font-semibold; }
-  .calibration-result p { @apply m-0 text-sm; }
-  .calibration-result--passed { @apply bg-success-50 text-success-800; }
-  .calibration-result--failed { @apply bg-danger-50 text-danger-800; }
-  .calibration-result__warning { @apply font-medium text-warning-700; }
-  .calibration-actions { @apply mt-auto flex flex-wrap justify-end gap-2 bg-surface py-3; }
-  .calibration-state { @apply flex min-h-48 w-full items-center justify-center text-sm text-content-muted; }
+  .calibration-target { @apply absolute h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border-[6px] border-white bg-brand-600 shadow-lg; animation: calibration-target-in 180ms var(--motion-panel-easing); }
+  .calibration-progress { @apply grid grid-cols-5 gap-1 border-b border-border bg-neutral-50 px-4 py-3 sm:px-8; }
+  .calibration-progress li { @apply relative flex min-w-0 flex-col items-center gap-1 text-center text-xs text-neutral-400; }
+  .calibration-progress li::before { @apply absolute left-[calc(-50%+0.75rem)] right-[calc(50%+0.75rem)] top-3 h-px bg-neutral-200; content: ''; }
+  .calibration-progress li:first-child::before { display: none; }
+  .calibration-progress li > span { @apply relative z-10 flex h-6 w-6 items-center justify-center rounded-full border border-neutral-300 bg-white text-xs font-semibold; }
+  .calibration-progress li[data-active='true'] { @apply font-semibold text-brand-700; }
+  .calibration-progress li[data-active='true'] > span { @apply border-brand-600 bg-brand-600 text-white; }
+  .calibration-progress li[data-complete='true'] > span { @apply border-success-500 bg-success-50 text-success-700; }
+  .calibration-hero { @apply px-5 pb-5 pt-7 text-center sm:px-10 sm:pt-9; }
+  .calibration-hero > p { @apply mb-2 text-xs font-semibold uppercase tracking-wider text-brand-600; }
+  .calibration-hero h1, .calibration-active-copy h1, .calibration-shell--centered h1 { @apply text-2xl font-bold leading-tight text-content outline-none sm:text-3xl; }
+  .calibration-hero > span { @apply mx-auto mt-3 block max-w-2xl text-sm leading-6 text-content-muted sm:text-base; }
+  .calibration-preparation-grid { @apply grid min-h-0 flex-1 gap-5 px-4 pb-5 sm:px-7 sm:pb-7 lg:grid-cols-[minmax(0,1.45fr)_minmax(17rem,0.75fr)] lg:items-center; }
+  .calibration-camera { @apply relative flex aspect-video min-h-0 w-full items-center justify-center overflow-hidden rounded-panel bg-neutral-900 shadow-lg; }
+  .calibration-camera video { @apply h-full w-full -scale-x-100 object-cover; }
+  .calibration-camera__empty { @apply flex flex-col items-center gap-3 px-5 text-center text-sm text-neutral-200; }
+  .calibration-camera__empty svg { @apply h-12 w-12; }
+  .calibration-camera--compact { @apply fixed bottom-5 right-5 z-[80] w-36 rounded-card border-2 border-white shadow-lg sm:w-48; }
+  .calibration-preparation-panel { @apply flex flex-col gap-4; }
+  .calibration-device-list { @apply grid gap-3; }
+  .calibration-device-status { @apply flex items-center gap-3 rounded-card border border-border bg-neutral-50 px-4 py-3; }
+  .calibration-device-status[data-ready='true'] { @apply border-success-200 bg-success-50; }
+  .calibration-device-status__icon { @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-white text-neutral-500 shadow-sm; }
+  .calibration-device-status[data-ready='true'] .calibration-device-status__icon { @apply text-success-700; }
+  .calibration-device-status svg { @apply h-5 w-5; }
+  .calibration-device-status strong, .calibration-device-status small { @apply block; }
+  .calibration-device-status strong { @apply text-sm text-content; }
+  .calibration-device-status small { @apply mt-0.5 text-xs text-content-muted; }
+  .calibration-audio-level { @apply flex h-10 items-center justify-center gap-1 overflow-hidden rounded-card bg-brand-50 px-3; }
+  .calibration-audio-level span { @apply block w-1 rounded-full bg-brand-500; height: calc(4px + var(--calibration-level) * 26px); }
+  .calibration-audio-level--large { @apply h-20 bg-white/95; }
+  .calibration-audio-level--large span { @apply w-1.5; height: calc(6px + var(--calibration-level) * 52px); }
+  .calibration-recommendations { @apply grid gap-2 text-sm text-content-muted; }
+  .calibration-recommendations li { @apply flex items-center gap-2; }
+  .calibration-recommendations span { @apply flex h-5 w-5 items-center justify-center rounded-full bg-brand-50 text-xs font-bold text-brand-700; }
+  .calibration-friendly-alert { @apply flex items-start gap-3 rounded-card bg-warning-50 px-4 py-3 text-sm text-warning-800; }
+  .calibration-friendly-alert svg { @apply mt-0.5 h-5 w-5 shrink-0; }
+  .calibration-friendly-alert button { @apply ml-auto shrink-0 font-semibold underline; }
+  .calibration-primary-actions { @apply mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end; }
+  .calibration-button { @apply min-h-12 rounded-control px-6 py-3 text-sm font-semibold transition-colors; }
+  .calibration-button--primary { @apply border border-brand-600 bg-brand-600 text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50; }
+  .calibration-button--secondary { @apply border border-neutral-300 bg-white text-neutral-700 hover:bg-neutral-50; }
+  .calibration-shell--active { @apply bg-neutral-950 text-white; }
+  .calibration-shell--active .calibration-progress { @apply border-neutral-800 bg-neutral-900; }
+  .calibration-active-stage { @apply relative flex min-h-0 flex-1 flex-col items-center justify-center gap-5 overflow-hidden px-5 py-7 text-center; }
+  .calibration-active-copy { @apply relative z-20 max-w-2xl rounded-panel bg-neutral-950/80 px-5 py-3 backdrop-blur-sm; }
+  .calibration-active-copy h1 { @apply text-white; }
+  .calibration-active-copy p { @apply mt-2 text-sm text-neutral-200 sm:text-base; }
+  .calibration-active-copy strong { @apply mt-3 block text-sm font-semibold text-brand-300; }
+  .calibration-active-media { @apply relative flex min-h-0 w-full max-w-3xl flex-col items-center gap-4; }
+  .calibration-active-media .calibration-camera { @apply max-h-[48dvh]; }
+  .calibration-stage-countdown { @apply absolute right-5 top-5 z-30 flex h-16 w-16 items-center justify-center rounded-full bg-white text-3xl font-bold tabular-nums text-brand-700 shadow-lg sm:h-20 sm:w-20 sm:text-4xl; }
+  .calibration-speaking-prompt { @apply max-w-xl rounded-full bg-white/10 px-5 py-2 text-sm text-neutral-200; }
+  .calibration-shell--gaze .calibration-active-stage { @apply justify-end pb-8; }
+  .calibration-shell--centered { @apply items-center justify-center gap-4 px-6 py-10 text-center; }
+  .calibration-shell--centered > p { @apply max-w-xl text-base leading-7 text-content-muted; }
+  .calibration-processing-mark { @apply flex h-20 w-20 items-center justify-center gap-1.5 rounded-full bg-brand-50; }
+  .calibration-processing-mark span { @apply h-2.5 w-2.5 rounded-full bg-brand-600; animation: calibration-processing-dot 900ms infinite alternate; }
+  .calibration-processing-mark span:nth-child(2) { animation-delay: 150ms; }
+  .calibration-processing-mark span:nth-child(3) { animation-delay: 300ms; }
+  .calibration-indeterminate { @apply mt-3 h-1.5 w-full max-w-sm overflow-hidden rounded-full bg-neutral-200; }
+  .calibration-indeterminate span { @apply block h-full w-1/3 rounded-full bg-brand-600; animation: calibration-indeterminate 1.3s ease-in-out infinite; }
+  .calibration-shell--centered > small { @apply text-sm text-neutral-500; }
+  .calibration-result-symbol { @apply flex h-20 w-20 items-center justify-center rounded-full text-4xl font-bold; }
+  .is-success .calibration-result-symbol { @apply bg-success-100 text-success-700; }
+  .is-failure .calibration-result-symbol { @apply bg-warning-100 text-warning-800; }
+  .calibration-shell--result .calibration-primary-actions { @apply mt-4; }
 }
 
-@media (max-height: 760px) and (min-width: 1024px) {
-  .calibration-header { @apply py-3; }
-  .calibration-grid { @apply gap-3 p-3; }
-  .calibration-panel { @apply gap-3; }
-  .calibration-device-columns section { @apply p-3; }
+@keyframes calibration-target-in { from { opacity: 0; transform: translate(-50%, -50%) scale(.55); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes calibration-processing-dot { from { opacity: .35; transform: translateY(3px); } to { opacity: 1; transform: translateY(-3px); } }
+@keyframes calibration-indeterminate { from { transform: translateX(-110%); } to { transform: translateX(310%); } }
+
+@media (max-width: 639px) {
+  .calibration-shell { min-height: calc(100dvh - 1.5rem); border-radius: var(--radius-card); }
+  .calibration-progress small { @apply sr-only; }
+  .calibration-hero { @apply pb-4 pt-5; }
+  .calibration-preparation-grid { @apply content-start; }
+  .calibration-preparation-grid .calibration-camera { max-height: 34dvh; }
+  .calibration-active-stage { @apply px-4 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-5; }
+  .calibration-active-copy { @apply px-3; }
+  .calibration-stage-countdown { @apply right-3 top-3; }
 }
 
-/* Development-only icon gallery, scoped to avoid styling application screens. */
-.icon-gallery { text-align: left; }
+@media (max-height: 700px) and (min-width: 640px) {
+  .calibration-hero { @apply pb-3 pt-4; }
+  .calibration-preparation-grid { @apply pb-4; }
+  .calibration-device-status { @apply py-2; }
+}
 
-.icon-gallery * { box-sizing: border-box; }
-.icon-gallery { margin: 0; min-height: 100%; }
-.icon-gallery { background: var(--color-neutral-100); color: var(--color-neutral-900); font-family: Inter, Arial, sans-serif; }
-.icon-gallery { width: 1400px; min-height: 2050px; padding: 52px; }
-.icon-gallery header { margin-bottom: 32px; }
-.icon-gallery header p { margin: 0 0 8px; color: var(--color-brand-600); font-size: 14px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
-.icon-gallery h1 { margin: 0; font-size: 36px; }
-.icon-gallery header span { display: block; margin-top: 8px; color: var(--color-neutral-500); font-size: 14px; }
-.icon-gallery section { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; }
-.icon-gallery article { min-height: 210px; padding: 22px; border: 1px solid #dbe3ee; border-radius: 16px; background: white; box-shadow: 0 1px 3px rgb(15 23 42 / .08); }
-.icon-gallery .icon-guide {
-    position: relative;
-    display: flex;
-    width: 148px;
-    height: 148px;
-    margin: 0 auto;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    border: 2px solid var(--color-neutral-400);
-    border-radius: 8px;
-    background-color: var(--color-neutral-50);
-    background-image:
-      linear-gradient(to right, rgb(148 163 184 / .3) 1px, transparent 1px),
-      linear-gradient(to bottom, rgb(148 163 184 / .3) 1px, transparent 1px);
-    background-position: 0 0;
-    background-size: 12px 12px;
-  }
-.icon-gallery .icon-guide::before, .icon-gallery .icon-guide::after { position: absolute; z-index: 0; background: rgb(239 68 68 / .55); content: ''; }
-.icon-gallery .icon-guide::before { top: 0; bottom: 0; left: 50%; width: 1px; }
-.icon-gallery .icon-guide::after { top: 50%; right: 0; left: 0; height: 1px; }
-.icon-gallery .size-boundary {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    width: 72px;
-    height: 72px;
-    align-items: center;
-    justify-content: center;
-    border: 1px dashed #a855f7;
-    background: rgb(255 255 255 / .62);
-  }
-.icon-gallery .icon-preview { display: flex; align-items: center; justify-content: center; color: var(--color-brand-600); }
-.icon-gallery .icon-preview > svg { width: 24px; height: 24px; transform: scale(3); transform-origin: center; }
-.icon-gallery .logo-guide .icon-preview > svg { transform: scale(.72); }
-.icon-gallery code { display: block; overflow: hidden; margin-top: 16px; color: var(--color-neutral-700); font-size: 14px; font-weight: 600; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) {
+  .calibration-target, .calibration-processing-mark span, .calibration-indeterminate span { animation: none; }
+}
 
 
 /* Canvas appearance; unitless geometry is in pixels of the recorded frame. */

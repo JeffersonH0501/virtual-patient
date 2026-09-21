@@ -127,9 +127,42 @@
     "startFailed": "The interview could not be started. Please try again."
   },
   "calibration": {
+    "wizard": {
+      "eyebrow": "Interview preparation",
+      "progressLabel": "Calibration progress",
+      "steps": {"preparation": "Preparation", "gaze": "Gaze", "camera": "Camera", "voice": "Voice", "ready": "Ready"},
+      "preparation": {
+        "title": "Let's prepare your camera and microphone",
+        "description": "Before the interview, we will run a short calibration to adapt the analysis to your natural communication style."
+      },
+      "devices": {"camera": "Camera", "microphone": "Microphone"},
+      "deviceStates": {
+        "idle": "Waiting for permission",
+        "loading": "Requesting access…",
+        "ready": "Ready to continue",
+        "permission-denied": "Permission not granted",
+        "unavailable": "Not available",
+        "unsupported": "Not supported"
+      },
+      "permissionsHelp": "We need access to your camera and microphone to continue. Check your browser permissions.",
+      "recommendations": {"face": "Center your face", "quiet": "Find a quiet place", "stable": "Keep your device stable"},
+      "validation": {"title": "Stay in position", "description": "We will briefly check that your image and audio are ready."},
+      "gaze": {"title": "Follow the dot with your eyes", "description": "Keep your head as still as possible.", "progress": "{{current}} of 9"},
+      "camera": {"title": "Look at the camera", "description": "Position yourself as you normally would during the interview."},
+      "voice": {"title": "Now speak naturally", "description": "Speak for a few seconds using the same tone and volume you would use in the interview.", "prompt": "Not sure what to say? Briefly describe how your day has been."},
+      "processing": {"title": "Preparing your interview", "description": "We are adjusting the camera and audio to your natural communication style.", "status": "Finalizing adjustments"},
+      "success": {"title": "Everything is ready", "description": "Your camera and microphone are ready for the interview."},
+      "failures": {
+        "gaze": {"title": "We could not calibrate your gaze correctly", "advice": "Keep your face visible, look directly at each dot, and avoid moving your head too much."},
+        "geometry": {"title": "The device moved during calibration", "advice": "Keep the window and device orientation unchanged while the test is running."},
+        "speech": {"title": "We need to hear a little more of your voice", "advice": "Speak continuously during the voice step and avoid moving too far from the microphone."},
+        "clipping": {"title": "The volume was too high", "advice": "Move slightly away from the microphone or speak more softly."},
+        "processing": {"title": "We could not process the calibration", "advice": "Please try again."}
+      }
+    },
     "instructions": {
       "title": "Before you begin",
-      "description": "You will complete a 20-second technical test to check your camera, microphone, and voice input.",
+      "description": "Before the interview, we will prepare your camera and microphone.",
       "camera": "Keep your face within the image and leave your camera on.",
       "microphone": "Allow microphone access and avoid loud background noise.",
       "voice": "When the test starts, speak naturally and continuously until the countdown ends.",
@@ -156,7 +189,7 @@
     "startCalibration": "Start calibration",
     "calibrating": "Calibrating...",
     "saving": "Saving...",
-    "baselineProcessing": "Analyzing calibration on the server. This can take approximately one minute...",
+    "baselineProcessing": "Preparing your interview...",
     "processingBaseline": "Applying adjustments...",
     "baselineUnavailable": "Calibration could not be completed correctly. Please run it again.",
     "repeat": "Repeat calibration",

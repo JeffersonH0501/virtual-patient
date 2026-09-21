@@ -127,9 +127,42 @@
     "startFailed": "No se pudo iniciar la entrevista. Inténtalo de nuevo."
   },
   "calibration": {
+    "wizard": {
+      "eyebrow": "Preparación para la entrevista",
+      "progressLabel": "Progreso de la calibración",
+      "steps": {"preparation": "Preparación", "gaze": "Mirada", "camera": "Cámara", "voice": "Voz", "ready": "Listo"},
+      "preparation": {
+        "title": "Preparemos tu cámara y micrófono",
+        "description": "Antes de la entrevista haremos una calibración corta para adaptar el análisis a tu forma natural de comunicarte."
+      },
+      "devices": {"camera": "Cámara", "microphone": "Micrófono"},
+      "deviceStates": {
+        "idle": "Esperando permiso",
+        "loading": "Solicitando acceso…",
+        "ready": "Listo para continuar",
+        "permission-denied": "Permiso no concedido",
+        "unavailable": "No está disponible",
+        "unsupported": "No es compatible"
+      },
+      "permissionsHelp": "Necesitamos acceso a tu cámara y micrófono para continuar. Revisa los permisos del navegador.",
+      "recommendations": {"face": "Centra tu rostro", "quiet": "Busca un lugar tranquilo", "stable": "Mantén tu dispositivo estable"},
+      "validation": {"title": "Quédate en posición", "description": "Comprobaremos brevemente que la imagen y el audio estén listos."},
+      "gaze": {"title": "Sigue el punto con la mirada", "description": "Mantén la cabeza lo más estable posible.", "progress": "{{current}} de 9"},
+      "camera": {"title": "Mira hacia la cámara", "description": "Colócate como estarías normalmente durante la entrevista."},
+      "voice": {"title": "Ahora habla con naturalidad", "description": "Habla durante unos segundos con el mismo tono y volumen que usarías en la entrevista.", "prompt": "¿No sabes qué decir? Puedes contar brevemente cómo estuvo tu día."},
+      "processing": {"title": "Preparando tu entrevista", "description": "Estamos ajustando la cámara y el audio a tu forma natural de comunicarte.", "status": "Finalizando ajustes"},
+      "success": {"title": "Todo está listo", "description": "Tu cámara y micrófono están preparados para la entrevista."},
+      "failures": {
+        "gaze": {"title": "No pudimos calibrar correctamente la mirada", "advice": "Mantén el rostro visible, mira cada punto directamente y evita mover demasiado la cabeza."},
+        "geometry": {"title": "El dispositivo se movió durante la calibración", "advice": "Mantén la ventana y la orientación del dispositivo sin cambios mientras realizamos la prueba."},
+        "speech": {"title": "Necesitamos escuchar un poco más tu voz", "advice": "Habla de forma continua durante la etapa de voz y evita alejarte demasiado del micrófono."},
+        "clipping": {"title": "El volumen fue demasiado alto", "advice": "Aléjate un poco del micrófono o habla con menor volumen."},
+        "processing": {"title": "No pudimos procesar la calibración", "advice": "Inténtalo nuevamente."}
+      }
+    },
     "instructions": {
       "title": "Antes de comenzar",
-      "description": "Realizarás una prueba técnica de 20 segundos para comprobar la cámara, el micrófono y la entrada de voz.",
+      "description": "Antes de la entrevista prepararemos tu cámara y micrófono.",
       "camera": "Ubica tu rostro dentro de la imagen y mantén la cámara encendida.",
       "microphone": "Permite el acceso al micrófono y evita ruidos fuertes a tu alrededor.",
       "voice": "Cuando inicie la prueba, habla de forma natural y continua hasta que termine el contador.",
@@ -156,7 +189,7 @@
     "startCalibration": "Iniciar calibración",
     "calibrating": "Calibrando...",
     "saving": "Guardando...",
-    "baselineProcessing": "Analizando la calibración en el servidor. Este proceso puede tardar aproximadamente un minuto...",
+    "baselineProcessing": "Preparando tu entrevista...",
     "processingBaseline": "Realizando ajustes...",
     "baselineUnavailable": "No se pudo realizar la calibración correctamente. Realízala de nuevo.",
     "repeat": "Repetir calibración",
