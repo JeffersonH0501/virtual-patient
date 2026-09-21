@@ -161,7 +161,6 @@ export const SignUpForm: FC = () => {
 
           {/* reCAPTCHA component */}
           <div className="mt-6 mb-4 max-md:max-w-full flex justify-center">
-            {/* @ts-expect-error: ReCAPTCHA type definitions may be incompatible with usage in this context */}
             <ReCAPTCHA
               ref={recaptchaRef}
               sitekey={recaptchaSiteKey || ''}

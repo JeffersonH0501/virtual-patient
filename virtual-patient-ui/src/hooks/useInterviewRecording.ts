@@ -41,6 +41,7 @@ type UseInterviewRecordingOptions = {
   patientAudioEnabled: boolean;
   patientAvatar: string;
   patientName: string;
+  avatarStream?: MediaStream | null;
 };
 
 const selectMimeType = (candidates: string[]): string | null =>
@@ -69,6 +70,7 @@ export const useInterviewRecording = ({
   patientAudioEnabled,
   patientAvatar,
   patientName,
+  avatarStream = null,
 }: UseInterviewRecordingOptions) => {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -78,6 +80,8 @@ export const useInterviewRecording = ({
   const cameraEnabledRef = useRef(cameraEnabled);
   const patientAvatarRef = useRef(patientAvatar);
   const patientNameRef = useRef(patientName);
+  const avatarStreamRef = useRef(avatarStream);
+  const avatarAudioSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const patientSpeakingRef = useRef(false);
   const microphoneGainRef = useRef<GainNode | null>(null);
   const patientMonitorGainRef = useRef<GainNode | null>(null);
@@ -106,6 +110,29 @@ export const useInterviewRecording = ({
   useEffect(() => {
     patientNameRef.current = patientName;
   }, [patientName]);
+  useEffect(() => {
+    avatarStreamRef.current = avatarStream;
+  }, [avatarStream]);
+
+  useEffect(() => {
+    if (!avatarStream || avatarStream.getAudioTracks().length === 0) return;
+    const context = audioContextRef.current;
+    const destination = patientDestinationRef.current;
+    const monitor = patientMonitorGainRef.current;
+    if (!context || !destination || !monitor) return;
+    try {
+      if (avatarAudioSourceRef.current) {
+        avatarAudioSourceRef.current.disconnect();
+      }
+      const source = context.createMediaStreamSource(avatarStream);
+      source.connect(destination);
+      source.connect(monitor);
+      avatarAudioSourceRef.current = source;
+      void context.resume();
+    } catch {
+      // Ignore if source already connected or inactive
+    }
+  }, [avatarStream]);
   useEffect(() => {
     if (microphoneGainRef.current) {
       microphoneGainRef.current.gain.setTargetAtTime(
@@ -175,6 +202,8 @@ export const useInterviewRecording = ({
       await Promise.all(recordersRef.current.map((runtime) => runtime.buffer.discard()));
     }
     recordersRef.current = [];
+    avatarAudioSourceRef.current?.disconnect();
+    avatarAudioSourceRef.current = null;
     await audioContextRef.current?.close().catch(() => undefined);
     audioContextRef.current = null;
     microphoneGainRef.current = null;
@@ -254,6 +283,10 @@ export const useInterviewRecording = ({
       cameraVideo.muted = true;
       cameraVideo.playsInline = true;
       let attachedCameraStream: MediaStream | null = null;
+      const avatarVideo = document.createElement('video');
+      avatarVideo.muted = true;
+      avatarVideo.playsInline = true;
+      let attachedAvatarStream: MediaStream | null = null;
       const avatar = new Image();
       avatar.src = patientAvatarRef.current;
 
@@ -287,6 +320,28 @@ export const useInterviewRecording = ({
         patientContext.beginPath();
         patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius + 8, 0, Math.PI * 2);
         patientContext.stroke();
+        const currentAvatarStream = avatarStreamRef.current;
+        if (currentAvatarStream && currentAvatarStream.getVideoTracks().length > 0) {
+          if (currentAvatarStream !== attachedAvatarStream) {
+            attachedAvatarStream = currentAvatarStream;
+            avatarVideo.srcObject = attachedAvatarStream;
+            if (attachedAvatarStream) void avatarVideo.play().catch(() => undefined);
+          }
+          drawContainedVideo(patientContext, avatarVideo);
+        } else {
+          const radius = 110;
+          patientContext.save();
+          patientContext.beginPath();
+          patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius, 0, Math.PI * 2);
+          patientContext.clip();
+          if (avatar.complete) patientContext.drawImage(avatar, VIDEO_WIDTH / 2 - radius, VIDEO_HEIGHT / 2 - radius, radius * 2, radius * 2);
+          patientContext.restore();
+          patientContext.strokeStyle = patientSpeakingRef.current ? '#34d399' : '#64748b';
+          patientContext.lineWidth = patientSpeakingRef.current ? 12 : 6;
+          patientContext.beginPath();
+          patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius + 8, 0, Math.PI * 2);
+          patientContext.stroke();
+        }
         patientContext.fillStyle = '#ffffff';
         patientContext.font = '28px sans-serif';
         patientContext.textAlign = 'center';
