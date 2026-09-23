@@ -97,3 +97,4 @@ class MedicalInterview(MedicalInterviewBase):
 
 class MedicalInterviewWithScore(MedicalInterview):
     evaluation_score: Optional[float] = Field(None, ge=0, le=5, description="Overall evaluation score from 0 to 5")
+    analysis_progress: Optional[Dict[str, int]] = None

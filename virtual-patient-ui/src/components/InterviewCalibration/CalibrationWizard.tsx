@@ -1,8 +1,9 @@
-import {CSSProperties, FC, RefObject, useEffect, useRef} from 'react';
+import {CSSProperties, FC, RefObject, useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Camera, Microphone, Warning} from '../../icons';
+import {Camera, Microphone, Warning, X} from '../../icons';
 import {CalibrationPhase} from '../../hooks/useTechnicalCalibration';
 import {MediaAccessState} from '../../contexts/interviewMedia';
+import {Modal} from '../common/Modal';
 
 const WAVEFORM_BAR_COUNT = 52;
 
@@ -87,9 +88,9 @@ const DeviceStatus: FC<{
   );
 };
 
-const CalibrationProgress: FC<{activeStep: number}> = ({activeStep}) => {
+export const CalibrationProgress: FC<{activeStep: number}> = ({activeStep}) => {
   const {t} = useTranslation();
-  const steps = ['preparation', 'gaze', 'camera', 'voice', 'ready'];
+  const steps = ['preparation', 'voice', 'gaze', 'camera'];
   return (
     <ol className="calibration-progress" aria-label={t('calibration.wizard.progressLabel')}>
       {steps.map((step, index) => (
@@ -111,7 +112,6 @@ type PreparationProps = {
   onStart: () => void;
   onBack: () => void;
   onRetryDevices: () => void;
-  titleRef: RefObject<HTMLHeadingElement | null>;
 };
 
 export const CalibrationPreparation: FC<PreparationProps> = ({
@@ -123,30 +123,64 @@ export const CalibrationPreparation: FC<PreparationProps> = ({
   onStart,
   onBack,
   onRetryDevices,
-  titleRef,
 }) => {
   const {t} = useTranslation();
+  const [informationOpen, setInformationOpen] = useState(true);
   const deviceProblem =
     ['permission-denied', 'unavailable', 'unsupported'].includes(cameraState) ||
     ['permission-denied', 'unavailable', 'unsupported'].includes(microphoneState);
   return (
     <div className="calibration-shell calibration-shell--preparation">
+      <Modal
+        open={informationOpen}
+        closeAction={() => setInformationOpen(false)}
+        size="medium"
+        containerId="calibration-information-dialog"
+        ariaLabel={t('calibration.wizard.information.title')}
+      >
+        <div className="dialog-shell">
+          <header className="dialog-header">
+            <h2 className="dialog-title">{t('calibration.wizard.information.title')}</h2>
+            <button
+              type="button"
+              className="dialog-close-button"
+              onClick={() => setInformationOpen(false)}
+              aria-label={t('common.close')}
+              title={t('common.close')}
+            >
+              <span className="block h-5 w-5 [&_svg]:h-full [&_svg]:w-full">
+                <X color="currentColor" />
+              </span>
+            </button>
+          </header>
+          <div className="dialog-content">
+            <p className="dialog-copy">{t('calibration.wizard.information.description')}</p>
+            <ol className="calibration-information-steps">
+              {(['voice', 'gaze', 'camera'] as const).map((item, index) => (
+                <li key={item}>
+                  <div className="calibration-information-step-title">
+                    <span aria-hidden="true">{index + 1}</span>
+                    <strong>{t(`calibration.wizard.information.${item}.title`)}</strong>
+                  </div>
+                  <p>{t(`calibration.wizard.information.${item}.description`)}</p>
+                </li>
+              ))}
+            </ol>
+            <p className="dialog-annotation">{t('calibration.wizard.information.note')}</p>
+          </div>
+        </div>
+      </Modal>
       <CalibrationProgress activeStep={0} />
-      <header className="calibration-hero">
-        <p>{t('calibration.wizard.eyebrow')}</p>
-        <h1 ref={titleRef} tabIndex={-1}>
-          {t('calibration.wizard.preparation.title')}
-        </h1>
-        <span>{t('calibration.wizard.preparation.description')}</span>
-      </header>
       <div className="calibration-preparation-grid">
-        <CameraPreview stream={cameraStream} state={cameraState} />
+        <div className="calibration-preparation-media">
+          <CameraPreview stream={cameraStream} state={cameraState} />
+          <AudioLevelIndicator level={audioLevel} />
+        </div>
         <aside className="calibration-preparation-panel">
           <div className="calibration-device-list">
             <DeviceStatus icon="camera" state={cameraState} />
             <DeviceStatus icon="microphone" state={microphoneState} />
           </div>
-          <AudioLevelIndicator level={audioLevel} />
           {deviceProblem && (
             <div className="calibration-friendly-alert" role="alert">
               <Warning color="currentColor" />
@@ -190,9 +224,6 @@ export const CalibrationPreparation: FC<PreparationProps> = ({
 type ActiveStepProps = {
   phase: CalibrationPhase;
   seconds: number;
-  targetOrder: number;
-  cameraStream: MediaStream | null;
-  cameraState: MediaAccessState;
   audioLevel: number;
   titleRef: RefObject<HTMLHeadingElement | null>;
 };
@@ -200,43 +231,37 @@ type ActiveStepProps = {
 export const CalibrationActiveStep: FC<ActiveStepProps> = ({
   phase,
   seconds,
-  targetOrder,
-  cameraStream,
-  cameraState,
   audioLevel,
   titleRef,
 }) => {
   const {t} = useTranslation();
   const step =
-    phase === 'gaze_targets'
+    phase === 'gaze_targets' || phase === 'gaze_preparation'
       ? 'gaze'
       : phase === 'camera_reference'
         ? 'camera'
         : phase === 'voice_baseline'
           ? 'voice'
           : 'validation';
-  const progressStep = step === 'gaze' || step === 'validation' ? 1 : step === 'camera' ? 2 : 3;
+  const progressStep = step === 'voice' ? 1 : step === 'gaze' || step === 'validation' ? 2 : 3;
   return (
-    <div className={`calibration-shell calibration-shell--active calibration-shell--${step}`}>
+    <div className={`calibration-shell calibration-shell--active calibration-shell--${step}${phase === 'gaze_preparation' ? ' calibration-shell--gaze-preparation' : ''}`}>
       <CalibrationProgress activeStep={progressStep} />
       <div className="calibration-active-stage" aria-live="polite">
-        <header className="calibration-active-copy">
-          <h1 ref={titleRef} tabIndex={-1}>
-            {t(`calibration.wizard.${step}.title`)}
-          </h1>
-          <p>{t(`calibration.wizard.${step}.description`)}</p>
-          {step === 'gaze' && (
-            <strong>{t('calibration.wizard.gaze.progress', {current: targetOrder})}</strong>
-          )}
-        </header>
-        {step === 'gaze' ? (
-          <div className="calibration-gaze-hint" aria-hidden="true">
-            <CameraPreview stream={cameraStream} state={cameraState} compact />
-          </div>
-        ) : (
+        {phase !== 'gaze_targets' && (
+          <header className="calibration-active-copy">
+            <h1 ref={titleRef} tabIndex={-1}>
+              {t(`calibration.wizard.${step}.title`)}
+            </h1>
+            <p>{t(`calibration.wizard.${step}.description`)}</p>
+            {phase === 'gaze_preparation' && (
+              <strong>{t('calibration.wizard.gaze.startsIn', {seconds})}</strong>
+            )}
+          </header>
+        )}
+        {step === 'voice' && (
           <div className="calibration-active-media">
-            <CameraPreview stream={cameraStream} state={cameraState} />
-            {step === 'voice' && <AudioLevelIndicator level={audioLevel} large />}
+            <AudioLevelIndicator level={audioLevel} large />
           </div>
         )}
         {step !== 'gaze' && (
@@ -255,25 +280,91 @@ export const CalibrationActiveStep: FC<ActiveStepProps> = ({
   );
 };
 
-export const CalibrationProcessing: FC<{titleRef: RefObject<HTMLHeadingElement | null>}> = ({
+type CheckpointProps = {
+  stage: 'gaze' | 'camera' | 'voice';
+  activeStep: number;
+  passed?: boolean;
+  failureReason?: string | null;
+  onStart: () => void;
+  onContinue?: () => void;
+  busy?: boolean;
+  error?: boolean;
+  titleRef: RefObject<HTMLHeadingElement | null>;
+};
+
+export const CalibrationCheckpoint: FC<CheckpointProps> = ({
+  stage,
+  activeStep,
+  passed,
+  failureReason,
+  onStart,
+  onContinue,
+  busy = false,
+  error = false,
   titleRef,
 }) => {
   const {t} = useTranslation();
+  const hasResult = passed !== undefined;
   return (
-    <div className="calibration-shell calibration-shell--centered" role="status" aria-live="polite">
-      <div className="calibration-processing-mark" aria-hidden="true">
-        <span />
-        <span />
-        <span />
+    <div className="calibration-shell calibration-shell--active calibration-shell--checkpoint">
+      <CalibrationProgress activeStep={activeStep} />
+      <div className="calibration-checkpoint-content">
+        {hasResult && (
+          <div className={`calibration-checkpoint-symbol ${passed ? 'is-success' : 'is-failure'}`} aria-hidden="true">
+            {passed ? '✓' : '!'}
+          </div>
+        )}
+        <h1 ref={titleRef} tabIndex={-1}>
+          {t(`calibration.wizard.${stage}.${hasResult ? (passed ? 'passedTitle' : 'failedTitle') : 'readyTitle'}`)}
+        </h1>
+        <p>
+          {hasResult && !passed
+            ? t(`calibration.wizard.failures.${failureCategory(failureReason ?? null, stage)}.advice`)
+            : t(`calibration.wizard.${stage}.${hasResult ? 'passedDescription' : 'readyDescription'}`)}
+        </p>
+        {error && (
+          <p className="calibration-friendly-alert" role="alert">
+            {t('clinicalSession.startFailed')}
+          </p>
+        )}
+        <div className="calibration-primary-actions">
+          {hasResult && passed && onContinue && (
+            <button type="button" className="calibration-button calibration-button--primary" onClick={onContinue} disabled={busy}>
+              {t(stage === 'camera' ? (busy ? 'calibration.saving' : 'calibration.startInterview') : 'calibration.nextStep')}
+            </button>
+          )}
+          {(!hasResult || !passed) && (
+            <button type="button" className="calibration-button calibration-button--primary" onClick={onStart}>
+              {t(hasResult ? 'calibration.repeatStep' : 'calibration.startStep')}
+            </button>
+          )}
+        </div>
       </div>
-      <h1 ref={titleRef} tabIndex={-1}>
-        {t('calibration.wizard.processing.title')}
-      </h1>
-      <p>{t('calibration.wizard.processing.description')}</p>
-      <div className="calibration-indeterminate" aria-hidden="true">
-        <span />
+    </div>
+  );
+};
+
+export const CalibrationProcessing: FC<{
+  stage: 'gaze' | 'camera' | 'voice';
+  activeStep: number;
+  titleRef: RefObject<HTMLHeadingElement | null>;
+}> = ({stage, activeStep, titleRef}) => {
+  const {t} = useTranslation();
+  return (
+    <div className="calibration-shell calibration-shell--processing" role="status" aria-live="polite">
+      <CalibrationProgress activeStep={activeStep} />
+      <div className="calibration-processing-content">
+        <div className="calibration-processing-mark" aria-hidden="true">
+          <span />
+          <span />
+          <span />
+        </div>
+        <h1 ref={titleRef} tabIndex={-1}>
+          {t(`calibration.wizard.processing.${stage}.title`)}
+        </h1>
+        <p>{t(`calibration.wizard.processing.${stage}.description`)}</p>
+        <small>{t('calibration.wizard.processing.status')}</small>
       </div>
-      <small>{t('calibration.wizard.processing.status')}</small>
     </div>
   );
 };
@@ -289,7 +380,8 @@ type ResultProps = {
   titleRef: RefObject<HTMLHeadingElement | null>;
 };
 
-const failureCategory = (reason: string | null) => {
+const failureCategory = (reason: string | null, stage?: 'gaze' | 'camera' | 'voice') => {
+  if (stage === 'camera' && (reason === 'face' || reason === 'camera')) return 'camera';
   if (reason === 'geometry') return 'geometry';
   if (reason === 'speech' || reason === 'insufficient_audio') return 'speech';
   if (reason === 'clipping') return 'clipping';

@@ -1,8 +1,12 @@
+import asyncio
 import logging
+import json
 from datetime import datetime, timezone
+from time import perf_counter
 from typing import List, Dict, Any, Literal, Optional
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     HTTPException,
     Query,
@@ -11,13 +15,14 @@ from fastapi import (
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, Field, model_validator
-from app.core.database import get_db
+from app.core.database import SessionLocal, get_db
 from app.core.auth import get_current_active_user
 from app.multimodal.schemas import PersonalBaseline
 from app.models.user import User, UserRole
 from app.models.medical_interview import (
     MedicalInterviewDB, MedicalInterview, MedicalInterviewCreate, MedicalInterviewUpdate,
-    MedicalInterviewComplete, MedicalInterviewWithScore
+    MedicalInterviewComplete, MedicalInterviewWithScore, InterviewRecordingDB,
+    TurnVideoAnalysisDB, TurnVideoAnalysisStatus,
 )
 from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.controllers.message_controller import MessageController
@@ -33,8 +38,22 @@ from app.utils.language import (
     with_patient_response_language,
 )
 from app.media.storage import get_media_storage
+from app.utils.runtime_metrics import current_rss_mb, process_id
 
 logger = logging.getLogger(__name__)
+
+_PENDING_TURN_ANALYSIS_STATUSES = frozenset({
+    TurnVideoAnalysisStatus.QUEUED.value,
+    TurnVideoAnalysisStatus.PROCESSING.value,
+})
+_TERMINAL_OBSERVATION_STATUSES = frozenset({
+    "complete",
+    "partial",
+    "failed",
+    "unavailable",
+})
+_ANALYSIS_COMPLETION_TIMEOUT_SECONDS = 1800.0
+_ANALYSIS_COMPLETION_POLL_SECONDS = 0.5
 
 router = APIRouter(
     prefix="/medical-interviews", 
@@ -55,44 +74,136 @@ class CompleteInterviewRequest(BaseModel):
     completion_reason: Literal["user_completed"] = "user_completed"
 
 
-# Non-terminal observation_processing statuses reported by the multimodal
-# pipeline (see app/multimodal/pipeline.py STATUS_*). While a run is in one of
-# these states its per-turn result is not yet available.
-_PENDING_OBSERVATION_STATUSES = frozenset({"queued", "processing"})
+async def _wait_for_multimodal_analysis(
+    db: Session,
+    interview_id: int,
+    *,
+    timeout_seconds: float = _ANALYSIS_COMPLETION_TIMEOUT_SECONDS,
+) -> str:
+    """Wait until the pipeline and every durable turn job are terminal.
 
-# Whether the multimodal pipeline result is a REQUIRED input to interview
-# completion. In this feature it is not: Bayona's textual evaluation remains the
-# baseline and the only required input to the final feedback, and no late fusion
-# is implemented (Requirements 17.4, 20.4). Flip this to ``True`` once late
-# fusion makes the multimodal result required for completion.
-_MULTIMODAL_REQUIRED_FOR_COMPLETION = False
-
-
-def _required_multimodal_processing_pending(
-    interview: MedicalInterviewDB,
-) -> bool:
-    """Report whether REQUIRED multimodal processing is still in flight.
-
-    Requirement 20.3 forbids leaving an interview ``COMPLETED`` while required
-    multimodal processing is pending. In this feature the multimodal pipeline is
-    a best-effort, non-blocking hand-off scheduled at recording finalize; its
-    lifecycle stays independently observable in
-    ``recording.capture_config["observation_processing"]`` (written by the
-    pipeline) and is never conflated with the interview status (Requirement
-    20.2). Because the multimodal result is not yet required, a pending or
-    partial run must not block or corrupt the interview lifecycle.
-
-    This helper centralizes the decision so completion can be gated in one place
-    once late fusion makes the multimodal result required. Today, with
-    ``_MULTIMODAL_REQUIRED_FOR_COMPLETION`` false, it always reports ``False``.
+    Returns the terminal ``observation_processing`` status. A timeout is an
+    error: the interview must remain non-completed when analysis is unfinished.
     """
-    if not _MULTIMODAL_REQUIRED_FOR_COMPLETION:
-        return False
-    recording = interview.recording
-    if recording is None:
-        return False
-    observation = (recording.capture_config or {}).get("observation_processing", {})
-    return observation.get("status") in _PENDING_OBSERVATION_STATUSES
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout_seconds
+    while True:
+        db.expire_all()
+        recording = db.query(InterviewRecordingDB).filter(
+            InterviewRecordingDB.medical_interview_id == interview_id,
+        ).first()
+        if recording is None:
+            raise RuntimeError("Interview recording disappeared during analysis")
+
+        observation = (recording.capture_config or {}).get(
+            "observation_processing", {}
+        )
+        observation_status = observation.get("status")
+        pending_turns = db.query(TurnVideoAnalysisDB.id).filter(
+            TurnVideoAnalysisDB.medical_interview_id == interview_id,
+            TurnVideoAnalysisDB.status.in_(_PENDING_TURN_ANALYSIS_STATUSES),
+        ).count()
+        if (
+            observation_status in _TERMINAL_OBSERVATION_STATUSES
+            and pending_turns == 0
+        ):
+            return observation_status
+
+        if loop.time() >= deadline:
+            raise TimeoutError(
+                "Multimodal analysis did not finish before the completion timeout "
+                f"(status={observation_status!r}, pending_turns={pending_turns})"
+            )
+        await asyncio.sleep(_ANALYSIS_COMPLETION_POLL_SECONDS)
+
+
+async def _evaluate_and_complete_interview(
+    interview_id: int,
+    user_language_code: str,
+    patient_gender: str | None,
+) -> None:
+    """Generate the textual evaluation after the completion request has returned."""
+    overall_started = perf_counter()
+    phase_started = overall_started
+    timings_ms: Dict[str, float] = {}
+    db = SessionLocal()
+    interview_controller = MedicalInterviewController(db)
+    try:
+        source_data = interview_controller.get_interview_evaluation_data(interview_id)
+        formatted_messages = interview_controller.format_messages_for_evaluation(
+            source_data["messages"]
+        )
+        timings_ms["data_load"] = (perf_counter() - phase_started) * 1000
+        phase_started = perf_counter()
+        evaluation_agent = EvaluationAgent(
+            target_language=convert_language_code_to_name(user_language_code),
+            patient_gender=patient_gender,
+        )
+        evaluation_results = await evaluation_agent.evaluate_all_aspects(
+            conversation_messages=formatted_messages,
+            clinical_case=source_data["clinical_case"],
+            progress_summary=source_data["progress_summary"],
+            hypotheses=source_data.get("hypotheses", []),
+            aspects=[
+                "general_communication",
+                "completeness",
+                "show_interest",
+                "show_empathy",
+                "speak_clearly",
+                "open_communication",
+            ],
+        )
+        timings_ms["agent_evaluation"] = (perf_counter() - phase_started) * 1000
+        phase_started = perf_counter()
+        if evaluation_results:
+            from app.models.medical_interview import InterviewEvaluationCreate
+
+            evaluation_controller = InterviewEvaluationController(db)
+            evaluation_controller.create_evaluation(
+                interview_id,
+                InterviewEvaluationCreate(
+                    evaluation_results=evaluation_results,
+                    overall_score=evaluation_controller.calculate_overall_score(evaluation_results),
+                ),
+            )
+        phase_started = perf_counter()
+        logger.info(
+            "performance_event component=interview_completion operation=wait_for_multimodal "
+            "phase=started interview_id=%s",
+            interview_id,
+        )
+        multimodal_status = await _wait_for_multimodal_analysis(db, interview_id)
+        timings_ms["multimodal_wait"] = (perf_counter() - phase_started) * 1000
+        if multimodal_status == "failed":
+            raise RuntimeError("Multimodal analysis finished with a failed status")
+        phase_started = perf_counter()
+        interview_controller.complete_interview(interview_id)
+        timings_ms["persistence_and_completion"] = (perf_counter() - phase_started) * 1000
+        logger.info(
+            "performance_event component=interview_completion operation=text_evaluation phase=complete "
+            "interview_id=%s duration_ms=%.3f aspect_count=%s timings_ms=%s "
+            "worker_pid=%s worker_rss_mb=%s",
+            interview_id, (perf_counter() - overall_started) * 1000,
+            len(evaluation_results), json.dumps(timings_ms, sort_keys=True),
+            process_id(), current_rss_mb(),
+        )
+    except Exception:
+        logger.exception(
+            "performance_event component=interview_completion operation=text_evaluation phase=failed "
+            "interview_id=%s duration_ms=%.3f timings_ms=%s worker_pid=%s worker_rss_mb=%s",
+            interview_id, (perf_counter() - overall_started) * 1000,
+            json.dumps(timings_ms, sort_keys=True), process_id(), current_rss_mb(),
+        )
+        db.rollback()
+        try:
+            interview_controller.interrupt_processing(interview_id)
+        except Exception:
+            logger.exception(
+                "complete_interview interview_id=%s event=interrupt_cleanup_failed",
+                interview_id,
+            )
+    finally:
+        db.close()
 
 
 class CalibrationResultRequest(BaseModel):
@@ -458,6 +569,7 @@ async def update_interview(
 @router.post("/{interview_id}/complete", response_model=CompleteInterviewResponse)
 async def complete_interview(
     interview_id: str,
+    background_tasks: BackgroundTasks,
     completion_data: CompleteInterviewRequest | None = None,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
@@ -502,8 +614,6 @@ async def complete_interview(
             evaluation_results=[],
         )
 
-    print(f"Interview ID: {interview_id}")    
-    
     try:
         completion_reason = (
             completion_data.completion_reason
@@ -519,102 +629,24 @@ async def complete_interview(
             interview_record.interview_metadata = metadata
             db.commit()
 
-        # The interaction with the virtual patient has ended: mark the interview
-        # as processing while the evaluation and feedback are generated. The
-        # evaluation runs synchronously below, so this window is short, but the
-        # state is still recorded so the lifecycle is observable and consistent.
+        # Persist the end of the interaction before returning. Evaluation then
+        # continues asynchronously so the browser is never held on "Saving".
         if interview_controller.mark_processing(interview_id) is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Interview not found"
             )
-        print(f"Evaluate interview")
-
-        # Get evaluation data
-        evaluation_data = interview_controller.get_interview_evaluation_data(interview_id)
-        # Format messages for evaluation
-        formatted_messages = interview_controller.format_messages_for_evaluation(
-            evaluation_data["messages"]
-        )
-        
-        # Initialize evaluation agent with user's preferred language and patient gender
         user_language_code = current_user.preferred_language or "en"
-        user_language_name = convert_language_code_to_name(user_language_code)
-        patient_gender = interview_to_complete.patient_gender
-        evaluation_agent = EvaluationAgent(target_language=user_language_name, patient_gender=patient_gender)
-        
-        # Run all evaluations in parallel (includes completeness + conversation aspects)
-        evaluation_results = []
-        try:
-            # Get hypotheses from evaluation data
-            hypotheses = evaluation_data.get("hypotheses", [])
-            
-            evaluation_results = await evaluation_agent.evaluate_all_aspects(
-                conversation_messages=formatted_messages,
-                clinical_case=evaluation_data["clinical_case"],
-                progress_summary=evaluation_data["progress_summary"],
-                hypotheses=hypotheses,
-                aspects=["general_communication", "completeness", "show_interest", "show_empathy", "speak_clearly", "open_communication"]
-            )
-        except Exception as e:
-            print(f"Error in evaluations: {e}")
-        
-        # Store evaluation results in database
-        if evaluation_results:
-            try:
-                evaluation_controller = InterviewEvaluationController(db)
-                
-                # Calculate overall score
-                overall_score = evaluation_controller.calculate_overall_score(evaluation_results)
-                
-                # Create evaluation data
-                from app.models.medical_interview import InterviewEvaluationCreate
-                evaluation_data = InterviewEvaluationCreate(
-                    evaluation_results=evaluation_results,
-                    overall_score=overall_score
-                )
-                
-                # Store evaluation
-                stored_evaluation = evaluation_controller.create_evaluation(interview_id, evaluation_data)
-                print(f"Stored evaluation with ID: {stored_evaluation.id}")
-                
-            except Exception as e:
-                print(f"Error storing evaluation: {e}")
-                # Continue even if storage fails
-
-        # Coordinate the interview lifecycle with multimodal processing
-        # (Requirement 20.3). The multimodal pipeline runs as a best-effort
-        # background task scheduled at recording finalize and is not yet a
-        # required input to the final feedback (text evaluation is the baseline;
-        # no late fusion in this feature). If a required multimodal step were
-        # pending, we would keep the interview in PROCESSING rather than
-        # COMPLETED; today no such step gates completion, so we complete after
-        # the (required) text evaluation. The multimodal observation lifecycle
-        # remains independently observable via the recording and is never turned
-        # into a second interview lifecycle (Requirement 20.2).
-        if _required_multimodal_processing_pending(interview_to_complete):
-            logger.info(
-                "complete_interview interview_id=%s event=deferred_completion "
-                "reason=required_multimodal_processing_pending",
-                interview_id,
-            )
-            return CompleteInterviewResponse(
-                interview=MedicalInterview.from_orm(interview_to_complete),
-                evaluation_results=evaluation_results,
-            )
-
-        # Processing finished: mark the interview as completed and set its end
-        # time. The evaluation and feedback are now available to the student.
-        interview = interview_controller.complete_interview(interview_id)
-        if not interview:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Interview not found"
-            )
-
+        processing_interview = interview_controller.get_interview(interview_id)
+        background_tasks.add_task(
+            _evaluate_and_complete_interview,
+            int(interview_id),
+            user_language_code,
+            interview_to_complete.patient_gender,
+        )
         return CompleteInterviewResponse(
-            interview=interview,
-            evaluation_results=evaluation_results
+            interview=processing_interview,
+            evaluation_results=[],
         )
 
     except HTTPException:

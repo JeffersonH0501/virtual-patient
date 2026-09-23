@@ -22,14 +22,20 @@ extractor emits every contiguous unvoiced segment as a raw pause duration.
 from __future__ import annotations
 
 import math
+import logging
 import subprocess
 import tempfile
 import wave
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
+from time import perf_counter
 
 from app.multimodal.schemas import ParaverbalRawFeatures
+from app.utils.runtime_metrics import current_rss_mb, process_id
+
+
+logger = logging.getLogger(__name__)
 
 
 EXTRACTOR_NAME = "opensmile"
@@ -107,6 +113,7 @@ def _analyze_turn(
     smile: object,
     min_voiced_duration_ms: int,
 ) -> ParaverbalRawFeatures | None:
+    started_at = perf_counter()
     duration_ms = turn.end_ms - turn.start_ms
     if duration_ms <= 0:
         return None
@@ -116,7 +123,7 @@ def _analyze_turn(
         samples, sample_rate = _read_pcm_wav(wav_path)
         if not samples or sample_rate <= 0:
             return None
-        return _extract_raw_features(
+        result = _extract_raw_features(
             wav_path,
             samples,
             duration_ms,
@@ -124,7 +131,25 @@ def _analyze_turn(
             smile=smile,
             min_voiced_duration_ms=min_voiced_duration_ms,
         )
-    except (OSError, subprocess.SubprocessError, wave.Error, ValueError):
+        logger.info(
+            "performance_event component=paraverbal operation=turn_extraction phase=complete "
+            "turn_id=%s segment_duration_ms=%s duration_ms=%.3f voiced_duration_ms=%s "
+            "valid_ratio=%s issues=%s worker_pid=%s worker_rss_mb=%s",
+            turn.turn_id, duration_ms, (perf_counter() - started_at) * 1000,
+            result.voiced_duration_ms if result else None,
+            result.audio_quality.get("valid_ratio") if result else None,
+            result.audio_quality.get("issues") if result else ["features_unavailable"],
+            process_id(), current_rss_mb(),
+        )
+        return result
+    except (OSError, subprocess.SubprocessError, wave.Error, ValueError) as error:
+        logger.exception(
+            "performance_event component=paraverbal operation=turn_extraction phase=failed "
+            "turn_id=%s segment_duration_ms=%s duration_ms=%.3f error_type=%s "
+            "worker_pid=%s worker_rss_mb=%s",
+            turn.turn_id, duration_ms, (perf_counter() - started_at) * 1000,
+            type(error).__name__, process_id(), current_rss_mb(),
+        )
         return None
 
 

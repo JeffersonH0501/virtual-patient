@@ -135,6 +135,14 @@
         "title": "Preparemos tu cámara y micrófono",
         "description": "Antes de la entrevista haremos una calibración corta para adaptar el análisis a tu forma natural de comunicarte."
       },
+      "information": {
+        "title": "Calibración",
+        "description": "Antes de comenzar la entrevista realizaremos tres pasos breves para obtener referencias técnicas de tu voz, tu mirada y tu posición frente a la cámara.",
+        "gaze": {"title": "Mirada", "description": "Seguirás nueve puntos que aparecerán en diferentes lugares de la pantalla."},
+        "camera": {"title": "Cámara", "description": "Mirarás directamente a la cámara durante unos segundos."},
+        "voice": {"title": "Voz", "description": "Hablarás con naturalidad para obtener una referencia de audio."},
+        "note": "Estas referencias complementan el análisis de la entrevista. Si un paso no tiene calidad suficiente, podrás repetir únicamente ese paso."
+      },
       "devices": {"camera": "Cámara", "microphone": "Micrófono"},
       "deviceStates": {
         "idle": "Esperando permiso",
@@ -147,13 +155,19 @@
       "permissionsHelp": "Necesitamos acceso a tu cámara y micrófono para continuar. Revisa los permisos del navegador.",
       "recommendations": {"face": "Centra tu rostro", "quiet": "Busca un lugar tranquilo", "stable": "Mantén tu dispositivo estable"},
       "validation": {"title": "Quédate en posición", "description": "Comprobaremos brevemente que la imagen y el audio estén listos."},
-      "gaze": {"title": "Sigue el punto con la mirada", "description": "Mantén la cabeza lo más estable posible.", "progress": "{{current}} de 9"},
-      "camera": {"title": "Mira hacia la cámara", "description": "Colócate como estarías normalmente durante la entrevista."},
-      "voice": {"title": "Ahora habla con naturalidad", "description": "Habla durante unos segundos con el mismo tono y volumen que usarías en la entrevista.", "prompt": "¿No sabes qué decir? Puedes contar brevemente cómo estuvo tu día."},
-      "processing": {"title": "Preparando tu entrevista", "description": "Estamos ajustando la cámara y el audio a tu forma natural de comunicarte.", "status": "Finalizando ajustes"},
+      "gaze": {"title": "Sigue el punto con la mirada", "description": "Mantén la cabeza lo más estable posible. La grabación comenzará cuando aparezca el primer punto.", "progress": "{{current}} de 9", "startsIn": "Los puntos aparecerán en {{seconds}} s", "readyTitle": "Calibremos tu mirada", "readyDescription": "Verás nueve puntos, uno a la vez. Al terminar analizaremos solo esta parte antes de continuar.", "passedTitle": "Calibración de mirada completada", "passedDescription": "Los nueve puntos se analizaron correctamente. Puedes continuar al paso de cámara.", "failedTitle": "Repite la calibración de mirada"},
+      "camera": {"title": "Mira hacia la cámara", "description": "Colócate como estarías normalmente durante la entrevista.", "readyTitle": "Tomemos una referencia de cámara", "readyDescription": "Mira directamente a la cámara durante unos segundos. Esta referencia se analiza por separado.", "passedTitle": "Referencia de cámara completada", "passedDescription": "La referencia de cámara es utilizable. Ya completaste todos los pasos.", "failedTitle": "Repite la referencia de cámara"},
+      "voice": {"title": "Ahora habla con naturalidad", "description": "Habla durante unos segundos con el mismo tono y volumen que usarías en la entrevista.", "prompt": "¿No sabes qué decir? Puedes contar brevemente cómo estuvo tu día.", "readyTitle": "Calibremos tu voz", "readyDescription": "Habla con naturalidad durante unos segundos. Analizaremos el audio antes de cargar el análisis visual.", "passedTitle": "Calibración de voz completada", "passedDescription": "La referencia de voz es utilizable. Puedes continuar al paso de mirada.", "failedTitle": "Repite la calibración de voz"},
+      "processing": {
+        "gaze": {"title": "Analizando tu mirada", "description": "Estamos procesando los nueve puntos antes de continuar."},
+        "camera": {"title": "Analizando la referencia de cámara", "description": "Estamos comprobando la posición de referencia frente a la cámara."},
+        "voice": {"title": "Analizando tu voz", "description": "Estamos preparando la referencia de voz de este paso."},
+        "status": "Esto puede tardar unos momentos"
+      },
       "success": {"title": "Todo está listo", "description": "Tu cámara y micrófono están preparados para la entrevista."},
       "failures": {
         "gaze": {"title": "No pudimos calibrar correctamente la mirada", "advice": "Mantén el rostro visible, mira cada punto directamente y evita mover demasiado la cabeza."},
+        "camera": {"title": "No pudimos obtener la referencia de cámara", "advice": "Mantén el rostro visible y mira directamente a la cámara durante todo el paso."},
         "geometry": {"title": "El dispositivo se movió durante la calibración", "advice": "Mantén la ventana y la orientación del dispositivo sin cambios mientras realizamos la prueba."},
         "speech": {"title": "Necesitamos escuchar un poco más tu voz", "advice": "Habla de forma continua durante la etapa de voz y evita alejarte demasiado del micrófono."},
         "clipping": {"title": "El volumen fue demasiado alto", "advice": "Aléjate un poco del micrófono o habla con menor volumen."},
@@ -193,6 +207,10 @@
     "processingBaseline": "Realizando ajustes...",
     "baselineUnavailable": "No se pudo realizar la calibración correctamente. Realízala de nuevo.",
     "repeat": "Repetir calibración",
+    "startStep": "Iniciar paso",
+    "repeatStep": "Repetir este paso",
+    "nextStep": "Continuar al siguiente",
+    "finishCalibration": "Finalizar calibración",
     "startInterview": "Comenzar entrevista",
     "notStarted": "Sin iniciar",
     "pending": "Calibración pendiente",
@@ -608,6 +626,7 @@
     "errorLoadingFeedback": "Error al cargar comentarios"
   },
   "conversations": {
+    "analysisProgress": "{{percentage}}% · {{completed}}/{{total}} turnos",
     "title": "Entrevistas",
     "clinicalCase": "Caso Clínico",
     "personality": "Personalidad",

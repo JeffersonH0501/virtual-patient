@@ -1,3 +1,5 @@
+import logging
+
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -10,6 +12,11 @@ from app.routers import (
     auth, users, organizations, clinical_cases, 
     medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, calibration
 )
+
+# Uvicorn configures its own handlers, but application loggers otherwise keep
+# the default WARNING threshold. Enable privacy-safe operational INFO events
+# such as ``performance_event`` without increasing third-party logger noise.
+logging.getLogger("app").setLevel(logging.INFO)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):

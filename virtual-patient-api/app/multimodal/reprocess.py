@@ -36,7 +36,6 @@ from app.controllers.medical_interview_controller import MedicalInterviewControl
 from app.core.database import SessionLocal
 from app.models.medical_interview import MedicalInterviewDB
 from app.models.medical_interview import InterviewEvaluationCreate
-from app.multimodal.pipeline import process_multimodal_interview
 from app.utils.language import convert_language_code_to_name
 
 
@@ -71,6 +70,10 @@ async def reprocess_interview_evaluation(
     # Step 1: run the whole multimodal analysis to completion. It manages its own
     # DB session and the observation_processing lifecycle, and never raises.
     try:
+        # Importing the pipeline loads the native visual stack. Keep that cost
+        # out of the web process until this explicit operation actually runs.
+        from app.multimodal.pipeline import process_multimodal_interview
+
         await process_multimodal_interview(interview_id, recording_id, use_full_video=True)
     except Exception:  # noqa: BLE001 - defensive; the pipeline already guards.
         logger.exception(

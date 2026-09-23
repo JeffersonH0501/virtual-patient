@@ -53,7 +53,9 @@ Design boundaries preserved here:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+from time import perf_counter
 from typing import Any, Sequence
 
 from app.core.database import SessionLocal
@@ -108,6 +110,7 @@ from app.paraverbal.opensmile_extractor import (
     analyze_student_turns,
 )
 from app.paraverbal.preprocessing import preprocess_paraverbal
+from app.utils.runtime_metrics import current_rss_mb, process_id
 
 
 logger = logging.getLogger(__name__)
@@ -172,6 +175,7 @@ async def process_multimodal_interview(
     ``failed`` observation-processing status so the interview is not left in an
     ambiguous state.
     """
+    overall_started = perf_counter()
     db = SessionLocal()
     try:
         recording = (
@@ -250,6 +254,12 @@ async def process_multimodal_interview(
             STAGE_FINISHED,
         )
     finally:
+        logger.info(
+            "performance_event component=multimodal_pipeline operation=full_pipeline phase=finished "
+            "interview_id=%s recording_id=%s duration_ms=%.3f worker_pid=%s worker_rss_mb=%s",
+            interview_id, recording_id, (perf_counter() - overall_started) * 1000,
+            process_id(), current_rss_mb(),
+        )
         db.close()
 
 
@@ -269,6 +279,10 @@ def _run_pipeline(
 ) -> None:
     """Execute steps 2-16 of the flow with a single batched commit at the end."""
 
+    pipeline_started = perf_counter()
+    phase_started = pipeline_started
+    timings_ms: dict[str, float] = {}
+
     # Step 2: load + validate config once; captured on every turn result.
     config = load_methodology_config()
     versions = config.versions.model_dump()
@@ -276,6 +290,8 @@ def _run_pipeline(
     min_turns_for_session_stats = int(
         config.thresholds.get("min_turns_for_session_stats", 0) or 0
     )
+    timings_ms["config_load"] = (perf_counter() - phase_started) * 1000
+    phase_started = perf_counter()
 
     # Step 3: read the personal baseline (may be None -> missing_calibration).
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_CALIBRATION)
@@ -305,12 +321,14 @@ def _run_pipeline(
         .all()
     )
     student_turns = [turn for turn in turns if turn.speaker == _STUDENT_SPEAKER]
+    timings_ms["calibration_and_turn_load"] = (perf_counter() - phase_started) * 1000
 
     # Track whether any modality yielded a usable outcome and whether any gap
     # occurred, to decide complete vs partial vs unavailable at the end.
     outcome = _OutcomeTracker()
 
     # Step 6: paraverbal extraction (OpenSMILE once per needed student segment).
+    phase_started = perf_counter()
     paraverbal_raw = _extract_paraverbal(
         db=db,
         recording=recording,
@@ -319,18 +337,22 @@ def _run_pipeline(
         student_turns=student_turns,
         outcome=outcome,
     )
+    timings_ms["paraverbal_extraction"] = (perf_counter() - phase_started) * 1000
 
     # Step 7: paraverbal preprocessing per student turn. Pause segmentation uses
     # the module's technical MIN_PAUSE_MS constant (not a methodology value).
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_PARAVERBAL_PREPROCESSING)
     paraverbal_processed: dict[str, ParaverbalProcessedFeatures] = {}
+    phase_started = perf_counter()
     for turn in student_turns:
         raw = paraverbal_raw.get(turn.id)
         if raw is None:
             continue
         paraverbal_processed[turn.id] = preprocess_paraverbal(raw, baseline=baseline)
+    timings_ms["paraverbal_preprocessing"] = (perf_counter() - phase_started) * 1000
 
     # Step 8: shared MediaPipe/BlazeGaze/CCDb-HG extraction over the full video.
+    phase_started = perf_counter()
     nonverbal_raw, nonverbal_context = _extract_nonverbal(
         db=db,
         recording=recording,
@@ -341,6 +363,7 @@ def _run_pipeline(
         calibration_profile=calibration_profile,
         use_full_video=use_full_video,
     )
+    timings_ms["nonverbal_extraction"] = (perf_counter() - phase_started) * 1000
 
     # Step 9: nonverbal preprocessing per turn. Gaze tolerance, AU12 activation,
     # and nod detector parameters are technical constants owned by the nonverbal
@@ -348,6 +371,7 @@ def _run_pipeline(
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_NONVERBAL_PREPROCESSING)
     nonverbal_processed: dict[str, NonverbalProcessedFeatures] = {}
     nonverbal_reasons: dict[str, dict[str, UnavailableReason]] = {}
+    phase_started = perf_counter()
     for turn in turns:
         raw = nonverbal_raw.get(turn.id)
         if raw is None:
@@ -359,6 +383,7 @@ def _run_pipeline(
         )
         nonverbal_processed[turn.id] = result.processed
         nonverbal_reasons[turn.id] = result.reasons
+    timings_ms["nonverbal_preprocessing"] = (perf_counter() - phase_started) * 1000
 
     # Step 10: compute SessionReferences once (two-pass, guarded).
     para_session_refs = _session_references(
@@ -385,6 +410,7 @@ def _run_pipeline(
 
     # Steps 11-13: threshold + label + assemble per turn.
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_THRESHOLDING)
+    phase_started = perf_counter()
     results: list[tuple[InterviewTurnDB, MultimodalTurnResult]] = []
     for turn in turns:
         result = _assemble_turn_result(
@@ -403,6 +429,7 @@ def _run_pipeline(
             outcome=outcome,
         )
         results.append((turn, result))
+    timings_ms["thresholding_and_labeling"] = (perf_counter() - phase_started) * 1000
 
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_LABELING)
 
@@ -411,9 +438,11 @@ def _run_pipeline(
     _late_fusion_handoff(interview_id=interview_id, recording_id=recording_id)
 
     # Steps 13-14: batch-persist all per-turn layered results in one commit.
+    phase_started = perf_counter()
     for turn, result in results:
         _persist_turn(turn, result)
     db.commit()
+    timings_ms["persistence"] = (perf_counter() - phase_started) * 1000
     logger.info(
         "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
         "result=persisted turn_count=%s",
@@ -441,6 +470,14 @@ def _run_pipeline(
         recording_id,
         STAGE_FINISHED,
         final_status,
+    )
+    logger.info(
+        "performance_event component=multimodal_pipeline operation=stages phase=complete "
+        "interview_id=%s recording_id=%s duration_ms=%.3f turn_count=%s student_turn_count=%s "
+        "timings_ms=%s worker_pid=%s worker_rss_mb=%s",
+        interview_id, recording_id, (perf_counter() - pipeline_started) * 1000,
+        len(turns), len(student_turns), json.dumps(timings_ms, sort_keys=True),
+        process_id(), current_rss_mb(),
     )
 
 

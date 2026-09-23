@@ -87,6 +87,11 @@ export type InterviewListItem = Interview & {
   totalDuration: number | null;
   evaluationScore: number;
   personality?: Personality | null;
+  analysisProgress?: {
+    completed: number;
+    total: number;
+    percentage: number;
+  } | null;
 };
 
 export type OrganizationInterview = {

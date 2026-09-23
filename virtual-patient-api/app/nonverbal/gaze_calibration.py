@@ -8,7 +8,7 @@ from typing import Sequence
 
 import numpy as np
 
-from app.models.calibration import CalibrationCaptureMetadata
+from app.models.calibration import CalibrationCaptureMetadata, GazeCalibrationMetadata
 from app.nonverbal.gaze import GazeObservation
 
 ALGORITHM_VERSION = "webeyetrack_affine_2x3_v1"
@@ -26,6 +26,53 @@ CAMERA_RADIUS_NORMALIZED = .12
 PATIENT_MARGIN_RATIO = .10
 DWELL_GAP_TOLERANCE_MS = 150.0
 MAX_CALIBRATION_SAMPLE_GAP_MS = 150.0
+
+
+def build_gaze_profile(observations: Sequence[GazeObservation], metadata: GazeCalibrationMetadata, *, face_valid_ratio: float) -> tuple[dict, dict, bool, str | None]:
+    """Fit and validate the nine-point gaze checkpoint independently."""
+    source, target, ids, target_quality = [], [], [], {}
+    for item in metadata.targets:
+        samples = [obs for obs in observations if item.observation_window_start_ms <= obs.timestamp_ms < item.observation_window_end_ms]
+        valid = [obs for obs in samples if obs.valid and obs.unclipped_x is not None and obs.unclipped_y is not None]
+        duration = _valid_duration(valid, item.observation_window_start_ms, item.observation_window_end_ms)
+        ratio = len(valid) / len(samples) if samples else 0.0
+        target_quality[item.target_id] = {"valid_ratio": ratio, "valid_duration_ms": duration, "valid_samples": len(valid)}
+        for obs in valid:
+            source.append([obs.unclipped_x, obs.unclipped_y])
+            target.append([item.target_normalized_x, item.target_normalized_y])
+            ids.append(item.target_id)
+    if len(source) < 4:
+        return {}, {"targets": target_quality}, False, "insufficient_gaze_samples"
+    source_np, target_np = np.asarray(source), np.asarray(target)
+    matrix = fit_affine(source_np, target_np)
+    geometry = metadata.geometry
+    errors = normalized_errors(apply_affine(source_np, matrix), target_np, geometry.viewport_width, geometry.viewport_height)
+    quality = {
+        "version": QUALITY_VERSION,
+        "face_valid_ratio": face_valid_ratio,
+        "targets": target_quality,
+        "covered_targets": sum(v["valid_ratio"] >= MIN_TARGET_VALID_RATIO and v["valid_duration_ms"] >= MIN_TARGET_VALID_MS for v in target_quality.values()),
+        "affine_fit_median_normalized_error": float(np.median(errors)),
+        "affine_fit_p90_normalized_error": float(np.percentile(errors, 90)),
+        "leave_one_target_out": leave_one_target_out_error(source_np, target_np, ids, geometry.viewport_width, geometry.viewport_height),
+        "geometry_stable": metadata.geometry_stable,
+    }
+    checks = {
+        "targets": quality["covered_targets"] == 9,
+        "face": face_valid_ratio >= MIN_FACE_VALID_RATIO,
+        "median_error": quality["affine_fit_median_normalized_error"] <= MAX_MEDIAN_ERROR,
+        "p90_error": quality["affine_fit_p90_normalized_error"] <= MAX_P90_ERROR,
+        "geometry": metadata.geometry_stable,
+    }
+    reason = next((name for name, passed in checks.items() if not passed), None)
+    profile = {
+        "algorithm": ALGORITHM_VERSION,
+        "affine_matrix": matrix.tolist(),
+        "webeyetrack_commit": WEBEYETRACK_COMMIT,
+        "blazegaze_sha256": BLAZEGAZE_SHA256,
+        "camera_radius_normalized": CAMERA_RADIUS_NORMALIZED,
+    }
+    return profile, quality, reason is None, reason
 
 
 def fit_affine(source: np.ndarray, target: np.ndarray) -> np.ndarray:

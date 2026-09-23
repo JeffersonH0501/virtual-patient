@@ -1,12 +1,10 @@
 """Authenticated temporary multimodal calibration processing.
 
-Calibration is processed without creating any durable database row or permanent
-media asset. The browser uploads the captured clip, the server runs the same
-crash-isolated video and audio workers over a temporary file, assembles the
-calibration result (profile, quality, personal baseline, PASSED/FAILED), always
-deletes the temporary file, and returns the result. The client keeps the result
-in memory as a draft and only persists it into an interview when the user starts
-the simulation (see ``PUT /medical-interviews/{id}/calibration``).
+The active flow processes gaze, camera, and voice as independent checkpoints.
+Each upload is analyzed in a crash-isolated worker and deleted immediately. The
+client keeps passed checkpoint results in memory, assembles the final draft, and
+only persists it when the user starts the simulation. The original combined
+endpoint remains available for compatibility with earlier clients.
 
 No ``CalibrationAttemptDB`` or ``CalibrationMediaAssetDB`` row is ever created by
 this flow, and the calibration media is never stored permanently (Requirement:
@@ -22,10 +20,11 @@ import logging
 import os
 import sys
 import tempfile
+import uuid
 from time import perf_counter
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
@@ -33,9 +32,16 @@ from sqlalchemy.orm import Session
 
 from app.core.auth import get_current_active_user
 from app.core.database import get_db
-from app.models.calibration import CalibrationCaptureMetadata
+from app.models.calibration import (
+    CalibrationCaptureMetadata,
+    CameraCalibrationMetadata,
+    GazeCalibrationMetadata,
+    VoiceCalibrationMetadata,
+)
 from app.multimodal.schemas import PersonalBaseline
+from app.multimodal.turn_video_queue import enqueue_calibration_visual_analysis
 from app.models.user import User
+from app.utils.runtime_metrics import current_rss_mb, process_id
 
 router = APIRouter(prefix="/calibration", tags=["calibration"])
 logger = logging.getLogger(__name__)
@@ -72,6 +78,13 @@ class CalibrationProcessResponse(BaseModel):
     personal_baseline: PersonalBaseline | None
 
 
+class CalibrationStageResponse(BaseModel):
+    stage: Literal["gaze", "camera", "voice"]
+    status: Literal["passed", "failed"]
+    failure_reason: str | None
+    result: dict | None
+
+
 async def _run_isolated_worker(path: Path, metadata: CalibrationCaptureMetadata, mode: str) -> dict:
     """Run native libraries in a child process so an abort cannot kill the API."""
     with tempfile.TemporaryDirectory(prefix="calibration-worker-") as directory:
@@ -105,7 +118,16 @@ async def _run_timed_worker(
     """Run one calibration branch and emit its end-to-end wall-clock time."""
     started_at = perf_counter()
     try:
-        result = await _run_isolated_worker(path, metadata, mode)
+        if mode in {"gaze", "camera"}:
+            future = enqueue_calibration_visual_analysis(
+                uuid.uuid4().hex,
+                mode,
+                path,
+                metadata.model_dump(mode="json"),
+            )
+            result = await asyncio.wrap_future(future)
+        else:
+            result = await _run_isolated_worker(path, metadata, mode)
     except Exception:
         elapsed = perf_counter() - started_at
         logger.exception(
@@ -279,4 +301,93 @@ async def process_calibration(
         profile=profile,
         quality=quality,
         personal_baseline=personal_baseline,
+    )
+
+
+@router.post("/process-stage", response_model=CalibrationStageResponse)
+async def process_calibration_stage(
+    stage: Annotated[Literal["gaze", "camera", "voice"], Form()],
+    media: Annotated[UploadFile, File()],
+    duration_ms: Annotated[int, Form(ge=1)],
+    metadata_json: Annotated[str, Form()],
+    current_user: User = Depends(get_current_active_user),
+):
+    """Analyze one temporary calibration checkpoint independently."""
+    metadata_types = {
+        "gaze": GazeCalibrationMetadata,
+        "camera": CameraCalibrationMetadata,
+        "voice": VoiceCalibrationMetadata,
+    }
+    try:
+        metadata_payload = json.loads(metadata_json)
+        if stage == "voice":
+            metadata_payload["duration_ms"] = duration_ms
+        metadata = metadata_types[stage].model_validate(metadata_payload)
+    except Exception as error:
+        raise HTTPException(status_code=422, detail="Invalid calibration stage metadata") from error
+
+    content_type = (media.content_type or "").split(";", 1)[0].lower()
+    extension = ALLOWED_VIDEO.get(content_type)
+    if extension is None:
+        raise HTTPException(status_code=415, detail="Unsupported calibration media type")
+
+    temp_path: Path | None = None
+    try:
+        temp_path, size_bytes = await _write_upload_to_temp(media, extension)
+        if size_bytes <= 0:
+            raise HTTPException(status_code=400, detail="Calibration media upload is empty")
+        result, elapsed_seconds = await _run_timed_worker(temp_path, metadata, stage)
+        safe_quality = {
+            key: result.get(key)
+            for key in (
+                "passed", "failure_reason", "voiced_duration_ms", "clipping_detected"
+            )
+            if key in result
+        }
+        nested_quality = result.get("quality")
+        if isinstance(nested_quality, dict):
+            safe_quality.update({
+                key: nested_quality.get(key)
+                for key in (
+                    "valid_sample_count", "valid_face_ratio", "camera_valid_duration_ms",
+                    "camera_face_valid_ratio", "geometry_stable",
+                )
+                if key in nested_quality
+            })
+        logger.info(
+            "performance_event component=calibration operation=checkpoint phase=complete "
+            "user_id=%s stage=%s capture_duration_ms=%s upload_bytes=%s duration_ms=%.3f "
+            "api_pid=%s api_rss_mb=%s outcome=%s",
+            current_user.id,
+            stage,
+            duration_ms,
+            size_bytes,
+            elapsed_seconds * 1000,
+            process_id(),
+            current_rss_mb(),
+            json.dumps(safe_quality, sort_keys=True),
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception(
+            "performance_event component=calibration operation=checkpoint phase=failed "
+            "user_id=%s stage=%s capture_duration_ms=%s parent_rss_mb=%s",
+            current_user.id, stage, duration_ms, current_rss_mb(),
+        )
+        return CalibrationStageResponse(
+            stage=stage,
+            status="failed",
+            failure_reason="processing_failed",
+            result=None,
+        )
+    finally:
+        _delete_temp(temp_path)
+
+    passed = bool(result.get("passed"))
+    return CalibrationStageResponse(
+        stage=stage,
+        status="passed" if passed else "failed",
+        failure_reason=result.get("failure_reason"),
+        result=result,
     )

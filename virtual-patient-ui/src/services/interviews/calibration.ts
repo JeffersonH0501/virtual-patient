@@ -23,6 +23,35 @@ export type CalibrationDraft = {
 // which the backend stamps on save.
 export type CalibrationResultPayload = Omit<CalibrationResult, 'completedAt'>;
 
+export type CalibrationStage = 'gaze' | 'camera' | 'voice';
+export type CalibrationStageResult = {
+  stage: CalibrationStage;
+  status: 'passed' | 'failed';
+  failureReason: string | null;
+  result: Record<string, unknown> | null;
+};
+
+export const processCalibrationStage = async (
+  stage: CalibrationStage,
+  media: Blob,
+  durationMs: number,
+  metadata: Record<string, unknown>,
+): Promise<CalibrationStageResult> => {
+  const form = new FormData();
+  form.append('stage', stage);
+  form.append('media', media, `${stage}-calibration.webm`);
+  form.append('duration_ms', String(Math.round(durationMs)));
+  form.append('metadata_json', JSON.stringify(transformToSnakeCase(metadata)));
+  const response = await apiFetch(`${API_URL}/calibration/process-stage`, {
+    method: 'POST', headers: getAuthHeaders(), body: form,
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || 'Calibration checkpoint processing failed');
+  }
+  return transformToCamelCase(await response.json()) as CalibrationStageResult;
+};
+
 // Runs the temporary calibration processing. The backend writes the upload to a
 // temporary file, runs the isolated video/audio workers, always deletes the
 // media, and returns the result. No database row or permanent media is created.

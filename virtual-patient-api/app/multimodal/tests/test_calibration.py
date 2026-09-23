@@ -38,7 +38,7 @@ from app.multimodal.calibration import (
 )
 from app.multimodal.schemas import PersonalBaseline
 from app.routers import calibration as calibration_router
-from app.routers.calibration import _assemble_result, process_calibration
+from app.routers.calibration import _assemble_result, process_calibration, process_calibration_stage
 from app.routers.medical_interviews import CalibrationResultRequest
 
 
@@ -448,6 +448,60 @@ class ProcessCalibrationEndpointTests(unittest.TestCase):
                 )
             )
         self.assertEqual(ctx.exception.status_code, 422)
+
+
+class ProcessCalibrationStageEndpointTests(unittest.TestCase):
+    def test_processes_only_requested_checkpoint_and_deletes_media(self):
+        import json
+
+        full_metadata = json.loads(_valid_metadata_json())
+        gaze_metadata = {
+            "geometry": full_metadata["geometry"],
+            "targets": [
+                {
+                    **target,
+                    "presentation_start_ms": target["presentation_start_ms"] - 2500,
+                    "presentation_end_ms": target["presentation_end_ms"] - 2500,
+                    "observation_window_start_ms": target["observation_window_start_ms"] - 2500,
+                    "observation_window_end_ms": target["observation_window_end_ms"] - 2500,
+                }
+                for target in full_metadata["targets"]
+            ],
+            "geometry_stable": True,
+        }
+        captured = {}
+
+        async def _fake_worker(path, metadata, mode):
+            captured["path"] = str(path)
+            captured["mode"] = mode
+            return ({"passed": True, "failure_reason": None, "profile": {"affine_matrix": [[1, 0, 0], [0, 1, 0]]}, "quality": {}}, 0.1)
+
+        with patch.object(calibration_router, "_run_timed_worker", side_effect=_fake_worker):
+            response = _run(process_calibration_stage(
+                stage="gaze",
+                media=_make_upload(b"gaze-webm", filename="gaze.webm", content_type="video/webm"),
+                duration_ms=18000,
+                metadata_json=json.dumps(gaze_metadata),
+                current_user=SimpleNamespace(id=42),
+            ))
+
+        self.assertEqual(response.status, "passed")
+        self.assertEqual(captured["mode"], "gaze")
+        self.assertFalse(os.path.exists(captured["path"]))
+
+    def test_rejects_camera_checkpoint_without_gaze_matrix(self):
+        import json
+        from fastapi import HTTPException
+
+        with self.assertRaises(HTTPException) as context:
+            _run(process_calibration_stage(
+                stage="camera",
+                media=_make_upload(b"camera-webm", filename="camera.webm", content_type="video/webm"),
+                duration_ms=3000,
+                metadata_json=json.dumps({}),
+                current_user=SimpleNamespace(id=42),
+            ))
+        self.assertEqual(context.exception.status_code, 422)
 
 
 if __name__ == "__main__":

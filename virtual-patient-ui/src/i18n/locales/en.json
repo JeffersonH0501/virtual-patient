@@ -135,6 +135,14 @@
         "title": "Let's prepare your camera and microphone",
         "description": "Before the interview, we will run a short calibration to adapt the analysis to your natural communication style."
       },
+      "information": {
+        "title": "Calibration",
+        "description": "Before the interview, we will complete three short steps to obtain technical references for your voice, your gaze, and your position in front of the camera.",
+        "gaze": {"title": "Gaze", "description": "You will follow nine dots that appear in different areas of the screen."},
+        "camera": {"title": "Camera", "description": "You will look directly at the camera for a few seconds."},
+        "voice": {"title": "Voice", "description": "You will speak naturally to obtain an audio reference."},
+        "note": "These references complement the interview analysis. If one step does not have sufficient quality, you can repeat only that step."
+      },
       "devices": {"camera": "Camera", "microphone": "Microphone"},
       "deviceStates": {
         "idle": "Waiting for permission",
@@ -147,13 +155,19 @@
       "permissionsHelp": "We need access to your camera and microphone to continue. Check your browser permissions.",
       "recommendations": {"face": "Center your face", "quiet": "Find a quiet place", "stable": "Keep your device stable"},
       "validation": {"title": "Stay in position", "description": "We will briefly check that your image and audio are ready."},
-      "gaze": {"title": "Follow the dot with your eyes", "description": "Keep your head as still as possible.", "progress": "{{current}} of 9"},
-      "camera": {"title": "Look at the camera", "description": "Position yourself as you normally would during the interview."},
-      "voice": {"title": "Now speak naturally", "description": "Speak for a few seconds using the same tone and volume you would use in the interview.", "prompt": "Not sure what to say? Briefly describe how your day has been."},
-      "processing": {"title": "Preparing your interview", "description": "We are adjusting the camera and audio to your natural communication style.", "status": "Finalizing adjustments"},
+      "gaze": {"title": "Follow the dot with your eyes", "description": "Keep your head as still as possible. Recording will begin when the first dot appears.", "progress": "{{current}} of 9", "startsIn": "The dots will appear in {{seconds}} s", "readyTitle": "Let's calibrate your gaze", "readyDescription": "You will see nine points, one at a time. When finished, we will analyze only this part before continuing.", "passedTitle": "Gaze calibration complete", "passedDescription": "The nine points were analyzed successfully. You can continue to the camera step.", "failedTitle": "Repeat the gaze calibration"},
+      "camera": {"title": "Look at the camera", "description": "Position yourself as you normally would during the interview.", "readyTitle": "Let's capture a camera reference", "readyDescription": "Look directly at the camera for a few seconds. This reference is analyzed separately.", "passedTitle": "Camera reference complete", "passedDescription": "The camera reference is usable. You have completed every step.", "failedTitle": "Repeat the camera reference"},
+      "voice": {"title": "Now speak naturally", "description": "Speak for a few seconds using the same tone and volume you would use in the interview.", "prompt": "Not sure what to say? Briefly describe how your day has been.", "readyTitle": "Let's calibrate your voice", "readyDescription": "Speak naturally for a few seconds. We will analyze the audio before loading the visual analysis.", "passedTitle": "Voice calibration complete", "passedDescription": "The voice reference is usable. You can continue to the gaze step.", "failedTitle": "Repeat the voice calibration"},
+      "processing": {
+        "gaze": {"title": "Analyzing your gaze", "description": "We are processing the nine points before continuing."},
+        "camera": {"title": "Analyzing the camera reference", "description": "We are checking the reference position in front of the camera."},
+        "voice": {"title": "Analyzing your voice", "description": "We are preparing the voice reference for this step."},
+        "status": "This may take a few moments"
+      },
       "success": {"title": "Everything is ready", "description": "Your camera and microphone are ready for the interview."},
       "failures": {
         "gaze": {"title": "We could not calibrate your gaze correctly", "advice": "Keep your face visible, look directly at each dot, and avoid moving your head too much."},
+        "camera": {"title": "We could not capture the camera reference", "advice": "Keep your face visible and look directly at the camera throughout the step."},
         "geometry": {"title": "The device moved during calibration", "advice": "Keep the window and device orientation unchanged while the test is running."},
         "speech": {"title": "We need to hear a little more of your voice", "advice": "Speak continuously during the voice step and avoid moving too far from the microphone."},
         "clipping": {"title": "The volume was too high", "advice": "Move slightly away from the microphone or speak more softly."},
@@ -193,6 +207,10 @@
     "processingBaseline": "Applying adjustments...",
     "baselineUnavailable": "Calibration could not be completed correctly. Please run it again.",
     "repeat": "Repeat calibration",
+    "startStep": "Start step",
+    "repeatStep": "Repeat this step",
+    "nextStep": "Continue to next",
+    "finishCalibration": "Finish calibration",
     "startInterview": "Start interview",
     "notStarted": "Not started",
     "pending": "Calibration pending",
@@ -608,6 +626,7 @@
     "errorLoadingFeedback": "Error loading feedback"
   },
   "conversations": {
+    "analysisProgress": "{{percentage}}% · {{completed}}/{{total}} turns",
     "title": "Interviews",
     "clinicalCase": "Clinical Case",
     "personality": "Personality",

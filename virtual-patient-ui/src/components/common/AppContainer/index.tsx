@@ -74,7 +74,7 @@ export const AppContainer = () => {
   return (
     <InterviewMediaProvider interviewId={interviewId}>
       <div
-        className={`flex w-full min-w-0 flex-col overflow-hidden bg-neutral-100 ${
+        className={`flex w-full min-w-0 flex-col overflow-hidden ${calibrationMatch ? 'bg-neutral-950' : 'bg-neutral-100'} ${
           isInterviewFlow ? 'h-dvh' : 'min-h-screen'
         }`}
       >
@@ -84,7 +84,7 @@ export const AppContainer = () => {
             isClinicalChat
               ? 'min-h-0 overflow-hidden px-3 py-3 sm:px-4 lg:px-6 lg:py-4'
               : calibrationMatch
-                ? 'min-h-0 overflow-auto px-3 py-3 sm:px-4 lg:px-6 lg:py-4'
+                ? 'min-h-0 overflow-auto'
               : 'mb-6 px-4 py-6 sm:px-6 md:py-8 lg:px-20 lg:pt-10'
           }`}
         >

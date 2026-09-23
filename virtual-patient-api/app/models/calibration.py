@@ -62,3 +62,35 @@ class CalibrationCaptureMetadata(BaseModel):
         if self.camera_reference_start_ms < ordered[-1].presentation_end_ms or self.voice_baseline_start_ms < self.camera_reference_end_ms:
             raise ValueError("Calibration stages must be ordered and non-overlapping")
         return self
+
+
+class GazeCalibrationMetadata(BaseModel):
+    geometry: CalibrationGeometry
+    targets: list[CalibrationTarget]
+    geometry_stable: bool
+
+    @model_validator(mode="after")
+    def validate_protocol(self):
+        if len(self.targets) != 9 or {target.target_order for target in self.targets} != set(range(1, 10)):
+            raise ValueError("Gaze calibration requires exactly nine ordered targets")
+        expected = ["CENTER", "TOP_LEFT", "BOTTOM_RIGHT", "TOP_RIGHT", "BOTTOM_LEFT", "TOP_CENTER", "BOTTOM_CENTER", "MIDDLE_LEFT", "MIDDLE_RIGHT"]
+        ordered = sorted(self.targets, key=lambda item: item.target_order)
+        if [target.target_id for target in ordered] != expected:
+            raise ValueError("Gaze calibration target order does not match the versioned protocol")
+        if any(target.observation_window_start_ms < target.presentation_start_ms or target.observation_window_end_ms > target.presentation_end_ms or target.observation_window_end_ms <= target.observation_window_start_ms for target in ordered):
+            raise ValueError("Gaze observation windows must be inside presentation windows")
+        return self
+
+
+class CameraCalibrationMetadata(BaseModel):
+    affine_matrix: list[list[float]]
+
+    @model_validator(mode="after")
+    def validate_matrix(self):
+        if len(self.affine_matrix) != 2 or any(len(row) != 3 for row in self.affine_matrix):
+            raise ValueError("Camera calibration requires a 2x3 affine gaze matrix")
+        return self
+
+
+class VoiceCalibrationMetadata(BaseModel):
+    duration_ms: int = Field(gt=0)

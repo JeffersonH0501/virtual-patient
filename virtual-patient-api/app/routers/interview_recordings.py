@@ -8,6 +8,7 @@ import mimetypes
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from time import perf_counter
 from typing import Annotated, Any, Dict, Optional
 
 from fastapi import (
@@ -30,9 +31,13 @@ from sqlalchemy.exc import IntegrityError
 from app.core.auth import get_current_user_from_token
 from app.core.database import get_db
 from app.media import LocalMediaStorage, get_media_storage
-from app.multimodal.pipeline import process_multimodal_interview
+from app.multimodal.process_isolation import process_multimodal_interview_isolated
 from app.multimodal.reprocess import reprocess_interview_evaluation
-from app.multimodal.turn_video_queue import enqueue_turn_video_analysis, queue_depth
+from app.multimodal.turn_video_queue import (
+    enqueue_turn_video_analysis,
+    queue_depth,
+    release_turn_video_worker_resources,
+)
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
     InterviewRecapResponse,
@@ -52,6 +57,7 @@ from app.models.medical_interview import (
 )
 from app.models.medical_interview.interview_message import InterviewMessageDB
 from app.models.user import UserDB, UserRole
+from app.utils.runtime_metrics import current_rss_mb, process_id
 
 
 router = APIRouter(prefix="/medical-interviews", tags=["interview-recordings"])
@@ -369,6 +375,7 @@ async def finalize_recording(
     db: Session = Depends(get_db),
     storage: LocalMediaStorage = Depends(get_media_storage),
 ):
+    finalize_started_at = perf_counter()
     interview = _get_interview(db, interview_id)
     _require_owner(interview, user)
     recording = db.query(InterviewRecordingDB).filter(
@@ -481,32 +488,42 @@ async def finalize_recording(
         db.refresh(recording)
         response = _recording_response(recording)
         logger.info(
-            "recording_storage_event interview_id=%s recording_id=%s event=finalized "
-            "status=%s asset_count=%s duration_ms=%s",
+            "performance_event component=recording operation=finalize phase=complete "
+            "interview_id=%s recording_id=%s status=%s asset_count=%s "
+            "recording_duration_ms=%s request_duration_ms=%.3f api_pid=%s api_rss_mb=%s",
             interview_id,
             recording.id,
             recording.status,
             available_count,
             duration_ms,
+            (perf_counter() - finalize_started_at) * 1000,
+            process_id(),
+            current_rss_mb(),
         )
         # The router only schedules the staged multimodal pipeline; it performs
         # no extraction, preprocessing, thresholding, or labeling inline
         # (Requirement 19.6). The pipeline owns its own DB session and updates
         # the observation_processing lifecycle as it advances.
+        # The UI awaits every turn upload before finalizing. Queueing this
+        # command now places it behind all accepted visual jobs, so their
+        # TensorFlow/PyTorch models are released before the audio pipeline does
+        # its OpenSMILE work. The idle timeout remains only as crash cleanup.
+        release_turn_video_worker_resources()
         background_tasks.add_task(
-            process_multimodal_interview,
+            process_multimodal_interview_isolated,
             interview_id,
             recording.id,
         )
         return response
     except HTTPException as error:
         logger.warning(
-            "recording_storage_event interview_id=%s recording_id=%s event=validation_failed "
-            "status_code=%s detail=%s",
+            "performance_event component=recording operation=finalize phase=validation_failed "
+            "interview_id=%s recording_id=%s status_code=%s detail=%s request_duration_ms=%.3f",
             interview_id,
             recording.id,
             error.status_code,
             error.detail,
+            (perf_counter() - finalize_started_at) * 1000,
         )
         db.rollback()
         for storage_key in saved_keys:

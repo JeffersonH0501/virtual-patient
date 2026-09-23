@@ -20,6 +20,15 @@ x-api-environment: &api-environment
   AZURE_OPENAI_STT_DEPLOYMENT_NAME: ${AZURE_OPENAI_STT_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:-local-not-configured}
+  # Keep native multimedia/scientific libraries from using every host core or
+  # creating large per-thread memory pools during gaze and audio analysis.
+  OMP_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
+  OPENBLAS_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
+  MKL_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
+  NUMEXPR_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
+  TF_NUM_INTRAOP_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
+  TF_NUM_INTEROP_THREADS: ${MULTIMODAL_INTEROP_THREADS:-1}
+  MALLOC_ARENA_MAX: ${MULTIMODAL_MALLOC_ARENAS:-2}
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -59,6 +68,8 @@ services:
     image: *api-image
     build: *api-build
     environment: *api-environment
+    cpus: 3.0
+    mem_limit: 4g
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
       - "127.0.0.1:8000:8000"

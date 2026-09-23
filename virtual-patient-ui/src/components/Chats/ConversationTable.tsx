@@ -77,9 +77,9 @@ export const ConversationTable = () => {
     }
   };
 
-  const fetchInterviews = async () => {
+  const fetchInterviews = async (showLoading = true) => {
     try {
-      setIsLoading(true);
+      if (showLoading) setIsLoading(true);
       const fetchedInterviews = await getInterviews(MAX_INTERVIEWS_TO_LOAD, 0);
       setAllInterviews(fetchedInterviews);
       return fetchedInterviews;
@@ -87,7 +87,7 @@ export const ConversationTable = () => {
       console.error('Failed to fetch interviews:', error);
       // 401 errors are now handled globally by apiFetch
     } finally {
-      setIsLoading(false);
+      if (showLoading) setIsLoading(false);
     }
     return [];
   };
@@ -95,6 +95,17 @@ export const ConversationTable = () => {
   useEffect(() => {
     void fetchInterviews();
   }, []);
+
+  useEffect(() => {
+    const hasActiveAnalysis = allInterviews.some(
+      ({status}) => status === 'in_progress' || status === 'processing',
+    );
+    if (!hasActiveAnalysis) return;
+    const intervalId = window.setInterval(() => {
+      void fetchInterviews(false);
+    }, 5000);
+    return () => window.clearInterval(intervalId);
+  }, [allInterviews]);
 
   const renderTableControls = () => (
     <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
@@ -184,6 +195,7 @@ export const ConversationTable = () => {
                     clinicalCase={interview.clinicalCase}
                     score={interview.evaluationScore}
                     personality={interview.personality}
+                    analysisProgress={interview.analysisProgress}
                     onDelete={(id) => {
                       setDeleteError(null);
                       setInterviewToDelete(id);

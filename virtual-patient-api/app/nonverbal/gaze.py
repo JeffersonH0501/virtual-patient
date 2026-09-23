@@ -115,21 +115,12 @@ def create_tracker(
     if timings is not None:
         timings.setdefault("startup.blazegaze_construction_and_weights_load", []).append((perf_counter() - started) * 1000)
     started = perf_counter()
-    tracker.kalman_filter = KalmanFilter2D(
-        dt=tracker.config.kalman_config.dt,
-        process_noise=tracker.config.kalman_config.process_noise,
-        measurement_noise=tracker.config.kalman_config.measurement_noise,
+    reset_tracker(
+        tracker,
+        affine_matrix=affine_matrix,
+        kalman_enabled=kalman_enabled,
+        kalman_filter_class=KalmanFilter2D,
     )
-    tracker.config.kalman_config.enabled = kalman_enabled
-    tracker.face_width_cm = None
-    tracker.intrinsics = None
-    tracker._perspective_geometry_cache = None
-    tracker._optimization_counters = None
-    tracker.affine_matrix = None if affine_matrix is None else np.asarray(affine_matrix, dtype=float)
-    if tracker.affine_matrix is not None and (
-        tracker.affine_matrix.shape != (2, 3) or not np.isfinite(tracker.affine_matrix).all()
-    ):
-        raise ValueError("WebEyeTrack affine profile must be a finite 2x3 matrix")
     if timings is not None:
         timings.setdefault("startup.webeyetrack_remaining_construction", []).append((perf_counter() - started) * 1000)
     from app.nonverbal.webeyetrack_profiling import prepare_input as optimized_prepare_input
@@ -155,6 +146,40 @@ def create_tracker(
         )
 
     tracker.batched_infer_fn = batched_infer_fn
+    return tracker
+
+
+def reset_tracker(
+    tracker: Any,
+    *,
+    affine_matrix: Any | None = None,
+    kalman_enabled: bool = True,
+    kalman_filter_class: Any | None = None,
+) -> Any:
+    """Reset video-local state while retaining the loaded BlazeGaze model."""
+    if kalman_filter_class is None:
+        _ensure_upstream_import_compatibility()
+        from webeyetrack.filter import KalmanFilter2D
+
+        kalman_filter_class = KalmanFilter2D
+    tracker.kalman_filter = kalman_filter_class(
+        dt=tracker.config.kalman_config.dt,
+        process_noise=tracker.config.kalman_config.process_noise,
+        measurement_noise=tracker.config.kalman_config.measurement_noise,
+    )
+    tracker.config.kalman_config.enabled = kalman_enabled
+    tracker.face_width_cm = None
+    tracker.intrinsics = None
+    tracker._perspective_geometry_cache = None
+    tracker._optimization_counters = None
+    tracker.affine_matrix = (
+        None if affine_matrix is None else np.asarray(affine_matrix, dtype=float)
+    )
+    if tracker.affine_matrix is not None and (
+        tracker.affine_matrix.shape != (2, 3)
+        or not np.isfinite(tracker.affine_matrix).all()
+    ):
+        raise ValueError("WebEyeTrack affine profile must be a finite 2x3 matrix")
     return tracker
 
 

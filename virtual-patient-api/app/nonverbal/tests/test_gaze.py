@@ -13,6 +13,7 @@ from app.nonverbal.gaze import (
     extract_gaze,
     extract_gaze_batch,
     package_blazegaze_inputs,
+    reset_tracker,
     visual_alignment_unavailable,
 )
 from app.nonverbal.shared_observations import SharedFrameObservation
@@ -109,6 +110,49 @@ def test_visual_alignment_is_explicitly_pending_calibration():
     result = visual_alignment_unavailable()
     assert result["visual_alignment_ratio"] is None
     assert result["reason"] == "gaze_calibration_pending"
+
+
+def test_reset_tracker_preserves_model_and_clears_video_local_state():
+    class FakeKalman:
+        def __init__(self, **kwargs):
+            self.options = kwargs
+
+    model = object()
+    tracker = SimpleNamespace(
+        blazegaze=model,
+        config=SimpleNamespace(
+            kalman_config=SimpleNamespace(
+                enabled=False,
+                dt=1.0,
+                process_noise=2.0,
+                measurement_noise=3.0,
+            )
+        ),
+        face_width_cm=14.0,
+        intrinsics=object(),
+        _perspective_geometry_cache=object(),
+        _optimization_counters={"samples": 10},
+        affine_matrix=None,
+    )
+
+    result = reset_tracker(
+        tracker,
+        affine_matrix=[[1, 0, 0.1], [0, 1, -0.2]],
+        kalman_enabled=True,
+        kalman_filter_class=FakeKalman,
+    )
+
+    assert result is tracker
+    assert tracker.blazegaze is model
+    assert tracker.config.kalman_config.enabled is True
+    assert tracker.face_width_cm is None
+    assert tracker.intrinsics is None
+    assert tracker._perspective_geometry_cache is None
+    assert tracker._optimization_counters is None
+    assert np.array_equal(
+        tracker.affine_matrix,
+        np.asarray([[1, 0, 0.1], [0, 1, -0.2]]),
+    )
 
 
 def test_batched_model_keeps_affine_and_kalman_postprocessing_sequential():

@@ -1,11 +1,12 @@
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, case, func
 from fastapi import HTTPException, status
 from app.models.medical_interview import (
     MedicalInterviewDB, MedicalInterview, MedicalInterviewUpdate,
-    InterviewStatus, MedicalInterviewComplete, InterviewMessage
+    InterviewStatus, MedicalInterviewComplete, InterviewMessage,
+    TurnVideoAnalysisDB, TurnVideoAnalysisStatus,
 )
 from app.models.user import UserDB, User
 from app.multimodal.calibration import calibration_passed
@@ -120,6 +121,28 @@ class MedicalInterviewController:
             query = query.filter(MedicalInterviewDB.status == status)
         
         interviews = query.order_by(MedicalInterviewDB.start_time.desc()).offset(skip).limit(limit).all()
+
+        interview_ids = [interview.id for interview in interviews]
+        progress_by_interview: Dict[int, Dict[str, int]] = {}
+        if interview_ids:
+            progress_rows = self.db.query(
+                TurnVideoAnalysisDB.medical_interview_id,
+                func.count(TurnVideoAnalysisDB.id),
+                func.sum(case(
+                    (TurnVideoAnalysisDB.status == TurnVideoAnalysisStatus.COMPLETED.value, 1),
+                    else_=0,
+                )),
+            ).filter(
+                TurnVideoAnalysisDB.medical_interview_id.in_(interview_ids),
+            ).group_by(TurnVideoAnalysisDB.medical_interview_id).all()
+            for interview_id, total, completed in progress_rows:
+                completed_count = int(completed or 0)
+                total_count = int(total or 0)
+                progress_by_interview[interview_id] = {
+                    "completed": completed_count,
+                    "total": total_count,
+                    "percentage": round((completed_count / total_count) * 100) if total_count else 0,
+                }
         
         result = []
         for interview in interviews:
@@ -139,7 +162,8 @@ class MedicalInterviewController:
             # Create the response with score
             interview_with_score = {
                 **interview_data.model_dump(),
-                "evaluation_score": evaluation_score
+                "evaluation_score": evaluation_score,
+                "analysis_progress": progress_by_interview.get(interview.id),
             }
             result.append(interview_with_score)
         
