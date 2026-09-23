@@ -42,7 +42,9 @@ def _run_turn_video_server() -> None:
             return
         request_id = str(command.get("request_id", ""))
         try:
-            if command.get("command") == "turn-video":
+            if command.get("command") == "warmup":
+                response = {"request_id": request_id, "status": "ready"}
+            elif command.get("command") == "turn-video":
                 status = _process_job(str(command["job_id"]), resources=resources)
                 response = {"request_id": request_id, "status": status}
             elif command.get("command") == "calibration-visual":
@@ -50,12 +52,25 @@ def _run_turn_video_server() -> None:
 
                 from app.models.calibration import (
                     CameraCalibrationMetadata,
+                    CalibrationCaptureMetadata,
                     GazeCalibrationMetadata,
                 )
-                from app.nonverbal.calibration_worker import process_camera, process_gaze
+                from app.nonverbal.calibration_worker import (
+                    process_camera,
+                    process_gaze,
+                    process_video,
+                )
 
                 stage = command.get("stage")
-                if stage == "gaze":
+                if stage == "video":
+                    metadata = CalibrationCaptureMetadata.model_validate(command["metadata"])
+                    tracker = resources.tracker_for(None, kalman_enabled=False)
+                    result = process_video(
+                        Path(command["media_path"]),
+                        metadata,
+                        tracker=tracker,
+                    )
+                elif stage == "gaze":
                     metadata = GazeCalibrationMetadata.model_validate(command["metadata"])
                     tracker = resources.tracker_for(None, kalman_enabled=False)
                     result = process_gaze(

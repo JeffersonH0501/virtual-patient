@@ -24,10 +24,10 @@
 #   four_band: three ascending breakpoints define four bands (see per-feature note).
 version: "thresholds_v1"
 
-# Minimum qualifying turns before session-relative (percentile) references are
-# computed. Below this, session-relative families -> insufficient_reference_data.
-# Provisional research guard, not a clinical cutoff.
-min_turns_for_session_stats: 4
+# No minimum is enforced for session-relative percentile references. This keeps
+# short demonstrations observable; estimates based on few turns are less stable
+# and remain descriptive rather than clinical cutoffs.
+min_turns_for_session_stats: 0
 
 paraverbal:
   # TEMPORAL family — fixed bands (not session-relative). Provisional thresholds.

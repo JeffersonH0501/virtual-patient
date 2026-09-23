@@ -31,6 +31,13 @@ export type CalibrationStageResult = {
   result: Record<string, unknown> | null;
 };
 
+export const warmUpCalibration = async (): Promise<void> => {
+  const response = await apiFetch(`${API_URL}/calibration/warm-up`, {
+    method: 'POST', headers: getAuthHeaders(),
+  });
+  if (!response.ok) throw new Error('Visual calibration warm-up failed');
+};
+
 export const processCalibrationStage = async (
   stage: CalibrationStage,
   media: Blob,

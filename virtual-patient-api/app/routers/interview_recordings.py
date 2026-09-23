@@ -34,9 +34,7 @@ from app.media import LocalMediaStorage, get_media_storage
 from app.multimodal.process_isolation import process_multimodal_interview_isolated
 from app.multimodal.reprocess import reprocess_interview_evaluation
 from app.multimodal.turn_video_queue import (
-    enqueue_turn_video_analysis,
     queue_depth,
-    release_turn_video_worker_resources,
 )
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
@@ -322,7 +320,6 @@ async def upload_turn_video(
             )
         return {"turn_id": turn.id, "status": existing.status, "queue_depth": queue_depth()}
     db.refresh(job)
-    enqueue_turn_video_analysis(job.id)
     logger.info(
         "turn_video_analysis interview_id=%s turn_id=%s status=queued queue_depth=%s",
         interview_id, turn.id, queue_depth(),
@@ -504,11 +501,6 @@ async def finalize_recording(
         # no extraction, preprocessing, thresholding, or labeling inline
         # (Requirement 19.6). The pipeline owns its own DB session and updates
         # the observation_processing lifecycle as it advances.
-        # The UI awaits every turn upload before finalizing. Queueing this
-        # command now places it behind all accepted visual jobs, so their
-        # TensorFlow/PyTorch models are released before the audio pipeline does
-        # its OpenSMILE work. The idle timeout remains only as crash cleanup.
-        release_turn_video_worker_resources()
         background_tasks.add_task(
             process_multimodal_interview_isolated,
             interview_id,

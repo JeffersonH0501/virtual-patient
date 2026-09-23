@@ -5,6 +5,7 @@
     "cancel": "Cancelar",
     "confirm": "Confirmar",
     "accept": "Aceptar",
+    "retry": "Reintentar",
     "close": "Cerrar",
     "edit": "Editar",
     "delete": "Eliminar",
@@ -321,6 +322,14 @@
     "submitting": "Enviando...",
     "saving": "Guardando...",
     "savingInterview": "Guardando tu entrevista. Espera un momento mientras te llevamos a la evaluación...",
+    "finalization": {
+      "savingTitle": "Subiendo y guardando la entrevista",
+      "savingDescription": "Espera un momento mientras guardamos de forma segura la grabación y tus hipótesis.",
+      "readyTitle": "Tu entrevista fue guardada correctamente",
+      "readyDescription": "La retroalimentación estará disponible en aproximadamente unos minutos. Te notificaremos cuando puedas consultarla.",
+      "errorTitle": "No pudimos guardar la entrevista",
+      "errorDescription": "Tus hipótesis se conservaron. Revisa tu conexión e intenta nuevamente."
+    },
     "summary": "Resumen",
     "messageSendError": "No se pudo enviar el mensaje. Por favor, inténtalo de nuevo.",
     "feedbackDescription": "Proporciona retroalimentación sobre el caso clínico, el proceso de entrevista, o cualquier otra observación sobre la sesión.",

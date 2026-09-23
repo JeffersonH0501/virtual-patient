@@ -31,7 +31,6 @@ export const ConversationTableRow: FC<TableRowProps> = ({
   score,
   clinicalCase,
   personality,
-  analysisProgress,
   onDelete,
 }) => {
   const navigate = useNavigate();
@@ -89,14 +88,9 @@ export const ConversationTableRow: FC<TableRowProps> = ({
       </td>
       <td className="flex min-w-0 table-column-status flex-wrap items-center gap-2 px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
         <Badge variant={statusVariant}>{status === 'in_progress' && !startTime ? t('calibration.pending') : t(`clinicalChat.${status}`)}</Badge>
-        {(status === 'in_progress' || status === 'processing') && analysisProgress && analysisProgress.total > 0 && (
-          <span className="text-xs font-medium text-brand-700">
-            {t('conversations.analysisProgress', analysisProgress)}
-          </span>
-        )}
       </td>
       <td className="flex min-w-0 table-column-score items-center px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
-        {score != null ? (
+        {status === 'processing' ? null : score != null ? (
           <EvaluationScore score={score} size="small" />
         ) : (
           <span className="text-xs text-slate-500">{t('conversations.notAvailable')}</span>

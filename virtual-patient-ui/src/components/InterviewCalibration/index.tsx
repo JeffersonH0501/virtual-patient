@@ -3,7 +3,7 @@ import {Navigate, useLocation, useNavigate, useParams} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {useInterviewMedia} from '../../contexts/interviewMedia';
 import {CalibrationStage, useTechnicalCalibration} from '../../hooks/useTechnicalCalibration';
-import {getInterview, processCalibrationStage, saveCalibrationResult, startInterview} from '../../services/interviews';
+import {getInterview, processCalibrationStage, saveCalibrationResult, startInterview, warmUpCalibration} from '../../services/interviews';
 import {CalibrationStageResult, CalibrationResultPayload} from '../../services/interviews/calibration';
 import {createInterview} from '../../services/interviews/createInterview';
 import {CompleteInterviewResponse, PersonalBaseline} from '../../types/interview';
@@ -82,6 +82,11 @@ export const InterviewCalibration = () => {
     await calibration.start(stage, metadata);
   }, [calibration, stage]);
 
+  const startCalibration = useCallback(() => {
+    setView('checkpoint');
+    void warmUpCalibration().catch(() => undefined);
+  }, []);
+
   const nextCheckpoint = () => {
     if (stageIndex < STAGES.length - 1) {
       calibration.reset();
@@ -144,7 +149,7 @@ export const InterviewCalibration = () => {
   return (
     <section className="calibration-experience">
       {calibration.activeTarget && <div className="calibration-target-layer" aria-hidden="true"><span className="calibration-target" style={{left: `${calibration.activeTarget.x * 100}%`, top: `${calibration.activeTarget.y * 100}%`}} /></div>}
-      {view === 'preparation' && <CalibrationPreparation cameraStream={media.cameraStream} cameraState={media.cameraState} microphoneState={media.microphoneState} audioLevel={calibration.audioLevel} devicesReady={devicesReady} onStart={() => setView('checkpoint')} onBack={() => navigate(ROUTES.clinicalCases)} onRetryDevices={() => void Promise.all([media.startCamera(), media.startMicrophone()])} />}
+      {view === 'preparation' && <CalibrationPreparation cameraStream={media.cameraStream} cameraState={media.cameraState} microphoneState={media.microphoneState} audioLevel={calibration.audioLevel} devicesReady={devicesReady} onStart={startCalibration} onBack={() => navigate(ROUTES.clinicalCases)} onRetryDevices={() => void Promise.all([media.startCamera(), media.startMicrophone()])} />}
       {view === 'checkpoint' && <CalibrationCheckpoint stage={stage} activeStep={stageIndex + 1} onStart={() => void beginStage()} titleRef={titleRef} />}
       {view === 'capturing' && <CalibrationActiveStep phase={calibration.phase} seconds={Math.ceil(calibration.remainingMs / 1000)} audioLevel={calibration.audioLevel} titleRef={titleRef} />}
       {view === 'processing' && <CalibrationProcessing stage={stage} activeStep={stageIndex + 1} titleRef={titleRef} />}

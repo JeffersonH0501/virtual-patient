@@ -13,5 +13,6 @@ export {
   saveCalibrationResult,
   startInterview,
   processCalibrationStage,
+  warmUpCalibration,
 } from './calibration';
 export type {CalibrationDraft, CalibrationResultPayload, CalibrationStageResult} from './calibration';

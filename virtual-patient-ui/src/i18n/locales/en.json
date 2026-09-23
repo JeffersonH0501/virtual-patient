@@ -5,6 +5,7 @@
     "cancel": "Cancel",
     "confirm": "Confirm",
     "accept": "Accept",
+    "retry": "Retry",
     "close": "Close",
     "edit": "Edit",
     "delete": "Delete",
@@ -321,6 +322,14 @@
     "submitting": "Submitting...",
     "saving": "Saving...",
     "savingInterview": "Saving your interview. Please wait a moment while we take you to the evaluation...",
+    "finalization": {
+      "savingTitle": "Uploading and saving the interview",
+      "savingDescription": "Please wait while we securely save the recording and your hypotheses.",
+      "readyTitle": "Your interview was saved successfully",
+      "readyDescription": "Your feedback will be available in approximately a few minutes. We will notify you when it is ready to review.",
+      "errorTitle": "We could not save the interview",
+      "errorDescription": "Your hypotheses have been preserved. Check your connection and try again."
+    },
     "summary": "Summary",
     "messageSendError": "The message could not be sent. Please try again.",
     "feedbackDescription": "Provide feedback about the clinical case, interview process, or any other observations about the session.",

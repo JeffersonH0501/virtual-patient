@@ -148,10 +148,11 @@ edges) are `null` today by design.
 
 Session-relative families (loudness level/variability, nod rate, smile
 activation) use per-interview P25/P75 references computed in a **two-pass**
-process over the interview's own turns. If fewer than
-`min_turns_for_session_stats` qualifying turns exist, the references are not
-computed and every session-relative family yields `insufficient_reference_data`.
-Fixed-band families are unaffected by the guard.
+process over the interview's own turns. `min_turns_for_session_stats` is set to
+zero so short demonstrations also produce session-relative labels. Percentiles
+from few turns are less stable and remain descriptive; real interviews are
+expected to provide a larger reference set. A feature with no qualifying value
+still yields `insufficient_reference_data`. Fixed-band families are unaffected.
 
 ## Personal-baseline calibration flow
 

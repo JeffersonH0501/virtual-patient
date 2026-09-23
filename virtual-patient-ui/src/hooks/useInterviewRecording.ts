@@ -107,6 +107,7 @@ export const useInterviewRecording = ({
   const patientTurnsRef = useRef(new Map<number, PatientTurn>());
   const startingRef = useRef(false);
   const finalizedRef = useRef(false);
+  const finalizationMediaRef = useRef<CapturedMedia | null>(null);
   const captureGenerationRef = useRef(0);
   const captureFailureRef = useRef<string | null>(null);
   const turnWritesRef = useRef(Promise.resolve());
@@ -263,6 +264,7 @@ export const useInterviewRecording = ({
     startingRef.current = true;
     const generation = captureGenerationRef.current;
     finalizedRef.current = false;
+    finalizationMediaRef.current = null;
     captureFailureRef.current = null;
     setErrorCode(null);
     if (!window.MediaRecorder || !window.AudioContext || !HTMLCanvasElement.prototype.captureStream) {
@@ -620,12 +622,14 @@ export const useInterviewRecording = ({
     setStatus('finalizing');
     try {
       await turnWritesRef.current;
-      const captured = await stopRuntime();
+      const captured = finalizationMediaRef.current ?? await stopRuntime();
       if (!captured) throw new Error('No captured media');
+      finalizationMediaRef.current = captured;
       if (captureFailureRef.current) throw new Error(captureFailureRef.current);
       const response = await finalizeInterviewRecording(interviewId, captured, setUploadProgress);
       setStatus(response.recordingStatus);
       await releaseResources(true);
+      finalizationMediaRef.current = null;
       return response.recordingStatus === 'ready' || response.recordingStatus === 'partial';
     } catch (error) {
       const durationMs = elapsedAt();
@@ -638,8 +642,7 @@ export const useInterviewRecording = ({
       });
       setStatus('failed');
       setErrorCode(captureFailureRef.current ?? 'upload-failed');
-      await markInterviewRecordingUnavailable(interviewId, failureCode, durationMs).catch(() => undefined);
-      await releaseResources(true);
+      finalizedRef.current = false;
       return false;
     }
   }, [elapsedAt, interviewId, releaseResources, status, stopRuntime]);

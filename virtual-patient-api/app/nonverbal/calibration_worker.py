@@ -28,7 +28,12 @@ def summarize_timings(timings: dict[str, list[float]]) -> dict:
     return summary
 
 
-def process_video(path: Path, metadata: CalibrationCaptureMetadata) -> dict:
+def process_video(
+    path: Path,
+    metadata: CalibrationCaptureMetadata,
+    *,
+    tracker=None,
+) -> dict:
     startup_timings: dict[str, list[float]] = {}
     started = perf_counter()
     from app.nonverbal.ccdbhg import head_pose_features
@@ -41,9 +46,10 @@ def process_video(path: Path, metadata: CalibrationCaptureMetadata) -> dict:
     started = perf_counter()
     landmarker = create_face_landmarker(timings=startup_timings)
     startup_timings["startup.mediapipe_landmarker_creation"] = [(perf_counter() - started) * 1000]
-    started = perf_counter()
-    tracker = create_tracker(kalman_enabled=False, timings=startup_timings)
-    startup_timings["startup.webeyetrack_and_blazegaze_creation"] = [(perf_counter() - started) * 1000]
+    if tracker is None:
+        started = perf_counter()
+        tracker = create_tracker(kalman_enabled=False, timings=startup_timings)
+        startup_timings["startup.webeyetrack_and_blazegaze_creation"] = [(perf_counter() - started) * 1000]
     timings: dict[str, list[float]] = startup_timings
     started = perf_counter()
     try:

@@ -20,7 +20,6 @@ import logging
 import os
 import sys
 import tempfile
-import uuid
 from time import perf_counter
 from datetime import datetime, timezone
 from pathlib import Path
@@ -39,7 +38,10 @@ from app.models.calibration import (
     VoiceCalibrationMetadata,
 )
 from app.multimodal.schemas import PersonalBaseline
-from app.multimodal.turn_video_queue import enqueue_calibration_visual_analysis
+from app.multimodal.video_processing_client import (
+    process_calibration_video,
+    warmup_video_processing_worker,
+)
 from app.models.user import User
 from app.utils.runtime_metrics import current_rss_mb, process_id
 
@@ -60,6 +62,26 @@ CALIBRATION_PROCESS_TIMEOUT_SECONDS = 180
 # Versioned identifier for this calibration protocol/result. Persisted with the
 # calibration result so a stored baseline is traceable to how it was produced.
 CALIBRATION_VERSION = "multimodal_calibration_v1"
+
+
+@router.post("/warm-up")
+async def warm_up_visual_worker(
+    current_user: Annotated[User, Depends(get_current_active_user)],
+) -> dict[str, str]:
+    """Begin loading the shared visual models when calibration starts."""
+    try:
+        await warmup_video_processing_worker()
+    except Exception as error:  # noqa: BLE001 - return a controlled service failure.
+        logger.warning(
+            "Calibration visual warmup failed user_id=%s error_type=%s",
+            current_user.id,
+            type(error).__name__,
+        )
+        raise HTTPException(
+            status_code=503,
+            detail="Visual calibration service is unavailable",
+        ) from error
+    return {"status": "ready"}
 
 
 class CalibrationProcessResponse(BaseModel):
@@ -118,14 +140,8 @@ async def _run_timed_worker(
     """Run one calibration branch and emit its end-to-end wall-clock time."""
     started_at = perf_counter()
     try:
-        if mode in {"gaze", "camera"}:
-            future = enqueue_calibration_visual_analysis(
-                uuid.uuid4().hex,
-                mode,
-                path,
-                metadata.model_dump(mode="json"),
-            )
-            result = await asyncio.wrap_future(future)
+        if mode in {"video", "gaze", "camera"}:
+            result = await process_calibration_video(path, metadata, mode)
         else:
             result = await _run_isolated_worker(path, metadata, mode)
     except Exception:

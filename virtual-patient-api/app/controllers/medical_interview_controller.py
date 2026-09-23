@@ -210,10 +210,21 @@ class MedicalInterviewController:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="The interview has not started",
             )
-        return self.update_interview(
+        processing = self.update_interview(
             interview_id,
-            MedicalInterviewUpdate(status=InterviewStatus.PROCESSING),
+            MedicalInterviewUpdate(
+                status=InterviewStatus.PROCESSING,
+                end_time=datetime.now(timezone.utc),
+            ),
         )
+        recording = interview.recording
+        if recording is not None and recording.duration_ms is not None:
+            interview.total_duration = int(round(recording.duration_ms / 1000))
+            self.db.commit()
+            self.db.refresh(interview)
+            if processing is not None:
+                processing.total_duration = interview.total_duration
+        return processing
 
     def interrupt_processing(self, interview_id: int) -> Optional[MedicalInterview]:
         """Mark an interview as interrupted after a processing failure."""

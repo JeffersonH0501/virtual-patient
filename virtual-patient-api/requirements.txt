@@ -7,6 +7,7 @@ python-multipart==0.0.9
 pydantic==2.11.7
 python-dotenv==1.0.1
 requests==2.31.0
+httpx==0.27.2
 # YAML methodology configuration loading for the multimodal pipeline.
 PyYAML==6.0.2
 sqlalchemy==2.0.27

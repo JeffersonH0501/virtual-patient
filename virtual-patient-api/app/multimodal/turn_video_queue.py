@@ -8,12 +8,8 @@ import os
 import select
 import subprocess
 import sys
-from concurrent.futures import Future
-from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from queue import Empty, Queue
-from threading import Lock, Thread
 from time import monotonic, perf_counter
 
 from app.core.database import SessionLocal
@@ -22,7 +18,6 @@ from app.multimodal.constants import (
     CALIBRATION_VISUAL_JOB_TIMEOUT_SECONDS,
     NONVERBAL_GAZE_QUEUE_CAPACITY,
     TURN_VIDEO_JOB_TIMEOUT_SECONDS,
-    TURN_VIDEO_WORKER_IDLE_TIMEOUT_SECONDS,
 )
 from app.models.medical_interview import (
     InterviewRecordingDB,
@@ -33,21 +28,6 @@ from app.models.medical_interview import (
 from app.utils.runtime_metrics import current_rss_mb, process_id
 
 logger = logging.getLogger(__name__)
-_RELEASE_RESOURCES = object()
-
-
-@dataclass(frozen=True)
-class _CalibrationVisualRequest:
-    request_id: str
-    stage: str
-    media_path: Path
-    metadata: dict
-    future: Future[dict]
-
-
-_jobs: Queue[str | _CalibrationVisualRequest | object | None] = Queue()
-_worker: Thread | None = None
-_worker_lock = Lock()
 _RESULT_PREFIX = "__TURN_VIDEO_RESULT__ "
 
 
@@ -144,6 +124,14 @@ class _PersistentTurnVideoWorker:
         )
         return str(result.get("status", "failed"))
 
+    def warmup(self, request_id: str) -> None:
+        """Wait until the isolated process has loaded every visual model."""
+        self._request(
+            {"command": "warmup", "request_id": request_id},
+            request_id,
+            CALIBRATION_VISUAL_JOB_TIMEOUT_SECONDS,
+        )
+
     def process_calibration(
         self,
         request_id: str,
@@ -209,159 +197,6 @@ def analyze_nods(observations):
 def build_turn_raw_features(*args, **kwargs):
     from app.nonverbal.video_observations import build_turn_raw_features as implementation
     return implementation(*args, **kwargs)
-
-
-def enqueue_turn_video_analysis(job_id: str) -> None:
-    """Enqueue a durable job without creating a thread per turn."""
-    _ensure_worker()
-    _jobs.put(job_id)
-
-
-def enqueue_calibration_visual_analysis(
-    request_id: str,
-    stage: str,
-    media_path: Path,
-    metadata: dict,
-) -> Future[dict]:
-    """Run gaze or camera calibration on the shared persistent visual worker."""
-    future: Future[dict] = Future()
-    _ensure_worker()
-    _jobs.put(_CalibrationVisualRequest(request_id, stage, media_path, metadata, future))
-    return future
-
-
-def release_turn_video_worker_resources() -> None:
-    """Release loaded visual models after all previously accepted turn jobs."""
-    _ensure_worker()
-    _jobs.put(_RELEASE_RESOURCES)
-
-
-def _ensure_worker() -> None:
-    global _worker
-    with _worker_lock:
-        if _worker is not None and _worker.is_alive():
-            return
-        _worker = Thread(target=_worker_loop, name="turn-video-analysis-worker", daemon=False)
-        _worker.start()
-
-
-def start_turn_video_worker(*, recover: bool = True) -> None:
-    """Start the worker and recover durable jobs left by a previous process."""
-    _ensure_worker()
-    if not recover:
-        return
-    db = SessionLocal()
-    try:
-        jobs = db.query(TurnVideoAnalysisDB).filter(
-            TurnVideoAnalysisDB.status.in_((
-                TurnVideoAnalysisStatus.QUEUED.value,
-                TurnVideoAnalysisStatus.PROCESSING.value,
-            ))
-        ).all()
-        for job in jobs:
-            job.status = TurnVideoAnalysisStatus.QUEUED.value
-            job.error = None
-        db.commit()
-        for job in jobs:
-            _jobs.put(job.id)
-    finally:
-        db.close()
-
-
-def shutdown_turn_video_worker(timeout: float = 120.0) -> None:
-    """Drain accepted work and stop the single consumer during API shutdown."""
-    global _worker
-    with _worker_lock:
-        worker = _worker
-        if worker is None:
-            return
-        _jobs.put(None)
-    worker.join(timeout=timeout)
-    if worker.is_alive():
-        logger.error("turn_video_analysis result=shutdown_timeout")
-        return
-    with _worker_lock:
-        _worker = None
-
-
-def _worker_loop() -> None:
-    native_worker: _PersistentTurnVideoWorker | None = None
-    while True:
-        try:
-            job_id = _jobs.get(timeout=TURN_VIDEO_WORKER_IDLE_TIMEOUT_SECONDS)
-        except Empty:
-            if native_worker is not None:
-                native_worker.close()
-                native_worker = None
-                logger.info(
-                    "performance_event component=turn_video operation=isolated_process "
-                    "phase=idle_release idle_seconds=%s api_rss_mb=%s",
-                    TURN_VIDEO_WORKER_IDLE_TIMEOUT_SECONDS,
-                    current_rss_mb(),
-                )
-            continue
-        try:
-            if job_id is None:
-                return
-            if job_id is _RELEASE_RESOURCES:
-                if native_worker is not None:
-                    native_worker.close()
-                    native_worker = None
-                    logger.info(
-                        "performance_event component=turn_video operation=isolated_process "
-                        "phase=interview_release api_rss_mb=%s",
-                        current_rss_mb(),
-                    )
-                continue
-            if isinstance(job_id, _CalibrationVisualRequest):
-                reused_worker = native_worker is not None
-                if native_worker is None:
-                    native_worker = _PersistentTurnVideoWorker()
-                result = native_worker.process_calibration(
-                    job_id.request_id,
-                    job_id.stage,
-                    job_id.media_path,
-                    job_id.metadata,
-                )
-                job_id.future.set_result(result)
-                logger.info(
-                    "performance_event component=calibration operation=shared_visual_worker "
-                    "phase=complete request_id=%s stage=%s reused_worker=%s api_rss_mb=%s",
-                    job_id.request_id,
-                    job_id.stage,
-                    reused_worker,
-                    current_rss_mb(),
-                )
-                continue
-            child_started_at = perf_counter()
-            logger.info(
-                "performance_event component=turn_video operation=isolated_process phase=start "
-                "job_id=%s queue_depth=%s api_pid=%s api_rss_mb=%s",
-                job_id, _jobs.qsize(), process_id(), current_rss_mb(),
-            )
-            reused_worker = native_worker is not None
-            if native_worker is None:
-                native_worker = _PersistentTurnVideoWorker()
-            status = native_worker.process_job(job_id)
-            logger.info(
-                "performance_event component=turn_video operation=isolated_process phase=complete "
-                "job_id=%s duration_ms=%.3f status=%s reused_worker=%s api_rss_mb=%s",
-                job_id, (perf_counter() - child_started_at) * 1000,
-                status, reused_worker, current_rss_mb(),
-            )
-        except Exception as error:  # noqa: BLE001 - isolate one turn from the FIFO.
-            logger.exception("turn_video_analysis job_id=%s result=worker_error", job_id)
-            if isinstance(job_id, _CalibrationVisualRequest) and not job_id.future.done():
-                job_id.future.set_exception(error)
-            if isinstance(job_id, str):
-                _mark_job_failed(job_id, str(error))
-            if native_worker is not None:
-                native_worker.close()
-                native_worker = None
-        finally:
-            _jobs.task_done()
-            if job_id is None and native_worker is not None:
-                native_worker.close()
 
 
 def _mark_job_failed(job_id: str, error: str) -> None:
@@ -500,7 +335,13 @@ def _process_job(
 
 
 def queue_depth() -> int:
-    return _jobs.qsize()
+    db = SessionLocal()
+    try:
+        return db.query(TurnVideoAnalysisDB).filter(
+            TurnVideoAnalysisDB.status == TurnVideoAnalysisStatus.QUEUED.value,
+        ).count()
+    finally:
+        db.close()
 
 
 def fail_pending_turn_video_jobs(db, interview_id: int, reason: str) -> int:

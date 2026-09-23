@@ -83,6 +83,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const [isPatientSpeaking, setIsPatientSpeaking] = useState(false);
   const [patientTurnActive, setPatientTurnActive] = useState(false);
   const [hypothesesSubmitted, setHypothesesSubmitted] = useState(false);
+  const [completionNoticeOpen, setCompletionNoticeOpen] = useState(false);
   const [submittedHypotheses, setSubmittedHypotheses] = useState<
     {id: number; hypothesisText: string; hypothesisOrder: number}[]
   >([]);
@@ -557,16 +558,17 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     recording.resume();
     setEnding(false);
   };
-  const handleHypothesesSubmitted = async (
+  const handleInterviewFinalized = async (
     nextEvaluationData: InterviewEvaluationResponse,
   ) => {
     setEvaluationData(nextEvaluationData);
     setEnding(false);
-    setHypothesesSubmitted(true);
+    setCompletionNoticeOpen(true);
     await fetchInterview();
-    // On finish the interview is not yet completed (multimodal processing keeps
-    // running in the background), so return to the history rather than the
-    // review. The review becomes reachable once the status turns 'completed'.
+  };
+  const acceptCompletionNotice = () => {
+    setCompletionNoticeOpen(false);
+    setHypothesesSubmitted(true);
     navigate(ROUTES.interviews, {replace: true});
   };
 
@@ -738,11 +740,26 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       >
         <ClinicalHypotheses
           onCancel={cancelHypotheses}
-          beforeComplete={async () => {
-            await recording.finalize();
-          }}
-          onHypothesesSubmitted={handleHypothesesSubmitted}
+          beforeComplete={recording.finalize}
+          onCompleted={handleInterviewFinalized}
         />
+      </Modal>
+      <Modal
+        size="small"
+        open={completionNoticeOpen}
+        closeAction={() => undefined}
+        closeOnOutsideClick={false}
+        hasActions
+        ariaLabel={t('clinicalChat.finalization.readyTitle')}
+      >
+        <div className="flex w-full flex-col items-center rounded-panel bg-surface px-6 py-8 text-center" role="status" aria-live="polite">
+          <span className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-green-100 text-xl font-bold text-green-700" aria-hidden="true">✓</span>
+          <h2 className="dialog-title">{t('clinicalChat.finalization.readyTitle')}</h2>
+          <p className="dialog-copy mt-3">{t('clinicalChat.finalization.readyDescription')}</p>
+          <button type="button" onClick={acceptCompletionNotice} className="dialog-action dialog-action--primary mt-6">
+            {t('common.accept')}
+          </button>
+        </div>
       </Modal>
       <Modal
         size="medium"

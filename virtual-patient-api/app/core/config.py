@@ -58,6 +58,18 @@ class Settings:
         "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"
     )
 
+    video_processing_worker_url: str = os.getenv(
+        "VIDEO_PROCESSING_WORKER_URL",
+        "http://video-processing-worker:8010",
+    ).rstrip("/")
+    video_processing_worker_token: str = os.getenv(
+        "VIDEO_PROCESSING_WORKER_TOKEN",
+        "local-video-processing-worker-token",
+    )
+    video_processing_worker_timeout_seconds: float = float(
+        os.getenv("VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS", "180")
+    )
+
     # Temporary diagnostic timing logs for patient-response generation.
     # Hardcoded on purpose: not sourced from the environment. Flip to True in
     # code to emit the "patient_response_timing" logs while debugging latency.

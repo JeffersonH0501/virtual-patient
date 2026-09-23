@@ -7,7 +7,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.superuser import synchronize_superuser
-from app.multimodal.turn_video_queue import start_turn_video_worker, shutdown_turn_video_worker
 from app.routers import (
     auth, users, organizations, clinical_cases, 
     medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, calibration
@@ -23,11 +22,7 @@ async def lifespan(_: FastAPI):
     """Synchronize deployment-managed accounts whenever the API starts."""
     with SessionLocal() as session:
         print(synchronize_superuser(session))
-    start_turn_video_worker()
-    try:
-        yield
-    finally:
-        shutdown_turn_video_worker()
+    yield
 
 
 app = FastAPI(

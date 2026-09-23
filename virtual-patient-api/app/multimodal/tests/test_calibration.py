@@ -350,7 +350,10 @@ class ProcessCalibrationEndpointTests(unittest.TestCase):
             captured["exists_during"] = os.path.exists(path)
             return dict(_VIDEO_RESULT_PASS) if mode == "video" else dict(_AUDIO_RESULT_PASS)
 
-        with patch.object(calibration_router, "_run_isolated_worker", side_effect=_fake_worker):
+        with (
+            patch.object(calibration_router, "process_calibration_video", side_effect=_fake_worker),
+            patch.object(calibration_router, "_run_isolated_worker", side_effect=_fake_worker),
+        ):
             response = _run(
                 process_calibration(
                     video=video,
@@ -378,7 +381,10 @@ class ProcessCalibrationEndpointTests(unittest.TestCase):
                 return dict(_VIDEO_RESULT_PASS, passed=False, failure_reason="gaze_coverage")
             return dict(_AUDIO_RESULT_PASS)
 
-        with patch.object(calibration_router, "_run_isolated_worker", side_effect=_fake_worker):
+        with (
+            patch.object(calibration_router, "process_calibration_video", side_effect=_fake_worker),
+            patch.object(calibration_router, "_run_isolated_worker", side_effect=_fake_worker),
+        ):
             response = _run(
                 process_calibration(
                     video=video,
@@ -402,7 +408,10 @@ class ProcessCalibrationEndpointTests(unittest.TestCase):
             captured["path"] = str(path)
             raise RuntimeError("native worker crashed")
 
-        with patch.object(calibration_router, "_run_isolated_worker", side_effect=_boom):
+        with (
+            patch.object(calibration_router, "process_calibration_video", side_effect=_boom),
+            patch.object(calibration_router, "_run_isolated_worker", side_effect=_boom),
+        ):
             response = _run(
                 process_calibration(
                     video=video,

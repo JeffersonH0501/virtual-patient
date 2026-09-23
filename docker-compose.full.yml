@@ -20,6 +20,9 @@ x-api-environment: &api-environment
   AZURE_OPENAI_STT_DEPLOYMENT_NAME: ${AZURE_OPENAI_STT_DEPLOYMENT_NAME:?Set AZURE_OPENAI_STT_DEPLOYMENT_NAME in .env.full}
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:?Set AZURE_OPENAI_TTS_DEPLOYMENT_NAME in .env.full}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:?Set AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME in .env.full}
+  VIDEO_PROCESSING_WORKER_URL: http://video-processing-worker:8010
+  VIDEO_PROCESSING_WORKER_TOKEN: ${VIDEO_PROCESSING_WORKER_TOKEN:?Set VIDEO_PROCESSING_WORKER_TOKEN in .env.full}
+  VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS: ${VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS:-180}
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -65,6 +68,26 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health', timeout=10).raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  video-processing-worker:
+    build: *api-build
+    environment: *api-environment
+    expose:
+      - "8010"
+    command: ["uvicorn", "app.multimodal.video_processing_worker:app", "--host", "0.0.0.0", "--port", "8010"]
+    volumes:
+      - ./virtual-patient-api/logs:/app/logs
+      - interview_media:/app/media
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8010/health', timeout=10).raise_for_status()"]
       interval: 30s
       timeout: 10s
       retries: 5

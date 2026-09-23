@@ -70,7 +70,6 @@ from app.models.medical_interview import (
     TurnVideoAnalysisStatus,
 )
 from app.multimodal.constants import NONVERBAL_GAZE_QUEUE_CAPACITY
-from app.multimodal.turn_video_queue import enqueue_turn_video_analysis
 from app.multimodal.calibration import read_calibration_profile, read_personal_baseline
 from app.multimodal.config_loader import (
     ConfigError,
@@ -723,17 +722,12 @@ async def _wait_for_turn_video_jobs(
     """Wait only for durable queued/processing turn jobs before final assembly."""
     loop = asyncio.get_running_loop()
     deadline = loop.time() + timeout_seconds
-    requeued: set[str] = set()
     while True:
         db.expire_all()
         jobs = db.query(TurnVideoAnalysisDB).filter(
             TurnVideoAnalysisDB.recording_id == recording_id,
             TurnVideoAnalysisDB.medical_interview_id == interview_id,
         ).all()
-        for job in jobs:
-            if job.status == TurnVideoAnalysisStatus.QUEUED.value and job.id not in requeued:
-                enqueue_turn_video_analysis(job.id)
-                requeued.add(job.id)
         pending_statuses = {
             TurnVideoAnalysisStatus.QUEUED.value,
             TurnVideoAnalysisStatus.PROCESSING.value,
