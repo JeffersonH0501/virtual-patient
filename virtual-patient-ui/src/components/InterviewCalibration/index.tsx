@@ -42,8 +42,14 @@ export const InterviewCalibration = () => {
     if (instructionsOpen || missingConfig) return;
     void Promise.all([media.startCamera(), media.startMicrophone()]);
   }, [instructionsOpen, media.startCamera, media.startMicrophone, missingConfig]);
-  useEffect(() => { if (videoRef.current) videoRef.current.srcObject = media.cameraStream; }, [media.cameraStream]);
-  useEffect(() => { setWaveform((current) => [...current.slice(-(WAVEFORM_BAR_COUNT - 1)), calibration.audioLevel]); }, [calibration.audioLevel]);
+  useEffect(() => {
+    if (videoRef.current) {
+      videoRef.current.srcObject = media.cameraStream;
+    }
+  }, [media.cameraStream]);
+  useEffect(() => {
+    setWaveform((current) => [...current.slice(-(WAVEFORM_BAR_COUNT - 1)), calibration.audioLevel]);
+  }, [calibration.audioLevel]);
 
   useEffect(() => {
     const capture = calibration.media;
@@ -73,6 +79,39 @@ export const InterviewCalibration = () => {
       setError('start');
     }
   }, [calibration]);
+
+  const skipToInterview = async () => {
+    if (starting) return;
+    setStarting(true);
+    setError(null);
+    try {
+      let id = existingId;
+      if (id === null) {
+        if (!routeConfig) throw new Error('missing configuration');
+        const created = await createInterview({
+          clinical_case_id: String(routeConfig.clinicalCaseId),
+          patient_response_language: routeConfig.patientResponseLanguage,
+          patient_gender: routeConfig.gender || undefined,
+          personality_id: routeConfig.personalityId || undefined,
+        });
+        if (!created) throw new Error('missing interview');
+        id = Number(created.id);
+      }
+      try {
+        await saveCalibrationResult(id, {
+          version: 'multimodal_calibration_v1',
+          status: 'skipped',
+        });
+      } catch (saveErr) {
+        console.warn('Skipping calibration save failed, attempting direct start:', saveErr);
+      }
+      await startInterview(id, true);
+      navigate(interviewPath(id, 'session'), {replace: true, state: {justStarted: true}});
+    } catch {
+      setError('startInterview');
+      setStarting(false);
+    }
+  };
 
   const continueToInterview = async () => {
     const draft = draftRef.current;
@@ -113,7 +152,7 @@ export const InterviewCalibration = () => {
   const seconds = Math.ceil(calibration.remainingMs / 1_000);
 
   return <>
-    <CalibrationInstructionsModal isOpen={instructionsOpen} onAccept={() => setInstructionsOpen(false)} onCancel={() => navigate(ROUTES.clinicalCases)} />
+    <CalibrationInstructionsModal isOpen={instructionsOpen} onAccept={() => setInstructionsOpen(false)} onCancel={() => navigate(ROUTES.clinicalCases)} onSkip={() => void skipToInterview()} />
     {calibration.activeTarget && <div className="calibration-target-layer" aria-hidden="true"><span className="calibration-target" style={{left: `${calibration.activeTarget.x * 100}%`, top: `${calibration.activeTarget.y * 100}%`}} /></div>}
     <section className="calibration-page" aria-labelledby="calibration-title">
       <header className="calibration-header"><div><p className="calibration-eyebrow">{t('calibration.eyebrow')}</p><h1 id="calibration-title" className="calibration-title">{t('calibration.title')}</h1><p className="calibration-description">{t('calibration.instruction')}</p></div></header>
@@ -126,9 +165,9 @@ export const InterviewCalibration = () => {
           <div className="calibration-device-columns"><section><h2><Microphone color="currentColor" />{t('calibration.audio')}</h2><p>{media.microphoneState === 'ready' ? t('calibration.checks.microphoneActive') : t(`calibration.deviceStates.${media.microphoneState}`)}</p></section><section><h2><Camera color="currentColor" />{t('calibration.video')}</h2><p>{media.cameraState === 'ready' ? t('calibration.checks.videoActive') : t(`calibration.deviceStates.${media.cameraState}`)}</p></section></div>
           {capturing && <div className="calibration-result" role="status"><p>{t(`calibration.phases.${calibration.phase}`)}</p></div>}
           {processing && <div className="calibration-result" role="status"><p>{t('calibration.baselineProcessing')}</p></div>}
-          {result && <div className={`calibration-result calibration-result--${result}`} role="status"><p>{t(result === 'passed' ? 'calibration.resultReadyDescription' : 'calibration.resultProblemDescription')}</p>{failureReason && <p className="calibration-result__warning">{t(`calibration.failures.${failureReason}`, {defaultValue: failureReason})}</p>}</div>}
-          {error && <p className="calibration-message calibration-message--error" role="alert"><Warning color="currentColor" />{t(error === 'startInterview' ? 'clinicalSession.startFailed' : 'calibration.recordingError')}</p>}
-          <footer className="calibration-actions"><button type="button" className="dialog-action dialog-action--secondary" onClick={() => navigate(ROUTES.clinicalCases)} disabled={capturing || processing || starting}>{t('common.cancel')}</button>{result === 'passed' ? <button type="button" className="dialog-action dialog-action--primary" onClick={() => void continueToInterview()} disabled={starting}>{t(starting ? 'calibration.saving' : 'calibration.startInterview')}</button> : <button type="button" className="dialog-action dialog-action--primary" onClick={() => void begin()} disabled={!devicesReady || capturing || processing}>{t(result === 'failed' ? 'calibration.repeat' : capturing ? 'calibration.calibrating' : 'calibration.startCalibration')}</button>}</footer>
+          {result && <div className={`calibration-result calibration-result--${result}`} role="status"><p>{t(result === 'passed' ? 'calibration.resultReadyDescription' : 'calibration.resultProblemDescription')}</p>{failureReason && <p className="calibration-result__warning">{t(`calibration.failures.${failureReason}`, {defaultValue: failureReason})}</p>}{result === 'failed' && <div className="mt-3"><button type="button" className="dialog-action dialog-action--secondary text-xs" onClick={() => void skipToInterview()} disabled={starting}>{t('calibration.skipAndStart')}</button></div>}</div>}
+          {error && <div className="calibration-message calibration-message--error" role="alert"><p className="flex items-center gap-1.5"><Warning color="currentColor" />{t(error === 'startInterview' ? 'clinicalSession.startFailed' : 'calibration.recordingError')}</p><div className="mt-2"><button type="button" className="dialog-action dialog-action--secondary text-xs" onClick={() => void skipToInterview()} disabled={starting}>{t('calibration.skipAndStart')}</button></div></div>}
+          <footer className="calibration-actions"><button type="button" className="dialog-action dialog-action--secondary" onClick={() => navigate(ROUTES.clinicalCases)} disabled={capturing || processing || starting}>{t('common.cancel')}</button><button type="button" className="dialog-action dialog-action--secondary" onClick={() => void skipToInterview()} disabled={capturing || processing || starting}>{t('calibration.skipCalibration')}</button>{result === 'passed' ? <button type="button" className="dialog-action dialog-action--primary" onClick={() => void continueToInterview()} disabled={starting}>{t(starting ? 'calibration.saving' : 'calibration.startInterview')}</button> : <button type="button" className="dialog-action dialog-action--primary" onClick={() => void begin()} disabled={!devicesReady || capturing || processing}>{t(result === 'failed' ? 'calibration.repeat' : capturing ? 'calibration.calibrating' : 'calibration.startCalibration')}</button>}</footer>
         </article>
       </div>
     </section>

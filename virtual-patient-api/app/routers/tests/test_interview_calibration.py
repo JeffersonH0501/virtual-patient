@@ -80,6 +80,20 @@ class CalibrationContractTests(unittest.TestCase):
         self.assertEqual(result.failure_reason, "insufficient_audio")
         self.assertIsNone(result.personal_baseline)
 
+    def test_skipped_result_can_omit_baseline_and_profile(self):
+        result = CalibrationResultRequest.model_validate(
+            calibration_payload(
+                status="skipped",
+                failure_reason=None,
+                profile=None,
+                quality=None,
+                personal_baseline=None,
+            )
+        )
+        self.assertEqual(result.status, "skipped")
+        self.assertIsNone(result.personal_baseline)
+        self.assertIsNone(result.profile)
+
 
 class Query:
     def __init__(self, interview):
@@ -164,4 +178,47 @@ class InterviewStartTests(unittest.TestCase):
 
         self.assertIsNotNone(first_start)
         self.assertEqual(interview.start_time, first_start)
+        self.assertEqual(database.commit_count, 1)
+
+    def test_skipped_calibration_can_start(self):
+        interview = SimpleNamespace(
+            id=7,
+            user_id=2,
+            status=InterviewStatus.IN_PROGRESS,
+            start_time=None,
+            interview_metadata={"calibration": {"status": "skipped"}},
+        )
+        database = Database(interview)
+        controller = MedicalInterviewController(database)
+        response = SimpleNamespace(start_time=None)
+
+        with patch(
+            "app.controllers.medical_interview_controller.MedicalInterview.from_orm",
+            return_value=response,
+        ):
+            controller.start_interview(7)
+
+        self.assertIsNotNone(interview.start_time)
+        self.assertEqual(database.commit_count, 1)
+
+    def test_start_with_skip_calibration_flag_can_start(self):
+        interview = SimpleNamespace(
+            id=7,
+            user_id=2,
+            status=InterviewStatus.IN_PROGRESS,
+            start_time=None,
+            interview_metadata={},
+        )
+        database = Database(interview)
+        controller = MedicalInterviewController(database)
+        response = SimpleNamespace(start_time=None)
+
+        with patch(
+            "app.controllers.medical_interview_controller.MedicalInterview.from_orm",
+            return_value=response,
+        ):
+            controller.start_interview(7, skip_calibration=True)
+
+        self.assertIsNotNone(interview.start_time)
+        self.assertEqual(interview.interview_metadata["calibration"]["status"], "skipped")
         self.assertEqual(database.commit_count, 1)

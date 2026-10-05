@@ -1,4 +1,4 @@
-﻿import {FC} from 'react';
+import {FC} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Modal} from '../common/Modal';
 
@@ -6,12 +6,14 @@ type CalibrationInstructionsModalProps = {
   isOpen: boolean;
   onAccept: () => void;
   onCancel: () => void;
+  onSkip?: () => void;
 };
 
 export const CalibrationInstructionsModal: FC<CalibrationInstructionsModalProps> = ({
   isOpen,
   onAccept,
   onCancel,
+  onSkip,
 }) => {
   const {t} = useTranslation();
 
@@ -44,6 +46,11 @@ export const CalibrationInstructionsModal: FC<CalibrationInstructionsModalProps>
             <button type="button" onClick={onCancel} className="dialog-action dialog-action--secondary">
               {t('common.cancel')}
             </button>
+            {onSkip && (
+              <button type="button" onClick={onSkip} className="dialog-action dialog-action--secondary">
+                {t('calibration.skipCalibration')}
+              </button>
+            )}
             <button type="button" onClick={onAccept} className="dialog-action dialog-action--primary" autoFocus>
               {t('calibration.instructions.accept')}
             </button>

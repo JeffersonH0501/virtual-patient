@@ -10,7 +10,7 @@ import {getAuthHeaders} from '../auth/authHeaders';
 // personal baseline. Nothing is persisted server-side until the user starts an
 // interview and the draft is saved into ``interview_metadata.calibration``.
 export type CalibrationDraft = {
-  status: 'passed' | 'failed';
+  status: 'passed' | 'failed' | 'skipped';
   failureReason: string | null;
   calibrationVersion: string;
   profile: Record<string, unknown> | null;
@@ -72,7 +72,11 @@ export const saveCalibrationResult = async (
 
 export const startInterview = async (
   interviewId: number,
-): Promise<CompleteInterviewResponse> => requireInterview(await apiFetch(
-  `${API_URL}/medical-interviews/${interviewId}/start`,
-  {method: 'POST', headers: getAuthHeaders()},
-));
+  skipCalibration = false,
+): Promise<CompleteInterviewResponse> => {
+  const query = skipCalibration ? '?skip_calibration=true' : '';
+  return requireInterview(await apiFetch(
+    `${API_URL}/medical-interviews/${interviewId}/start${query}`,
+    {method: 'POST', headers: getAuthHeaders()},
+  ));
+};

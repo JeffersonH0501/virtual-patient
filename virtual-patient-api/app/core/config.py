@@ -63,6 +63,22 @@ class Settings:
     # code to emit the "patient_response_timing" logs while debugging latency.
     patient_response_timing_logging: bool = False
 
+    # Simli AI Avatar integration
+    simli_api_key: str | None = os.getenv("SIMLI_API_KEY")
+    simli_api_url: str = os.getenv("SIMLI_API_URL", "https://api.simli.ai")
+    simli_default_face_id_male: str = os.getenv("SIMLI_DEFAULT_FACE_ID_MALE", "")
+    simli_default_face_id_female: str = os.getenv("SIMLI_DEFAULT_FACE_ID_FEMALE", "")
+    simli_avatar_enabled: bool = (
+        os.getenv("SIMLI_AVATAR_ENABLED", "false").strip().lower()
+        in ("true", "1", "yes")
+    )
+    simli_max_session_length: int = int(
+        os.getenv("SIMLI_MAX_SESSION_LENGTH", "1800")
+    )
+    simli_max_idle_time: int = int(
+        os.getenv("SIMLI_MAX_IDLE_TIME", "300")
+    )
+
     @property
     def database_url(self) -> str:
         password = quote_plus(self.postgres_password)

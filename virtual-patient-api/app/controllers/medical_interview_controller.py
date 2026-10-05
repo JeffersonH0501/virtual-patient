@@ -1,6 +1,7 @@
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy import and_
 from fastapi import HTTPException, status
 from app.models.medical_interview import (
@@ -237,8 +238,8 @@ class MedicalInterviewController:
 
         return completed
 
-    def start_interview(self, interview_id: int) -> Optional[MedicalInterview]:
-        """Start a calibrated interview and establish its official clock."""
+    def start_interview(self, interview_id: int, skip_calibration: bool = False) -> Optional[MedicalInterview]:
+        """Start an interview and establish its official clock."""
         interview = self.db.query(MedicalInterviewDB).filter(
             MedicalInterviewDB.id == interview_id
         ).first()
@@ -252,11 +253,23 @@ class MedicalInterviewController:
         if interview.start_time is not None:
             return MedicalInterview.from_orm(interview)
 
-        # The calibration draft is persisted into ``interview_metadata.calibration``
-        # before start. The central ``calibration_passed`` accessor checks the
-        # stored block is ``passed`` and carries a valid personal baseline, so
-        # the gate never reaches into the metadata dict directly.
-        if not calibration_passed(interview):
+        metadata = dict(interview.interview_metadata or {})
+        calib = metadata.get("calibration")
+        is_skipped = (isinstance(calib, dict) and calib.get("status") == "skipped") or skip_calibration
+
+        if is_skipped:
+            if not isinstance(calib, dict) or calib.get("status") != "skipped":
+                metadata["calibration"] = {
+                    "version": "multimodal_calibration_v1",
+                    "status": "skipped",
+                    "completed_at": datetime.now(timezone.utc).isoformat(),
+                }
+                interview.interview_metadata = metadata
+                try:
+                    flag_modified(interview, "interview_metadata")
+                except Exception:
+                    pass
+        elif not calibration_passed(interview):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A passed multimodal calibration must be saved before the interview starts",

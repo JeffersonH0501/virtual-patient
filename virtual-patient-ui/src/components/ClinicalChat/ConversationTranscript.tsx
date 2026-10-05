@@ -22,6 +22,9 @@ type ConversationTranscriptProps = {
   onPatientTurnStart?: (messageId: number, sequence: number, transcript: string) => void;
   onPatientTurnEnd?: (messageId: number) => void;
   onPatientTurnComplete?: () => void;
+  onAudioSynthesized?: (blob: Blob) => void;
+  onStopAudio?: () => void;
+  avatarActive?: boolean;
 };
 
 export const ConversationTranscript = ({
@@ -42,12 +45,16 @@ export const ConversationTranscript = ({
   onPatientTurnStart,
   onPatientTurnEnd,
   onPatientTurnComplete,
+  onAudioSynthesized,
+  onStopAudio,
+  avatarActive = false,
 }: ConversationTranscriptProps) => {
   const {t, i18n} = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlsRef = useRef(new Map<number, string>());
+  const blobsRef = useRef(new Map<number, Blob>());
   const autoPlayedRef = useRef(new Set<number>());
   const playingMessageRef = useRef<number | null>(null);
   const [playingMessageId, setPlayingMessageId] = useState<number | null>(null);
@@ -66,6 +73,9 @@ export const ConversationTranscript = ({
       audioRef.current = null;
     }
     playingMessageRef.current = null;
+    if (!completeTurn) {
+      onStopAudio?.();
+    }
     if (messageId !== null) onPatientTurnEnd?.(messageId);
     setPlayingMessageId(null);
     if (completeTurn && messageId !== null) {
@@ -75,13 +85,14 @@ export const ConversationTranscript = ({
     }
     onPatientSpeakingChange(false);
     if (completeTurn) onPatientTurnComplete?.();
-  }, [onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnEnd]);
+  }, [onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnEnd, onStopAudio]);
 
   const getAudioSource = useCallback(
     async (message: Message) => {
       const cachedUrl = objectUrlsRef.current.get(message.id);
       if (cachedUrl) return cachedUrl;
       const blob = await synthesizePatientMessage(interviewId, message.id);
+      blobsRef.current.set(message.id, blob);
       const objectUrl = URL.createObjectURL(blob);
       objectUrlsRef.current.set(message.id, objectUrl);
       return objectUrl;
@@ -101,10 +112,15 @@ export const ConversationTranscript = ({
       setAudioError(null);
       try {
         const source = await getAudioSource(message);
+        const cachedBlob = blobsRef.current.get(message.id);
+        if (cachedBlob) onAudioSynthesized?.(cachedBlob);
         const audio = new Audio(source);
         audioRef.current = audio;
         const sequence = messages?.findIndex((candidate) => candidate.id === message.id) ?? 0;
         const routed = routePatientAudio?.(audio) ?? false;
+        if (avatarActive && !routed) {
+          audio.muted = true;
+        }
         if (captureEnabled && !routed && !audioAutoPlayEnabled) {
           audioRef.current = null;
           revealedPatientMessagesRef.current.add(message.id);
@@ -131,7 +147,7 @@ export const ConversationTranscript = ({
         stopAudio(true);
       }
     },
-    [audioAutoPlayEnabled, captureEnabled, getAudioSource, messages, onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnStart, playingMessageId, routePatientAudio, stopAudio, t],
+    [audioAutoPlayEnabled, avatarActive, captureEnabled, getAudioSource, messages, onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnStart, playingMessageId, routePatientAudio, stopAudio, t],
   );
 
   useEffect(() => {

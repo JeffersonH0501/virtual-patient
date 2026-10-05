@@ -108,7 +108,7 @@ class CalibrationResultRequest(BaseModel):
     """
 
     version: str = "multimodal_calibration_v1"
-    status: Literal["passed", "failed"]
+    status: Literal["passed", "failed", "skipped"]
     failure_reason: str | None = None
     profile: Dict[str, Any] | None = None
     quality: Dict[str, Any] | None = None
@@ -252,14 +252,15 @@ async def save_calibration_result(
 @router.post("/{interview_id}/start", response_model=MedicalInterview)
 async def start_interview(
     interview_id: int,
+    skip_calibration: bool = Query(default=False),
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    """Start the official interview clock after successful calibration."""
+    """Start the official interview clock after successful calibration or when skipped."""
     service = MedicalInterviewController(db)
     if not service.validate_interview_access(interview_id, current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this interview")
-    interview = service.start_interview(interview_id)
+    interview = service.start_interview(interview_id, skip_calibration=skip_calibration)
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
     return interview

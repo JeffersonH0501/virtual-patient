@@ -1,4 +1,4 @@
-﻿import {FC, useCallback, useEffect, useRef, useState} from 'react';
+import {FC, useCallback, useEffect, useRef, useState} from 'react';
 import {createPortal} from 'react-dom';
 import {useTranslation} from 'react-i18next';
 import {Navigate, useLocation, useNavigate, useOutletContext, useParams} from 'react-router-dom';
@@ -24,6 +24,7 @@ import {EvaluationResultsPanel} from '../Evaluation';
 import {getPatientImage, processMessagesWithAvatars, processSummaryData} from './helpers';
 import {useHandsFreeSpeech} from '../../hooks/useHandsFreeSpeech';
 import {useInterviewRecording} from '../../hooks/useInterviewRecording';
+import {useSimliAvatar} from '../../hooks/useSimliAvatar';
 import {useUser} from '../../hooks/useUser';
 import {SpeechTiming} from '../../types/recording';
 import doctorImage from '../../assets/doctor.png';
@@ -487,6 +488,14 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     if (!isSimulationActive) speech.stop();
   }, [isSimulationActive, speech.stop]);
 
+  const simliAvatar = useSimliAvatar({
+    interviewId: interviewId ?? undefined,
+    enabled: Boolean(isSimulationActive && isOwner),
+    onPatientSpeakingChange: setIsPatientSpeaking,
+  });
+
+  const avatarActive = Boolean(simliAvatar.isConnected && simliAvatar.avatarStream);
+
   const recording = useInterviewRecording({
     interviewId: interviewId ?? undefined,
     enabled: Boolean(isSimulationActive && isOwner),
@@ -495,9 +504,10 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     microphoneState: media.microphoneState,
     cameraEnabled: media.cameraState === 'ready',
     microphoneEnabled: speech.isEnabled && !patientHasFloor,
-    patientAudioEnabled: audioAutoPlayEnabled,
+    patientAudioEnabled: audioAutoPlayEnabled && !avatarActive,
     patientAvatar: patient.avatar,
     patientName: patient.name,
+    patientVideoStream: simliAvatar.avatarStream,
   });
   recordingRef.current = recording;
 
@@ -623,6 +633,10 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           cameraStarting={media.cameraState === 'loading'}
           cameraErrorCode={['permission-denied', 'unavailable', 'unsupported'].includes(media.cameraState) ? media.cameraState : null}
           onRetryCamera={() => void media.startCamera()}
+          avatarStream={simliAvatar.avatarStream}
+          avatarActive={avatarActive}
+          avatarConnecting={simliAvatar.isConnecting}
+          avatarError={simliAvatar.error}
         />
       )}
 
@@ -648,6 +662,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
               onSubmitUtterance={speech.submitUtterance}
               isLoading={isLoading}
               audioAutoPlayEnabled={audioAutoPlayEnabled}
+              avatarActive={avatarActive}
               playbackReady={recording.status !== 'idle'}
               onPatientSpeakingChange={setIsPatientSpeaking}
               captureEnabled={recording.isCapturing}
@@ -657,6 +672,8 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
               onPatientTurnComplete={() => {
                 setPatientTurnActive(false);
               }}
+              onAudioSynthesized={(blob) => void simliAvatar.sendAudioTurn(blob)}
+              onStopAudio={() => simliAvatar.clearBuffer()}
             />
             {(speech.errorCode || messageError) && (
               <div className="mx-3 mb-2 rounded-lg bg-amber-50 px-3 py-2 text-left text-xs text-amber-800" role="alert">

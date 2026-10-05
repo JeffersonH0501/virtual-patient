@@ -101,10 +101,40 @@ During an interview, four continuous sources share one browser clock:
 `student_audio`, `student_video`, `patient_audio`, and `patient_video`. Student
 video is a 1280x720 canvas representation of the camera feed, while patient
 video is a rendered virtual-patient panel rather than a physical camera signal.
-Patient audio is generated TTS, and student audio is captured from the
-microphone independently of browser speech recognition. OPFS is used for
-temporary chunks when supported, with an in-memory fallback. The transcript
-remains usable when capture or upload fails.
+When the Simli AI Avatar is enabled, the patient visual is driven by a real-time
+lip-synced WebRTC stream received from Simli and drawn into the patient canvas,
+preserving the 4-track recording architecture without pipeline modifications.
+Patient audio is generated TTS (Azure OpenAI TTS preserving `vocal_style_policy`),
+and student audio is captured from the microphone independently of browser speech
+recognition. OPFS is used for temporary chunks when supported, with an in-memory
+fallback. The transcript remains usable when capture or upload fails.
+
+### Simli AI Avatar Integration
+
+Virtual Patient integrates the Simli Audio-to-Video API for real-time, low-latency
+conversational avatar rendering (<300ms) with automatic fallback to the static
+patient portrait if unconfigured or unavailable.
+
+1. **Simli Dashboard Configuration (`app.simli.com`)**:
+   - Register account and retrieve `SIMLI_API_KEY` from developer settings.
+   - Choose or create Face IDs for male and female patient personas.
+   - Adjust session limits (`maxSessionLength`: 1800s, `maxIdleTime`: 300s).
+
+2. **Environment Configuration**:
+   Add the following variables to `.env.local` (or `.env.full`):
+   ```bash
+   SIMLI_AVATAR_ENABLED=true
+   SIMLI_API_KEY=your_simli_api_key
+   SIMLI_DEFAULT_FACE_ID_MALE=your_male_face_id
+   SIMLI_DEFAULT_FACE_ID_FEMALE=your_female_face_id
+   SIMLI_MAX_SESSION_LENGTH=1800
+   SIMLI_MAX_IDLE_TIME=300
+   ```
+
+3. **Fallback Resiliency**:
+   If `SIMLI_AVATAR_ENABLED=false`, if the API key is absent, or if a WebRTC connection
+   error occurs, the UI seamlessly falls back to the static patient portrait and
+   standard audio playback without interrupting the consultation.
 
 Common commands:
 

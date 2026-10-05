@@ -8,7 +8,7 @@ from app.core.superuser import synchronize_superuser
 from app.multimodal.turn_video_queue import start_turn_video_worker, shutdown_turn_video_worker
 from app.routers import (
     auth, users, organizations, clinical_cases, 
-    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, calibration
+    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, calibration, avatar
 )
 
 @asynccontextmanager
@@ -147,6 +147,7 @@ app.include_router(evaluations.router, tags=["evaluations"])
 app.include_router(speech.router, tags=["speech"])
 app.include_router(interview_recordings.router, tags=["interview-recordings"])
 app.include_router(calibration.router)
+app.include_router(avatar.router, tags=["avatar"])
 
 # Health check endpoint for Docker
 @app.get("/health", tags=["health"])

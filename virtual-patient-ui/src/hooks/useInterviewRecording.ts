@@ -53,6 +53,7 @@ type UseInterviewRecordingOptions = {
   patientAudioEnabled: boolean;
   patientAvatar: string;
   patientName: string;
+  patientVideoStream?: MediaStream | null;
 };
 
 const extensionForMime = (mimeType: string): string =>
@@ -80,6 +81,7 @@ export const useInterviewRecording = ({
   patientAudioEnabled,
   patientAvatar,
   patientName,
+  patientVideoStream = null,
 }: UseInterviewRecordingOptions) => {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -93,6 +95,7 @@ export const useInterviewRecording = ({
   const patientAudioEnabledRef = useRef(patientAudioEnabled);
   const patientAvatarRef = useRef(patientAvatar);
   const patientNameRef = useRef(patientName);
+  const patientVideoStreamRef = useRef(patientVideoStream);
   const patientSpeakingRef = useRef(false);
   const microphoneGainRef = useRef<GainNode | null>(null);
   const patientMonitorGainRef = useRef<GainNode | null>(null);
@@ -135,6 +138,9 @@ export const useInterviewRecording = ({
   useEffect(() => {
     patientNameRef.current = patientName;
   }, [patientName]);
+  useEffect(() => {
+    patientVideoStreamRef.current = patientVideoStream;
+  }, [patientVideoStream]);
   useEffect(() => {
     if (microphoneGainRef.current) {
       microphoneGainRef.current.gain.setTargetAtTime(
@@ -329,6 +335,10 @@ export const useInterviewRecording = ({
       cameraVideo.muted = true;
       cameraVideo.playsInline = true;
       let attachedCameraStream: MediaStream | null = null;
+      const patientVideo = document.createElement('video');
+      patientVideo.muted = true;
+      patientVideo.playsInline = true;
+      let attachedPatientStream: MediaStream | null = null;
       const avatar = new Image();
       avatar.src = patientAvatarRef.current;
 
@@ -353,6 +363,11 @@ export const useInterviewRecording = ({
           cameraVideo.srcObject = attachedCameraStream;
           if (attachedCameraStream) void cameraVideo.play().catch(() => undefined);
         }
+        if (patientVideoStreamRef.current !== attachedPatientStream) {
+          attachedPatientStream = patientVideoStreamRef.current;
+          patientVideo.srcObject = attachedPatientStream;
+          if (attachedPatientStream) void patientVideo.play().catch(() => undefined);
+        }
         studentContext.fillStyle = recordingTheme.studentBackground;
         studentContext.fillRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
         if (cameraEnabledRef.current && attachedCameraStream) drawContainedVideo(studentContext, cameraVideo);
@@ -370,7 +385,11 @@ export const useInterviewRecording = ({
         patientContext.beginPath();
         patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius, 0, Math.PI * 2);
         patientContext.clip();
-        if (avatar.complete) patientContext.drawImage(avatar, VIDEO_WIDTH / 2 - radius, VIDEO_HEIGHT / 2 - radius, radius * 2, radius * 2);
+        if (attachedPatientStream && patientVideo.readyState >= 2) {
+          patientContext.drawImage(patientVideo, VIDEO_WIDTH / 2 - radius, VIDEO_HEIGHT / 2 - radius, radius * 2, radius * 2);
+        } else if (avatar.complete) {
+          patientContext.drawImage(avatar, VIDEO_WIDTH / 2 - radius, VIDEO_HEIGHT / 2 - radius, radius * 2, radius * 2);
+        }
         patientContext.restore();
         patientContext.strokeStyle = patientSpeakingRef.current ? recordingTheme.speaking : recordingTheme.idle;
         patientContext.lineWidth = patientSpeakingRef.current ? recordingTheme.speakingWidth : recordingTheme.idleWidth;

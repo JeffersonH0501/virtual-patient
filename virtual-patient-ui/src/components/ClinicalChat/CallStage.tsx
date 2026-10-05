@@ -13,6 +13,10 @@ type CallStageProps = {
   cameraStarting: boolean;
   cameraErrorCode: string | null;
   onRetryCamera: () => void;
+  avatarStream?: MediaStream | null;
+  avatarActive?: boolean;
+  avatarConnecting?: boolean;
+  avatarError?: string | null;
 };
 
 export const CallStage = ({
@@ -26,6 +30,10 @@ export const CallStage = ({
   cameraStarting,
   cameraErrorCode,
   onRetryCamera,
+  avatarStream = null,
+  avatarActive = false,
+  avatarConnecting = false,
+  avatarError = null,
 }: CallStageProps) => {
   const {t} = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -47,27 +55,66 @@ export const CallStage = ({
     >
       <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-900 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
         <span data-patient-roi-anchor className="pointer-events-none absolute inset-0" aria-hidden="true" />
-        <div
-          className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
-            patientSpeaking ? 'opacity-80' : 'opacity-100'
-          }`}
-        />
-        <div
-          className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 ring-4 transition-all sm:h-24 sm:w-24 ${
-            patientSpeaking
-              ? 'scale-105 ring-emerald-400 shadow-speaking'
-              : 'ring-white/15'
-          }`}
-        >
-          <img
-            src={patientAvatar}
-            alt=""
-            className="h-patient-avatar w-patient-avatar rounded-full object-cover"
+        {avatarActive && avatarStream && avatarStream.getVideoTracks().length > 0 ? (
+          <video
+            ref={(el) => {
+              if (el && avatarStream && el.srcObject !== avatarStream) {
+                el.srcObject = avatarStream;
+              }
+            }}
+            autoPlay
+            playsInline
+            muted={true}
+            className="h-full w-full object-cover"
+            aria-label={patientName || t('clinicalChat.call.patient')}
           />
+        ) : (
+          <>
+            <div
+              className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
+                patientSpeaking ? 'opacity-80' : 'opacity-100'
+              }`}
+            />
+            <div
+              className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 ring-4 transition-all sm:h-24 sm:w-24 ${
+                patientSpeaking
+                  ? 'scale-105 ring-emerald-400 shadow-speaking'
+                  : 'ring-white/15'
+              }`}
+            >
+              <img
+                src={patientAvatar}
+                alt=""
+                className="h-patient-avatar w-patient-avatar rounded-full object-cover"
+              />
+            </div>
+          </>
+        )}
+        <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/45 px-3 py-2 text-left text-xs text-white backdrop-blur-sm">
+          <span className="flex items-center gap-1.5 truncate">
+            {patientName || t('clinicalChat.call.patient')}
+            {avatarActive && (
+              <span className="rounded bg-emerald-500/30 px-1 py-0.5 text-[10px] font-medium text-emerald-200">
+                Simli
+              </span>
+            )}
+          </span>
+          <span className={patientSpeaking ? 'text-emerald-300' : 'text-slate-300'}>
+            {patientSpeaking
+              ? t('clinicalChat.call.speaking')
+              : t('clinicalChat.call.listening')}
+          </span>
         </div>
-        <div className="absolute inset-x-0 bottom-0 bg-black/45 px-3 py-2 text-left text-xs text-white backdrop-blur-sm">
-          <span className="truncate">{patientName || t('clinicalChat.call.patient')}</span>
-        </div>
+        {avatarConnecting && (
+          <div className="absolute inset-x-3 top-3 rounded bg-black/60 px-2 py-1 text-center text-xs text-white">
+            {t('clinicalChat.call.avatarConnecting')}
+          </div>
+        )}
+        {avatarError && (
+          <div className="absolute inset-x-3 top-3 rounded border border-amber-500/30 bg-amber-950/80 px-2 py-1 text-center text-xs text-amber-200">
+            {t('clinicalChat.call.avatarFallbackNotice')}
+          </div>
+        )}
       </article>
 
       <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-800 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
