@@ -9,7 +9,7 @@ from app.core.database import SessionLocal
 from app.core.superuser import synchronize_superuser
 from app.routers import (
     auth, users, organizations, clinical_cases, 
-    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, calibration
+    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, calibration, interview_avatar
 )
 
 # Uvicorn configures its own handlers, but application loggers otherwise keep
@@ -148,6 +148,7 @@ app.include_router(personalities.router, tags=["personalities"])
 app.include_router(evaluations.router, tags=["evaluations"])
 app.include_router(speech.router, tags=["speech"])
 app.include_router(interview_recordings.router, tags=["interview-recordings"])
+app.include_router(interview_avatar.router, tags=["interview-avatar"])
 app.include_router(calibration.router)
 
 # Health check endpoint for Docker

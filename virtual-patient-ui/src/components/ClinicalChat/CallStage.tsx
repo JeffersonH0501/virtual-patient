@@ -8,6 +8,7 @@ type CallStageProps = {
   patientName: string;
   studentName: string;
   patientSpeaking: boolean;
+  patientVideoStream?: MediaStream | null;
   cameraStream: MediaStream | null;
   cameraEnabled: boolean;
   cameraStarting: boolean;
@@ -21,6 +22,7 @@ export const CallStage = ({
   patientName,
   studentName,
   patientSpeaking,
+  patientVideoStream = null,
   cameraStream,
   cameraEnabled,
   cameraStarting,
@@ -29,7 +31,11 @@ export const CallStage = ({
 }: CallStageProps) => {
   const {t} = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const patientVideoRef = useRef<HTMLVideoElement>(null);
 
+  useEffect(() => {
+    if (patientVideoRef.current) patientVideoRef.current.srcObject = patientVideoStream;
+  }, [patientVideoStream]);
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = cameraStream;
   }, [cameraStream]);
@@ -47,24 +53,37 @@ export const CallStage = ({
     >
       <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-900 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
         <span data-patient-roi-anchor className="pointer-events-none absolute inset-0" aria-hidden="true" />
-        <div
-          className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
-            patientSpeaking ? 'opacity-80' : 'opacity-100'
-          }`}
-        />
-        <div
-          className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 ring-4 transition-all sm:h-24 sm:w-24 ${
-            patientSpeaking
-              ? 'scale-105 ring-emerald-400 shadow-speaking'
-              : 'ring-white/15'
-          }`}
-        >
-          <img
-            src={patientAvatar}
-            alt=""
-            className="h-patient-avatar w-patient-avatar rounded-full object-cover"
+        {patientVideoStream ? (
+          <video
+            ref={patientVideoRef}
+            autoPlay
+            muted
+            playsInline
+            className="absolute inset-0 h-full w-full bg-slate-950 object-contain"
+            aria-label={patientName || t('clinicalChat.call.patient')}
           />
-        </div>
+        ) : (
+          <>
+            <div
+              className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
+                patientSpeaking ? 'opacity-80' : 'opacity-100'
+              }`}
+            />
+            <div
+              className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 ring-4 transition-all sm:h-24 sm:w-24 ${
+                patientSpeaking
+                  ? 'scale-105 ring-emerald-400 shadow-speaking'
+                  : 'ring-white/15'
+              }`}
+            >
+              <img
+                src={patientAvatar}
+                alt=""
+                className="h-patient-avatar w-patient-avatar rounded-full object-cover"
+              />
+            </div>
+          </>
+        )}
         <div className="absolute inset-x-0 bottom-0 bg-black/45 px-3 py-2 text-left text-xs text-white backdrop-blur-sm">
           <span className="truncate">{patientName || t('clinicalChat.call.patient')}</span>
         </div>

@@ -51,6 +51,8 @@ type UseInterviewRecordingOptions = {
   cameraEnabled: boolean;
   microphoneEnabled: boolean;
   patientAudioEnabled: boolean;
+  patientVideoStream?: MediaStream | null;
+  patientAudioStream?: MediaStream | null;
   patientAvatar: string;
   patientName: string;
 };
@@ -78,6 +80,8 @@ export const useInterviewRecording = ({
   cameraEnabled,
   microphoneEnabled,
   patientAudioEnabled,
+  patientVideoStream = null,
+  patientAudioStream = null,
   patientAvatar,
   patientName,
 }: UseInterviewRecordingOptions) => {
@@ -91,6 +95,13 @@ export const useInterviewRecording = ({
   const cameraEnabledRef = useRef(cameraEnabled);
   const microphoneEnabledRef = useRef(microphoneEnabled);
   const patientAudioEnabledRef = useRef(patientAudioEnabled);
+  const patientVideoStreamRef = useRef(patientVideoStream);
+  const patientRemoteAudioRef = useRef<{
+    stream: MediaStream;
+    source: MediaStreamAudioSourceNode;
+    analyser: AnalyserNode;
+    element: HTMLAudioElement;
+  } | null>(null);
   const patientAvatarRef = useRef(patientAvatar);
   const patientNameRef = useRef(patientName);
   const patientSpeakingRef = useRef(false);
@@ -120,6 +131,7 @@ export const useInterviewRecording = ({
 
   microphoneEnabledRef.current = microphoneEnabled;
   patientAudioEnabledRef.current = patientAudioEnabled;
+  patientVideoStreamRef.current = patientVideoStream;
 
   useEffect(() => {
     cameraStreamRef.current = cameraStream;
@@ -235,6 +247,9 @@ export const useInterviewRecording = ({
     if (patientRoiTimerRef.current !== null) window.clearInterval(patientRoiTimerRef.current);
     patientRoiTimerRef.current = null;
     patientAnalyserRef.current = null;
+    const remoteAudio = patientRemoteAudioRef.current;
+    patientRemoteAudioRef.current = null;
+    if (remoteAudio) remoteAudio.element.srcObject = null;
     setPatientAudioLevel(0);
     const runtimes = recordersRef.current;
     recordersRef.current = [];
@@ -258,6 +273,58 @@ export const useInterviewRecording = ({
     patientMonitorGainRef.current = null;
     patientDestinationRef.current = null;
   }, []);
+
+  const startPatientLevelMeter = useCallback((analyser: AnalyserNode) => {
+    patientAnalyserRef.current = analyser;
+    if (patientLevelTimerRef.current !== null) window.clearInterval(patientLevelTimerRef.current);
+    patientLevelTimerRef.current = window.setInterval(() => {
+      const samples = new Float32Array(analyser.fftSize);
+      analyser.getFloatTimeDomainData(samples);
+      const rms = Math.sqrt(
+        samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length,
+      );
+      setPatientAudioLevel(Math.min(1, rms / 0.16));
+    }, 60);
+  }, []);
+
+  const detachPatientRemoteAudio = useCallback(() => {
+    const remote = patientRemoteAudioRef.current;
+    patientRemoteAudioRef.current = null;
+    if (!remote) return;
+    remote.source.disconnect();
+    remote.analyser.disconnect();
+    remote.element.srcObject = null;
+  }, []);
+
+  // Routes the remote avatar audio into the same patient track and speakers
+  // used for local TTS playback.
+  const attachPatientRemoteAudio = useCallback((stream: MediaStream | null) => {
+    const context = audioContextRef.current;
+    const destination = patientDestinationRef.current;
+    const monitor = patientMonitorGainRef.current;
+    if (patientRemoteAudioRef.current?.stream === stream) return;
+    detachPatientRemoteAudio();
+    if (!stream || !context || !destination || !monitor) return;
+    try {
+      // Chromium only delivers remote WebRTC audio to Web Audio when the
+      // stream is also attached to a media element.
+      const element = new Audio();
+      element.muted = true;
+      element.srcObject = stream;
+      void element.play().catch(() => undefined);
+      const source = context.createMediaStreamSource(stream);
+      const analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      source.connect(analyser);
+      analyser.connect(destination);
+      analyser.connect(monitor);
+      patientRemoteAudioRef.current = {stream, source, analyser, element};
+      startPatientLevelMeter(analyser);
+      void context.resume();
+    } catch {
+      patientRemoteAudioRef.current = null;
+    }
+  }, [detachPatientRemoteAudio, startPatientLevelMeter]);
 
   const start = useCallback(async () => {
     if (!enabled || !interviewId || startingRef.current || recordersRef.current.length > 0) return;
@@ -331,6 +398,10 @@ export const useInterviewRecording = ({
       cameraVideo.muted = true;
       cameraVideo.playsInline = true;
       let attachedCameraStream: MediaStream | null = null;
+      const patientRemoteVideo = document.createElement('video');
+      patientRemoteVideo.muted = true;
+      patientRemoteVideo.playsInline = true;
+      let attachedPatientVideo: MediaStream | null = null;
       const avatar = new Image();
       avatar.src = patientAvatarRef.current;
 
@@ -367,18 +438,30 @@ export const useInterviewRecording = ({
 
         patientContext.fillStyle = recordingTheme.patientBackground;
         patientContext.fillRect(0, 0, VIDEO_WIDTH, VIDEO_HEIGHT);
+        if (patientVideoStreamRef.current !== attachedPatientVideo) {
+          attachedPatientVideo = patientVideoStreamRef.current;
+          patientRemoteVideo.srcObject = attachedPatientVideo;
+          if (attachedPatientVideo) void patientRemoteVideo.play().catch(() => undefined);
+        }
+        const remoteVideoReady = Boolean(attachedPatientVideo)
+          && patientRemoteVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA
+          && patientRemoteVideo.videoWidth > 0;
         const radius = recordingTheme.avatarRadius;
-        patientContext.save();
-        patientContext.beginPath();
-        patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius, 0, Math.PI * 2);
-        patientContext.clip();
-        if (avatar.complete) patientContext.drawImage(avatar, VIDEO_WIDTH / 2 - radius, VIDEO_HEIGHT / 2 - radius, radius * 2, radius * 2);
-        patientContext.restore();
-        patientContext.strokeStyle = patientSpeakingRef.current ? recordingTheme.speaking : recordingTheme.idle;
-        patientContext.lineWidth = patientSpeakingRef.current ? recordingTheme.speakingWidth : recordingTheme.idleWidth;
-        patientContext.beginPath();
-        patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius + recordingTheme.ringOffset, 0, Math.PI * 2);
-        patientContext.stroke();
+        if (remoteVideoReady) {
+          drawContainedVideo(patientContext, patientRemoteVideo);
+        } else {
+          patientContext.save();
+          patientContext.beginPath();
+          patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius, 0, Math.PI * 2);
+          patientContext.clip();
+          if (avatar.complete) patientContext.drawImage(avatar, VIDEO_WIDTH / 2 - radius, VIDEO_HEIGHT / 2 - radius, radius * 2, radius * 2);
+          patientContext.restore();
+          patientContext.strokeStyle = patientSpeakingRef.current ? recordingTheme.speaking : recordingTheme.idle;
+          patientContext.lineWidth = patientSpeakingRef.current ? recordingTheme.speakingWidth : recordingTheme.idleWidth;
+          patientContext.beginPath();
+          patientContext.arc(VIDEO_WIDTH / 2, VIDEO_HEIGHT / 2, radius + recordingTheme.ringOffset, 0, Math.PI * 2);
+          patientContext.stroke();
+        }
         patientContext.fillStyle = recordingTheme.text;
         patientContext.font = recordingTheme.nameFont;
         patientContext.textAlign = 'center';
@@ -483,6 +566,11 @@ export const useInterviewRecording = ({
     if (microphoneReady || microphoneSettledUnavailable) void start();
   }, [enabled, microphoneState, microphoneStream, start]);
 
+  useEffect(() => {
+    if (status === 'recording' || status === 'paused') attachPatientRemoteAudio(patientAudioStream);
+    else if (status === 'idle' || status === 'failed') detachPatientRemoteAudio();
+  }, [attachPatientRemoteAudio, detachPatientRemoteAudio, patientAudioStream, status]);
+
   const pause = useCallback(() => {
     if (status !== 'recording') return;
     pausedAtRef.current = performance.now();
@@ -511,25 +599,16 @@ export const useInterviewRecording = ({
       const source = context.createMediaElementSource(audio);
       const analyser = context.createAnalyser();
       analyser.fftSize = 1024;
-      patientAnalyserRef.current = analyser;
       source.connect(analyser);
       analyser.connect(destination);
       analyser.connect(monitor);
-      if (patientLevelTimerRef.current !== null) window.clearInterval(patientLevelTimerRef.current);
-      patientLevelTimerRef.current = window.setInterval(() => {
-        const samples = new Float32Array(analyser.fftSize);
-        analyser.getFloatTimeDomainData(samples);
-        const rms = Math.sqrt(
-          samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length,
-        );
-        setPatientAudioLevel(Math.min(1, rms / 0.16));
-      }, 60);
+      startPatientLevelMeter(analyser);
       void context.resume();
       return true;
     } catch {
       return false;
     }
-  }, []);
+  }, [startPatientLevelMeter]);
 
   const resumeAudioGraph = useCallback(async (): Promise<void> => {
     const context = audioContextRef.current;

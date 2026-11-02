@@ -43,6 +43,32 @@ The interview screen is presented as a call and captures four private, continuou
 
 After an interview, the recap view synchronizes the two recorded video panels and mixes the two audio sources locally. Seeking also updates the cumulative transcript. Legacy interviews and failed captures retain their full transcript and explicitly report that no recording is available. At finalization, the API derives descriptive OpenSMILE/eGeMAPSv02 observations for student speech and non-verbal observations from the private student video using the shared MediaPipe Face Landmarker, BlazeGaze/WebEyeTrack gaze and CCDb-HG head-gesture path. The turn-details dialog presents only the selected raw variables grouped by family. Gaze aggregates that require calibration remain unavailable until configured. These processing parameters do not validate VAD, visual alignment, nod detection, non-verbal inference, or multimodal evaluation.
 
+## Optional Tavus avatar
+
+When `TAVUS_API_KEY` and `TAVUS_PAL_ID` are set, the patient is rendered as a [Tavus](https://www.tavus.io) real-time avatar instead of the static image. If they are empty, Tavus is unreachable, or the browser cannot join the room, the interview silently keeps the static avatar with Azure TTS playback.
+
+How it works:
+
+1. The API (`POST /medical-interviews/{id}/avatar/session`) creates a private Tavus conversation (`require_auth`, bounded by `TAVUS_MAX_CALL_DURATION_SECONDS`) and returns only the room URL and a meeting token. The Tavus key never reaches the browser. The session is ended with `DELETE` on the same route, when the page is left, or by Tavus timeouts.
+2. The `PAL` must use `pipeline_mode: "echo"`. This is not a setting in the Tavus dashboard: create the PAL through the [Echo Mode API quickstart](https://docs.tavus.io/sections/conversational-video-interface/echo-mode), then copy the returned `pal_id` into `TAVUS_PAL_ID`. For example:
+
+   ```sh
+   curl --request POST \
+     --url https://tavusapi.com/v2/pals \
+     --header 'Content-Type: application/json' \
+     --header "x-api-key: ${TAVUS_API_KEY}" \
+     --data '{"pal_name":"Virtual Patient Echo","pipeline_mode":"echo","default_face_id":"<face_id>"}'
+   ```
+
+   `default_face_id` is required; list the available faces with `GET https://tavusapi.com/v2/faces`. Set `TAVUS_API_KEY` in your shell before running the command; do not commit or share it. Tavus then skips its own STT, LLM and TTS: the existing LLM response and Azure TTS (including `vocal_style_policy`) are preserved.
+3. The browser joins the room with `@daily-co/daily-js` without microphone or camera, converts the Azure MP3 to 16 kHz mono PCM16 and sends it as `conversation.echo` audio events. The remote video and audio feed the existing 4-track recording (`patient_video` and `patient_audio`) and the turn timings.
+
+Operational notes:
+
+- The Echo audio format (base64 PCM16 mono at the declared `sample_rate`), lip-sync quality, latency and `MediaRecorder` capture of the remote video must be validated with a real Tavus account before production use. The comparative evaluation (`Evaluacion_Avatar_VirtualPatient.pdf`) lists latency of roughly 600 ms, about USD 59/month for 100 minutes (USD 0.32-0.37/extra minute) and a free plan limited to proof-of-concept use; these figures come from the provider and must be confirmed.
+- Credits are consumed while a conversation is open. A concurrency slot is held until it ends.
+- Student and patient audio/video are processed by a third party. SOC 2/HIPAA coverage requires the Tavus Enterprise plan; obtain written data-handling terms and informed consent before using real participants. Tavus has no self-hosted option.
+
 ## Security and Configuration
 
 Runtime secrets and credentials must not be committed to the repository. Local and deployment configuration should be created from the provided `.env.*.example` files and stored only in ignored `.env.local` or `.env.full` files. Administrative accounts must be provisioned separately; database migrations do not contain default administrator credentials.

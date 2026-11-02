@@ -19,6 +19,9 @@ type ConversationTranscriptProps = {
   onPatientSpeakingChange: (speaking: boolean) => void;
   captureEnabled?: boolean;
   routePatientAudio?: (audio: HTMLAudioElement) => boolean;
+  avatarReady?: boolean;
+  onAvatarSpeak?: (audio: Blob) => Promise<void>;
+  onAvatarInterrupt?: () => void;
   onPatientTurnStart?: (messageId: number, sequence: number, transcript: string) => void;
   onPatientTurnEnd?: (messageId: number) => void;
   onPatientTurnComplete?: () => void;
@@ -39,6 +42,9 @@ export const ConversationTranscript = ({
   onPatientSpeakingChange,
   captureEnabled = false,
   routePatientAudio,
+  avatarReady = false,
+  onAvatarSpeak,
+  onAvatarInterrupt,
   onPatientTurnStart,
   onPatientTurnEnd,
   onPatientTurnComplete,
@@ -48,6 +54,9 @@ export const ConversationTranscript = ({
   const contentRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlsRef = useRef(new Map<number, string>());
+  const blobsRef = useRef(new Map<number, Blob>());
+  const avatarActiveRef = useRef(false);
+  const avatarTokenRef = useRef(0);
   const autoPlayedRef = useRef(new Set<number>());
   const playingMessageRef = useRef<number | null>(null);
   const [playingMessageId, setPlayingMessageId] = useState<number | null>(null);
@@ -61,6 +70,11 @@ export const ConversationTranscript = ({
 
   const stopAudio = useCallback((completeTurn = false) => {
     const messageId = playingMessageRef.current;
+    avatarTokenRef.current += 1;
+    if (avatarActiveRef.current) {
+      avatarActiveRef.current = false;
+      if (!completeTurn) onAvatarInterrupt?.();
+    }
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current = null;
@@ -75,23 +89,34 @@ export const ConversationTranscript = ({
     }
     onPatientSpeakingChange(false);
     if (completeTurn) onPatientTurnComplete?.();
-  }, [onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnEnd]);
+  }, [onAvatarInterrupt, onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnEnd]);
+
+  const getAudioBlob = useCallback(
+    async (message: Message) => {
+      const cached = blobsRef.current.get(message.id);
+      if (cached) return cached;
+      const blob = await synthesizePatientMessage(interviewId, message.id);
+      blobsRef.current.set(message.id, blob);
+      return blob;
+    },
+    [interviewId],
+  );
 
   const getAudioSource = useCallback(
     async (message: Message) => {
       const cachedUrl = objectUrlsRef.current.get(message.id);
       if (cachedUrl) return cachedUrl;
-      const blob = await synthesizePatientMessage(interviewId, message.id);
+      const blob = await getAudioBlob(message);
       const objectUrl = URL.createObjectURL(blob);
       objectUrlsRef.current.set(message.id, objectUrl);
       return objectUrl;
     },
-    [interviewId],
+    [getAudioBlob],
   );
 
   const playMessage = useCallback(
     async (message: Message) => {
-      if (playingMessageId === message.id && audioRef.current) {
+      if (playingMessageId === message.id && (audioRef.current || avatarActiveRef.current)) {
         stopAudio(false);
         return;
       }
@@ -99,6 +124,29 @@ export const ConversationTranscript = ({
       setPendingPatientMessageId(message.id);
       setPatientWaveform([]);
       setAudioError(null);
+      if (avatarReady && onAvatarSpeak) {
+        const token = avatarTokenRef.current;
+        try {
+          const blob = await getAudioBlob(message);
+          if (token !== avatarTokenRef.current) return;
+          const turnIndex = messages?.findIndex((candidate) => candidate.id === message.id) ?? 0;
+          avatarActiveRef.current = true;
+          playingMessageRef.current = message.id;
+          setPlayingMessageId(message.id);
+          onPatientSpeakingChange(true);
+          onPatientTurnStart?.(message.id, Math.max(turnIndex, 0), message.content);
+          await onAvatarSpeak(blob);
+          if (token !== avatarTokenRef.current) return;
+          avatarActiveRef.current = false;
+          stopAudio(true);
+          return;
+        } catch {
+          // A newer playback or an interruption owns the state now.
+          if (token !== avatarTokenRef.current) return;
+          stopAudio(false);
+          setPendingPatientMessageId(message.id);
+        }
+      }
       try {
         const source = await getAudioSource(message);
         const audio = new Audio(source);
@@ -131,7 +179,7 @@ export const ConversationTranscript = ({
         stopAudio(true);
       }
     },
-    [audioAutoPlayEnabled, captureEnabled, getAudioSource, messages, onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnStart, playingMessageId, routePatientAudio, stopAudio, t],
+    [audioAutoPlayEnabled, avatarReady, captureEnabled, getAudioBlob, getAudioSource, messages, onAvatarSpeak, onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnStart, playingMessageId, routePatientAudio, stopAudio, t],
   );
 
   useEffect(() => {

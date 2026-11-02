@@ -58,6 +58,18 @@ class Settings:
         "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"
     )
 
+    # Optional Tavus avatar. The PAL must use `pipeline_mode: echo` so that the
+    # browser can feed it the audio already synthesized by the speech provider.
+    tavus_api_key: str | None = os.getenv("TAVUS_API_KEY") or None
+    tavus_pal_id: str | None = os.getenv("TAVUS_PAL_ID") or None
+    tavus_face_id: str | None = os.getenv("TAVUS_FACE_ID") or None
+    tavus_api_base_url: str = os.getenv(
+        "TAVUS_API_BASE_URL", "https://tavusapi.com"
+    ).rstrip("/")
+    tavus_max_call_duration_seconds: int = int(
+        os.getenv("TAVUS_MAX_CALL_DURATION_SECONDS", "3600")
+    )
+
     video_processing_worker_url: str = os.getenv(
         "VIDEO_PROCESSING_WORKER_URL",
         "http://video-processing-worker:8010",

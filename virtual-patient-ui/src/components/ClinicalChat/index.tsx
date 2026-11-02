@@ -32,6 +32,7 @@ import {AppContainerOutletContext} from '../common/AppContainer';
 import {X} from '../../icons';
 import {interviewPath, ROUTES} from '../../utils/routes';
 import {useInterviewMedia} from '../../contexts/interviewMedia';
+import {useTavusAvatar} from '../../hooks/useTavusAvatar';
 
 const EMPTY_PATIENT: Patient = {
   name: '',
@@ -488,8 +489,15 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     if (!isSimulationActive) speech.stop();
   }, [isSimulationActive, speech.stop]);
 
+  const avatar = useTavusAvatar(
+    interviewId ?? null,
+    Boolean(isSimulationActive && isOwner && !isTerminal),
+  );
+
   const recording = useInterviewRecording({
     interviewId: interviewId ?? undefined,
+    patientVideoStream: avatar.videoStream,
+    patientAudioStream: avatar.audioStream,
     enabled: Boolean(isSimulationActive && isOwner),
     cameraStream: media.cameraStream,
     microphoneStream: media.microphoneStream,
@@ -501,6 +509,8 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     patientName: patient.name,
   });
   recordingRef.current = recording;
+  // Remote avatar audio is only audible through the recording audio graph.
+  const avatarActive = avatar.status === 'ready' && recording.isCapturing;
 
   useEffect(() => {
     if (!isSimulationActive) {
@@ -620,6 +630,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           patientName={patient.name}
           studentName={studentName}
           patientSpeaking={isPatientSpeaking}
+          patientVideoStream={avatarActive ? avatar.videoStream : null}
           cameraStream={media.cameraStream}
           cameraEnabled={media.cameraState === 'ready'}
           cameraStarting={media.cameraState === 'loading'}
@@ -654,6 +665,9 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
               onPatientSpeakingChange={setIsPatientSpeaking}
               captureEnabled={recording.isCapturing}
               routePatientAudio={recording.routePatientAudio}
+              avatarReady={avatarActive}
+              onAvatarSpeak={avatar.speak}
+              onAvatarInterrupt={avatar.interrupt}
               onPatientTurnStart={recording.beginPatientTurn}
               onPatientTurnEnd={recording.endPatientTurn}
               onPatientTurnComplete={() => {
