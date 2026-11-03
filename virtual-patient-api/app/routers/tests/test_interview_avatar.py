@@ -16,6 +16,8 @@ def _settings(**overrides):
         "tavus_api_key": "secret-key",
         "tavus_pal_id": "pal123",
         "tavus_face_id": None,
+        "tavus_male_face_id": "male-face",
+        "tavus_female_face_id": "female-face",
         "tavus_api_base_url": "https://tavus.test",
         "tavus_max_call_duration_seconds": 900,
     }
@@ -60,6 +62,37 @@ class TavusClientTests(unittest.TestCase):
         self.assertEqual(kwargs["json"]["pal_id"], "pal123")
         self.assertEqual(kwargs["json"]["face_id"], "face1")
         self.assertEqual(kwargs["json"]["properties"]["max_call_duration"], 900)
+
+    def test_conversation_uses_patient_language_and_gender_face(self):
+        payload = {
+            "conversation_id": "c1",
+            "conversation_url": "https://tavus.daily.co/c1",
+        }
+        with patch(
+            "app.avatar.tavus.httpx.post", return_value=_response(payload=payload)
+        ) as post:
+            TavusClient(_settings()).create_session(7, gender="female", language="es")
+
+        body = post.call_args.kwargs["json"]
+        self.assertEqual(body["face_id"], "female-face")
+        self.assertEqual(body["properties"]["languages"], ["es"])
+
+    def test_face_map_selects_face_by_gender_age_and_personality(self):
+        payload = {
+            "conversation_id": "c1",
+            "conversation_url": "https://tavus.daily.co/c1",
+        }
+        face_map = '{"female:senior": "old-f", "female:senior:anxious": "old-f-anx"}'
+        with patch(
+            "app.avatar.tavus.httpx.post", return_value=_response(payload=payload)
+        ) as post:
+            client = TavusClient(_settings(tavus_face_map=face_map))
+            client.create_session(7, gender="female", age=70, personality_key="anxious")
+            self.assertEqual(post.call_args.kwargs["json"]["face_id"], "old-f-anx")
+            client.create_session(7, gender="female", age=70, personality_key="calm")
+            self.assertEqual(post.call_args.kwargs["json"]["face_id"], "old-f")
+            client.create_session(7, gender="female", age=30)
+            self.assertEqual(post.call_args.kwargs["json"]["face_id"], "female-face")
 
     def test_provider_failure_is_wrapped(self):
         with patch(
@@ -145,8 +178,28 @@ class AvatarSessionRouteTests(unittest.TestCase):
         self.assertEqual(raised.exception.status_code, 502)
 
     def test_starts_and_ends_only_the_session_created_for_the_interview(self):
-        response = self._start(SimpleNamespace(status="in_progress"))
+        interview = SimpleNamespace(
+            status="in_progress",
+            interview_metadata={"patient_response_language": "es"},
+            personality=SimpleNamespace(namespace_key="friendly_polite"),
+            patient_gender="female",
+            clinical_case=SimpleNamespace(age=70),
+        )
+        response = self._start(interview)
         self.assertEqual(response.conversation_id, "c1")
+        self.assertEqual(response.state, "created")
+        self.assertEqual(response.patient_profile.language, "es")
+        self.assertEqual(
+            response.patient_profile.personality_key,
+            "friendly_polite",
+        )
+        self.client.create_session.assert_called_once_with(
+            7,
+            gender="female",
+            language="es",
+            age=70,
+            personality_key="friendly_polite",
+        )
 
         interview_avatar.end_avatar_session(
             7,

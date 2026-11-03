@@ -74,6 +74,7 @@ class SpeechEndpointTests(unittest.IsolatedAsyncioTestCase):
         self.db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(
             patient_gender="female",
             personality=SimpleNamespace(namespace_key="reserved"),
+            interview_metadata={"patient_response_language": "es"},
         )
         speech_service_type.return_value.synthesize_patient_message.return_value = (
             SynthesizedAudio(
@@ -93,10 +94,12 @@ class SpeechEndpointTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response.body, b"audio-bytes")
         self.assertEqual(response.media_type, "audio/mpeg")
+        self.assertIn("synthesis;dur=", response.headers["server-timing"])
         speech_service_type.return_value.synthesize_patient_message.assert_called_once_with(
             "I feel tired.",
             "reserved",
             "female",
+            "es",
         )
 
     @patch.object(speech_router, "MessageController")

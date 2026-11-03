@@ -3,10 +3,18 @@ import {transformToCamelCase} from '../../utils/apiTransform';
 import {API_URL} from '../../utils/request';
 
 export type AvatarSession = {
-  provider: string;
+  provider: 'tavus';
+  state: 'created';
   conversationId: string;
   conversationUrl: string;
   meetingToken: string | null;
+  patientProfile: {
+    language: 'en' | 'es';
+    personalityKey: string;
+    gender: string | null;
+    voice: string;
+    vocalStyleKey: string;
+  };
 };
 
 export const startAvatarSession = async (

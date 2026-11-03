@@ -1,5 +1,6 @@
 import {getAuthHeaders} from '../auth/authHeaders';
 import {API_URL} from '../../utils/request';
+import {recordAvatarTimingStage} from '../avatar/timing';
 
 export const synthesizePatientMessage = async (
   interviewId: number,
@@ -24,5 +25,11 @@ export const synthesizePatientMessage = async (
         : 'Failed to synthesize patient speech';
     throw new Error(detail);
   }
-  return response.blob();
+  const blob = await response.blob();
+  const timing = response.headers.get('Server-Timing');
+  const synthesisMs = timing?.match(/synthesis;dur=([\d.]+)/)?.[1];
+  if (synthesisMs) {
+    recordAvatarTimingStage(interviewId, 'tts-server', Number(synthesisMs));
+  }
+  return blob;
 };

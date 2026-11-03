@@ -2,6 +2,11 @@ import {CSSProperties, useCallback, useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Message} from '../../types';
 import {synthesizePatientMessage} from '../../services/speech';
+import {
+  ensureAvatarTurnTiming,
+  finishAvatarTurnTiming,
+  recordAvatarTimingStage,
+} from '../../services/avatar/timing';
 import {PaperPlaneRight} from '../../icons';
 
 type ConversationTranscriptProps = {
@@ -126,9 +131,11 @@ export const ConversationTranscript = ({
       setAudioError(null);
       if (avatarReady && onAvatarSpeak) {
         const token = avatarTokenRef.current;
+        ensureAvatarTurnTiming(interviewId);
         try {
           const blob = await getAudioBlob(message);
           if (token !== avatarTokenRef.current) return;
+          recordAvatarTimingStage(interviewId, 'tts-ready');
           const turnIndex = messages?.findIndex((candidate) => candidate.id === message.id) ?? 0;
           avatarActiveRef.current = true;
           playingMessageRef.current = message.id;
@@ -138,11 +145,14 @@ export const ConversationTranscript = ({
           await onAvatarSpeak(blob);
           if (token !== avatarTokenRef.current) return;
           avatarActiveRef.current = false;
+          finishAvatarTurnTiming(interviewId);
           stopAudio(true);
           return;
         } catch {
           // A newer playback or an interruption owns the state now.
           if (token !== avatarTokenRef.current) return;
+          recordAvatarTimingStage(interviewId, 'fallback');
+          finishAvatarTurnTiming(interviewId);
           stopAudio(false);
           setPendingPatientMessageId(message.id);
         }

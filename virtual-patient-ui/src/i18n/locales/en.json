@@ -351,6 +351,8 @@
       "listening": "Listening",
       "studentCamera": "Local student camera preview",
       "cameraStarting": "Starting camera...",
+      "avatarConnecting": "Connecting avatar...",
+      "avatarFallback": "Avatar unavailable; using the static image.",
       "cameraOff": "Camera is off",
       "cameraErrors": {
         "unsupported": "Camera access is not supported in this browser.",

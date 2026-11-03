@@ -510,7 +510,9 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   });
   recordingRef.current = recording;
   // Remote avatar audio is only audible through the recording audio graph.
-  const avatarActive = avatar.status === 'ready' && recording.isCapturing;
+  const avatarActive =
+    (avatar.status === 'ready' || avatar.status === 'speaking')
+    && recording.isCapturing;
 
   useEffect(() => {
     if (!isSimulationActive) {
@@ -630,6 +632,7 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           patientName={patient.name}
           studentName={studentName}
           patientSpeaking={isPatientSpeaking}
+          avatarStatus={avatar.status}
           patientVideoStream={avatarActive ? avatar.videoStream : null}
           cameraStream={media.cameraStream}
           cameraEnabled={media.cameraState === 'ready'}
@@ -887,4 +890,3 @@ export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     </InterviewLayout>
   );
 };
-

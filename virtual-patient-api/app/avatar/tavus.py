@@ -11,6 +11,7 @@ from dataclasses import dataclass
 
 import httpx
 
+from app.avatar.face_selection import parse_face_map, select_face_id
 from app.core.config import Settings, settings as default_settings
 
 
@@ -56,8 +57,25 @@ class TavusClient:
             "Content-Type": "application/json",
         }
 
-    def create_session(self, interview_id: int) -> AvatarSession:
+    def create_session(
+        self,
+        interview_id: int,
+        gender: str | None = None,
+        language: str = "en",
+        age: int | None = None,
+        personality_key: str | None = None,
+    ) -> AvatarSession:
         headers = self._headers()
+        normalized_gender = gender.strip().lower() if gender else None
+        gender_face_id = select_face_id(
+            parse_face_map(getattr(self._config, "tavus_face_map", None)),
+            normalized_gender,
+            age,
+            personality_key,
+        ) or {
+            "male": getattr(self._config, "tavus_male_face_id", None),
+            "female": getattr(self._config, "tavus_female_face_id", None),
+        }.get(normalized_gender)
         body: dict[str, object] = {
             "pal_id": self._config.tavus_pal_id,
             "conversation_name": f"virtual-patient-interview-{interview_id}",
@@ -66,10 +84,12 @@ class TavusClient:
                 "max_call_duration": self._config.tavus_max_call_duration_seconds,
                 "participant_absent_timeout": PARTICIPANT_ABSENT_TIMEOUT_SECONDS,
                 "participant_left_timeout": PARTICIPANT_LEFT_TIMEOUT_SECONDS,
+                "languages": [language if language in {"en", "es"} else "en"],
             },
         }
-        if self._config.tavus_face_id:
-            body["face_id"] = self._config.tavus_face_id
+        face_id = gender_face_id or self._config.tavus_face_id
+        if face_id:
+            body["face_id"] = face_id
         try:
             response = httpx.post(
                 f"{self._config.tavus_api_base_url}/v2/conversations",

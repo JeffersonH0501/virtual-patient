@@ -351,6 +351,8 @@
       "listening": "Escuchando",
       "studentCamera": "Vista local de la cámara del estudiante",
       "cameraStarting": "Iniciando la cámara...",
+      "avatarConnecting": "Conectando el avatar...",
+      "avatarFallback": "Avatar no disponible; se usa la imagen estática.",
       "cameraOff": "La cámara está apagada",
       "cameraErrors": {
         "unsupported": "Este navegador no permite acceder a la cámara.",

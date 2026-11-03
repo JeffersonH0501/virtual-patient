@@ -256,6 +256,11 @@ class VirtualPatientController:
         agent_message_object = interview_controller.create_agent_message_object(
             interview_id, agent_response, thread_id
         )
+        patient_speech_profile = workflow_result.get("patient_speech_profile")
+        if patient_speech_profile:
+            agent_message_object.message_metadata["patient_speech_profile"] = (
+                patient_speech_profile
+            )
         
         # 10. Add agent response to messages for return
         interview_messages.append(agent_message_object)

@@ -91,6 +91,7 @@ class SpeechSynthesisRequest:
     voice: str
     response_format: str = "mp3"
     vocal_style: VocalStyle | None = None
+    language: str | None = None
 
 
 @dataclass(frozen=True)

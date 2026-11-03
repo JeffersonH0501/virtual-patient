@@ -63,6 +63,9 @@ class Settings:
     tavus_api_key: str | None = os.getenv("TAVUS_API_KEY") or None
     tavus_pal_id: str | None = os.getenv("TAVUS_PAL_ID") or None
     tavus_face_id: str | None = os.getenv("TAVUS_FACE_ID") or None
+    tavus_male_face_id: str | None = os.getenv("TAVUS_FACE_ID_MALE") or None
+    tavus_female_face_id: str | None = os.getenv("TAVUS_FACE_ID_FEMALE") or None
+    tavus_face_map: str | None = os.getenv("TAVUS_FACE_MAP") or None
     tavus_api_base_url: str = os.getenv(
         "TAVUS_API_BASE_URL", "https://tavusapi.com"
     ).rstrip("/")

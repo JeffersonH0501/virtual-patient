@@ -18,15 +18,18 @@ def persist_patient_audio(
     text: str,
     personality_namespace_key: str | None,
     gender: str | None,
+    language: str | None = None,
 ) -> PersistedPatientAudio:
     """Return synthesis metadata; audio is generated on demand by the API."""
     request = create_patient_synthesis_request(
         text,
         personality_namespace_key,
         gender,
+        language,
     )
     style = request.vocal_style
     synthesis_metadata: dict[str, object] = {
+        "language": request.language,
         "voice": request.voice,
         "style_policy_version": style.policy_version if style else None,
         "vocal_style": (

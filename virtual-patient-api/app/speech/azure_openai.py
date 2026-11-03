@@ -21,8 +21,15 @@ from app.speech.contracts import (
 )
 
 
-def render_vocal_instructions(style: VocalStyle) -> str:
+def render_vocal_instructions(
+    style: VocalStyle,
+    language: str | None = None,
+) -> str:
     """Translate a neutral vocal style into Azure OpenAI TTS instructions."""
+    language_instruction = {
+        "en": "Speak naturally in English.",
+        "es": "Speak naturally in Spanish with clear Latin American pronunciation.",
+    }.get(language or "")
     speaking_rate = {
         SpeakingRate.MODERATELY_SLOW: "a moderately slow",
         SpeakingRate.MODERATE: "a moderate",
@@ -61,20 +68,24 @@ def render_vocal_instructions(style: VocalStyle) -> str:
         DeliveryTone.UNCERTAIN: "Use an uncertain but intelligible delivery.",
         DeliveryTone.REFLECTIVE: "Use a reflective conversational delivery.",
     }[style.delivery_tone]
-    return " ".join(
-        (
+    instructions = [
+        instruction
+        for instruction in (
+            language_instruction,
             f"Speak at {speaking_rate} pace.",
             pauses,
             energy,
             intonation,
             hesitation,
             delivery,
-            (
-                "Preserve the supplied text exactly. Do not add, remove, "
-                "paraphrase, or reorder words."
-            ),
         )
+        if instruction
+    ]
+    instructions.append(
+        "Preserve the supplied text exactly. Do not add, remove, paraphrase, "
+        "or reorder words."
     )
+    return " ".join(instructions)
 
 
 class AzureOpenAITextToSpeechProvider:
@@ -111,7 +122,10 @@ class AzureOpenAITextToSpeechProvider:
         }
         instructions = None
         if request.vocal_style:
-            instructions = render_vocal_instructions(request.vocal_style)
+            instructions = render_vocal_instructions(
+                request.vocal_style,
+                request.language,
+            )
             arguments["instructions"] = instructions
         try:
             response = client.audio.speech.create(**arguments)

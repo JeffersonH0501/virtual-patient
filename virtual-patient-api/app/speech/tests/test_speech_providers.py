@@ -21,7 +21,7 @@ from app.speech.contracts import (
     VocalStyle,
 )
 from app.speech.factory import create_stt_provider, create_tts_provider
-from app.speech.service import SpeechService
+from app.speech.service import SpeechService, create_patient_synthesis_request
 from app.speech.storage import persist_patient_audio
 from app.speech.voice_policy import select_patient_voice
 from app.speech.vocal_style_policy import (
@@ -81,16 +81,38 @@ class SpeechProviderTests(unittest.TestCase):
         provider.synthesize.return_value = SimpleNamespace(content=b"audio")
         service = SpeechService(tts_provider=provider)
 
-        service.synthesize_patient_message("Hello", "rude_unfriendly", "female")
+        service.synthesize_patient_message("Hello", "rude_unfriendly", "female", "es")
 
         request = provider.synthesize.call_args.args[0]
         self.assertEqual(request.voice, "alloy")
+        self.assertEqual(request.language, "es")
         self.assertEqual(request.vocal_style.profile_key, "rude_unfriendly")
         self.assertEqual(
             request.vocal_style.policy_version,
             VOCAL_STYLE_POLICY_VERSION,
         )
         self.assertEqual(select_patient_voice(None, "female"), "shimmer")
+
+    def test_synthesis_instructions_preserve_patient_language(self) -> None:
+        request = create_patient_synthesis_request(
+            "Me duele la cabeza.",
+            "friendly_polite",
+            "female",
+            "Spanish",
+        )
+        self.assertEqual(request.language, "es")
+
+        provider = MagicMock()
+        provider.audio.speech.create.return_value = SimpleNamespace(content=b"audio")
+        AzureOpenAITextToSpeechProvider(
+            client=provider,
+            deployment_name="tts-deployment",
+        ).synthesize(request)
+
+        self.assertIn(
+            "Speak naturally in Spanish with clear Latin American pronunciation.",
+            provider.audio.speech.create.call_args.kwargs["instructions"],
+        )
 
     def test_patient_vocal_style_is_provider_independent(self) -> None:
         style = select_patient_vocal_style("elderly_forgetful")

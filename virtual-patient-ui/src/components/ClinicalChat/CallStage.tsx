@@ -1,6 +1,7 @@
 import {useEffect, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Camera} from '../../icons';
+import type {TavusAvatarStatus} from '../../hooks/useTavusAvatar';
 
 type CallStageProps = {
   className?: string;
@@ -8,6 +9,7 @@ type CallStageProps = {
   patientName: string;
   studentName: string;
   patientSpeaking: boolean;
+  avatarStatus?: TavusAvatarStatus;
   patientVideoStream?: MediaStream | null;
   cameraStream: MediaStream | null;
   cameraEnabled: boolean;
@@ -22,6 +24,7 @@ export const CallStage = ({
   patientName,
   studentName,
   patientSpeaking,
+  avatarStatus = 'idle',
   patientVideoStream = null,
   cameraStream,
   cameraEnabled,
@@ -83,6 +86,22 @@ export const CallStage = ({
               />
             </div>
           </>
+        )}
+        {avatarStatus === 'connecting' && (
+          <div
+            className="absolute right-2 top-2 rounded-full bg-slate-950/75 px-2 py-1 text-xs text-white"
+            role="status"
+          >
+            {t('clinicalChat.call.avatarConnecting')}
+          </div>
+        )}
+        {avatarStatus === 'failed' && (
+          <div
+            className="absolute right-2 top-2 rounded-full bg-amber-950/80 px-2 py-1 text-xs text-white"
+            role="status"
+          >
+            {t('clinicalChat.call.avatarFallback')}
+          </div>
         )}
         <div className="absolute inset-x-0 bottom-0 bg-black/45 px-3 py-2 text-left text-xs text-white backdrop-blur-sm">
           <span className="truncate">{patientName || t('clinicalChat.call.patient')}</span>

@@ -1,6 +1,7 @@
 """Provider-neutral speech endpoints."""
 
 import logging
+import time
 from typing import Literal, Optional
 
 from fastapi import (
@@ -29,6 +30,7 @@ from app.speech.contracts import (
     SpeechTranscriptionRequest,
 )
 from app.speech.service import SpeechService
+from app.utils.language import resolve_patient_response_language
 
 
 logger = logging.getLogger(__name__)
@@ -98,11 +100,17 @@ async def synthesize_patient_message(
     )
     gender = interview.patient_gender if interview else None
 
+    language = resolve_patient_response_language(
+        getattr(interview, "interview_metadata", None),
+        getattr(current_user, "preferred_language", None) or "en",
+    )
+    synthesis_started_at = time.perf_counter()
     try:
         audio = SpeechService().synthesize_patient_message(
             message.content,
             personality_namespace_key,
             gender,
+            language,
         )
     except (SpeechConfigurationError, SpeechProviderError) as error:
         logger.warning(
@@ -113,6 +121,14 @@ async def synthesize_patient_message(
         )
         raise _speech_http_error(error) from error
 
+    synthesis_elapsed_ms = (time.perf_counter() - synthesis_started_at) * 1000
+    logger.info(
+        "patient_speech_timing interview_id=%s message_id=%s stage=synthesis "
+        "duration_ms=%.1f",
+        interview_id,
+        message_id,
+        synthesis_elapsed_ms,
+    )
     return Response(
         content=audio.content,
         media_type=audio.content_type,
@@ -121,6 +137,7 @@ async def synthesize_patient_message(
             "X-Speech-Provider": audio.provider,
             "X-Speech-Model": audio.model,
             "X-Speech-Style-Version": audio.style_policy_version or "unversioned",
+            "Server-Timing": f"synthesis;dur={synthesis_elapsed_ms:.1f}",
         },
     )
 

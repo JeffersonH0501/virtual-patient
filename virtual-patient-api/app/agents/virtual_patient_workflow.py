@@ -18,6 +18,7 @@ from app.agents.translator_agent import TranslatorAgent
 from app.core.config import settings
 
 from app.agents.schemas.progress_summary import ProgressSummarySchema
+from app.speech.patient_profile import build_patient_speech_profile
 
 from app.models.clinical_case import ClinicalCaseDB
 
@@ -32,6 +33,7 @@ class State(TypedDict):
     interview_id: Annotated[str, "The interview ID"]
     interview_result: Annotated[Optional[Dict[str, Any]], "The result from the interview node"]
     translated_patient_response: Annotated[Optional[str], "The translated patient response with personality"]
+    patient_speech_profile: Annotated[Optional[Dict[str, Any]], "Resolved voice and avatar rendering profile"]
     error_message: Annotated[Optional[str], "Error message if any step fails"]
 
 class VirtualPatientWorkflow:
@@ -251,6 +253,15 @@ class VirtualPatientWorkflow:
         print(f"⏱️  FINALIZE_NODE: {end_time - start_time:.3f} seconds")
         return {}  # No state updates needed in finalize node
 
+    def prepare_avatar_render_node(self, state: State) -> State:
+        """Resolve the profile shared by TTS and the Tavus audiovisual stage."""
+        profile = build_patient_speech_profile(
+            self.current_language,
+            self.personality,
+            self.patient_gender,
+        )
+        return {"patient_speech_profile": profile.as_metadata()}
+
     def _create_workflow(self) -> StateGraph:
         """
         Create the StateGraph workflow with translation, interview, and patient translation nodes.
@@ -263,11 +274,13 @@ class VirtualPatientWorkflow:
         # Add nodes to the workflow
         workflow.add_node("interview", self.create_interview_node)
         workflow.add_node("translate_patient_response", self.translate_patient_response_node)
+        workflow.add_node("prepare_avatar_render", self.prepare_avatar_render_node)
         workflow.add_node("finalize", self.finalize_node)
         
         # Define the workflow edges - simple linear flow for fast response
         workflow.add_edge("interview", "translate_patient_response")
-        workflow.add_edge("translate_patient_response", "finalize")
+        workflow.add_edge("translate_patient_response", "prepare_avatar_render")
+        workflow.add_edge("prepare_avatar_render", "finalize")
         workflow.add_edge("finalize", END)
         
         # Set the entry point
@@ -341,7 +354,8 @@ class VirtualPatientWorkflow:
         return {
             "messages": result["messages"],  # Messages from workflow state
             "interview_result": result.get("interview_result"),
-            "translated_patient_response": result.get("translated_patient_response")
+            "translated_patient_response": result.get("translated_patient_response"),
+            "patient_speech_profile": result.get("patient_speech_profile"),
         }
     
     async def _update_checkpointer_with_translated_message(

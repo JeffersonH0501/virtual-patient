@@ -2,7 +2,7 @@
 
 import logging
 import threading
-from typing import Dict, Optional
+from typing import Dict, Literal, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
@@ -17,6 +17,8 @@ from app.core.auth import get_current_active_user
 from app.core.database import get_db
 from app.models.medical_interview.medical_interview import MedicalInterviewDB
 from app.models.user import User
+from app.speech.patient_profile import build_patient_speech_profile
+from app.utils.language import resolve_patient_response_language
 
 
 logger = logging.getLogger(__name__)
@@ -32,13 +34,25 @@ _active_conversations: Dict[int, str] = {}
 _active_lock = threading.Lock()
 
 
-class AvatarSessionResponse(BaseModel):
-    """Private room credentials for the browser."""
+class AvatarPatientProfileResponse(BaseModel):
+    """Patient identity and audio profile associated with an avatar session."""
 
-    provider: str = "tavus"
+    language: Literal["en", "es"]
+    personality_key: str
+    gender: Optional[Literal["male", "female"]] = None
+    voice: str
+    vocal_style_key: str
+
+
+class AvatarSessionResponse(BaseModel):
+    """Private room credentials and profile for the browser."""
+
+    provider: Literal["tavus"] = "tavus"
+    state: Literal["created"] = "created"
     conversation_id: str
     conversation_url: str
     meeting_token: Optional[str] = None
+    patient_profile: AvatarPatientProfileResponse
 
 
 def get_avatar_client() -> TavusClient:
@@ -88,7 +102,23 @@ def start_avatar_session(
             logger.warning("Could not end the previous avatar session for %s", interview_id)
 
     try:
-        session = client.create_session(interview_id)
+        language = resolve_patient_response_language(
+            getattr(interview, "interview_metadata", None),
+            getattr(current_user, "preferred_language", None) or "en",
+        )
+        personality = getattr(interview, "personality", None)
+        profile = build_patient_speech_profile(
+            language,
+            personality.namespace_key if personality else None,
+            getattr(interview, "patient_gender", None),
+        )
+        session = client.create_session(
+            interview_id,
+            gender=profile.gender,
+            language=profile.language,
+            age=getattr(getattr(interview, "clinical_case", None), "age", None),
+            personality_key=profile.personality_key,
+        )
     except (AvatarConfigurationError, AvatarProviderError) as error:
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
@@ -106,6 +136,7 @@ def start_avatar_session(
         conversation_id=session.conversation_id,
         conversation_url=session.conversation_url,
         meeting_token=session.meeting_token,
+        patient_profile=profile.as_metadata(),
     )
 
 

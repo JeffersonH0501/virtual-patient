@@ -9,20 +9,26 @@ from app.speech.contracts import (
     TranscriptionResult,
 )
 from app.speech.factory import create_stt_provider, create_tts_provider
-from app.speech.voice_policy import select_patient_voice
-from app.speech.vocal_style_policy import select_patient_vocal_style
+from app.speech.patient_profile import build_patient_speech_profile
 
 
 def create_patient_synthesis_request(
     text: str,
     personality_namespace_key: str | None = None,
     gender: str | None = None,
+    language: str | None = None,
 ) -> SpeechSynthesisRequest:
     """Build one provider-neutral patient speech request."""
+    profile = build_patient_speech_profile(
+        language,
+        personality_namespace_key,
+        gender,
+    )
     return SpeechSynthesisRequest(
         text=text,
-        voice=select_patient_voice(personality_namespace_key, gender),
-        vocal_style=select_patient_vocal_style(personality_namespace_key),
+        voice=profile.voice,
+        language=profile.language,
+        vocal_style=profile.vocal_style,
     )
 
 
@@ -42,6 +48,7 @@ class SpeechService:
         text: str,
         personality_namespace_key: str | None = None,
         gender: str | None = None,
+        language: str | None = None,
     ) -> SynthesizedAudio:
         """Generate patient speech using neutral voice-selection policy."""
         provider = self._tts_provider or create_tts_provider()
@@ -50,6 +57,7 @@ class SpeechService:
                 text,
                 personality_namespace_key,
                 gender,
+                language,
             )
         )
 

@@ -18,6 +18,7 @@ from app.models.medical_interview.medical_interview import MedicalInterviewDB
 from app.models.user import User
 from app.speech.storage import persist_patient_audio
 from app.core.config import settings
+from app.utils.language import resolve_patient_response_language
 
 
 logger = logging.getLogger(__name__)
@@ -94,6 +95,10 @@ async def send_message(
             getattr(user_message, "content", message_data.content),
             getattr(user_message, "message_metadata", None)
             or message_data.message_metadata,
+            resolve_patient_response_language(
+                interview.interview_metadata,
+                getattr(current_user, "preferred_language", None) or "en",
+            ),
         )
         persistence_elapsed = time.perf_counter() - persistence_started_at
         response_read_started_at = time.perf_counter()
@@ -189,6 +194,7 @@ def _create_exchange_messages(
     patient_metadata: Dict[str, Any],
     user_content: str,
     user_metadata: Dict[str, Any],
+    language: str,
 ) -> List[int]:
     """Persist one student/patient exchange and optional durable patient audio."""
     user_message = message_controller.create_user_message(
@@ -212,6 +218,7 @@ def _create_exchange_messages(
         patient_content,
         personality_namespace_key,
         gender,
+        language,
     )
     patient_metadata = dict(patient_metadata)
     patient_metadata["speech_synthesis"] = persisted_audio.synthesis_metadata
