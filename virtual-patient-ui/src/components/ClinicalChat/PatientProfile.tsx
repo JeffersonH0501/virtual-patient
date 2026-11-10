@@ -1,290 +1,231 @@
-import {FC} from 'react';
+import {Badge} from '../common/Badge';
+import {MotionDetails} from '../common/Motion';
+import {useAppMotion} from '../common/Motion/hooks';
+import {FC, ReactNode, useLayoutEffect, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Patient} from '../../types';
 import {TagGroup} from './TagGroup';
 import {Personality} from '../../types/personality';
+import {readDesignNumber} from '../../utils/designTokens';
+
+const PatientDetailCard = ({title, status, fields}: {
+  title: string;
+  status?: string | null;
+  fields: [string, string | null | undefined][];
+}) => {
+  const {t} = useTranslation();
+  return (
+    <article className="dialog-reading-card dialog-reading-card--compact">
+      <header className="flex flex-wrap items-center justify-between gap-x-layout gap-y-1">
+        <h4 data-preserve-case className="min-w-0 break-words text-content default-title">
+          {title}
+        </h4>
+        {status && (
+          <Badge tone="info" className="py-1 leading-tight">
+            {status}
+          </Badge>
+        )}
+      </header>
+      <dl className="mt-layout grid gap-y-[var(--layout-gap-small)] empty:hidden">
+        {fields.filter(([, value]) => value).map(([label, value]) => (
+          <div key={label} className="grid grid-cols-patient-details items-start gap-layout">
+            <dt className="break-words text-content-muted compact-text leading-tight">{t(`patientProfile.${label}`)}</dt>
+            <dd className="min-w-0 whitespace-pre-wrap break-words text-content secondary-text leading-tight">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </article>
+  );
+};
 
 type PatientProfileProps = {
   patient: Patient;
   caseTitle?: string;
   personality?: Personality | null;
+  headerAction?: ReactNode;
+  children?: ReactNode;
+  basicOnly?: boolean;
+  isReview?: boolean;
 };
 
-export const PatientProfile: FC<PatientProfileProps> = ({patient, caseTitle, personality}) => {
+export const PatientProfile: FC<PatientProfileProps> = ({
+  patient,
+  caseTitle,
+  personality,
+  headerAction,
+  children,
+  isReview = false,
+  basicOnly = false,
+}) => {
   const {t} = useTranslation();
+  const {enabled, reduced} = useAppMotion();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const sectionPositions = useRef(new Map<HTMLElement, number>());
+  const previousSectionOrder = useRef<string[]>([]);
 
-  const getFieldLabel = (key: string): string => {
-    switch (key) {
-      case 'age':
-        return t('patientProfile.age');
-      case 'gender':
-        return t('patientProfile.gender');
-      case 'weight':
-        return t('patientProfile.weight');
-      case 'bloodType':
-        return t('patientProfile.bloodType');
-      default:
-        return key.charAt(0).toUpperCase() + key.slice(1);
-    }
-  };
 
-  const getFieldValue = (key: string, value: string | number): string | number => {
-    if (key === 'gender') {
-      if (value === 'male') {
-        return t('clinicalSession.male');
-      } else if (value === 'female') {
-        return t('clinicalSession.female');
+  const {gender, age, weight} = patient.basicInfo;
+  const genderLabel = gender === 'male' || gender === 'female'
+    ? t(`clinicalSession.${gender}`)
+    : gender;
+  const rows: [string, ReactNode][] = isReview ? [
+    ['patientProfile.case', caseTitle],
+    ['patientProfile.personality', personality?.name],
+    ['patientProfile.gender', genderLabel],
+  ] : [
+    ['patientProfile.case', caseTitle],
+    ['patientProfile.name', patient.name],
+    ['patientProfile.gender', genderLabel],
+    ['patientProfile.age', age ? t('clinicalCases.ageValue', {age}) : null],
+    ['patientProfile.weight', weight],
+    ['patientProfile.personality', personality?.name],
+  ];
+
+  const sections: [string, ReactNode][] = [
+    ['currentSymptoms', (patient.symptoms && patient.symptoms.length > 0) ? (
+      <TagGroup tags={patient.symptoms} tone="warning" />
+    ) : null],
+    ['allergies', (patient.allergies && patient.allergies.length > 0) ? (
+      <TagGroup tags={patient.allergies} />
+    ) : null],
+    ['diet', (patient.diet && patient.diet.trim() !== '') ? (
+      <p className="whitespace-pre-wrap break-words text-content default-text">
+        {patient.diet}
+      </p>
+    ) : null],
+    ['currentIllnesses', patient.illnesses?.length ? (
+      <div className="space-y-layout">
+        {patient.illnesses.map((illness, index) => (
+          <PatientDetailCard key={index} title={illness.illness} status={illness.status} fields={[
+            ['diagnosed', illness.diagnosisDate],
+            ['severity', illness.severity],
+            ['treatment', illness.treatment],
+            ['notes', illness.notes],
+          ]} />
+        ))}
+      </div>
+    ) : null],
+    ['medications', patient.medications?.length ? (
+      <div className="space-y-layout">
+        {patient.medications.map((medication, index) => (
+          <PatientDetailCard key={index} title={medication.medication} fields={[
+            ['dosage', medication.dosage],
+            ['frequency', medication.frequency],
+            ['duration', medication.duration],
+            ['purpose', medication.purpose],
+          ]} />
+        ))}
+      </div>
+    ) : null],
+    ['familyHistory', patient.familyHistory?.length ? (
+      <div className="space-y-layout">
+        {patient.familyHistory.map((familyMember, index) => (
+          <PatientDetailCard key={index} title={familyMember.relationship} fields={[
+            ['condition', familyMember.condition],
+            ['notes', familyMember.notes],
+          ]} />
+        ))}
+      </div>
+    ) : null],
+    ['habits', patient.habits?.length ? (
+      <div className="space-y-layout">
+        {patient.habits.map((habit, index) => (
+          <PatientDetailCard key={index} title={habit.habit} fields={[
+            ['duration', habit.duration],
+            ['frequency', habit.frequency],
+          ]} />
+        ))}
+      </div>
+    ) : null],
+    ['workInformation', (patient.workInformation && patient.workInformation.trim() !== '') ? (
+      <p className="whitespace-pre-wrap break-words text-content default-text">
+        {patient.workInformation}
+      </p>
+    ) : null],
+    ['medicalHistory', patient.medicalHistory?.length ? (
+      <div className="space-y-layout">
+        {patient.medicalHistory.map((history, index) => (
+          <PatientDetailCard key={index} title={history.type} fields={[
+            ['date', history.date],
+            ['description', history.description],
+            ['outcome', history.outcome],
+          ]} />
+        ))}
+      </div>
+    ) : null],
+    ['summary', (patient.summary) ? (
+      <p className="whitespace-pre-wrap break-words text-content default-text">
+        {patient.summary}
+      </p>
+    ) : null],
+  ];
+  sections.sort(([leftTitle, left], [rightTitle, right]) => {
+    if (!left || !right) return Number(Boolean(right)) - Number(Boolean(left));
+    return previousSectionOrder.current.indexOf(leftTitle) - previousSectionOrder.current.indexOf(rightTitle);
+  });
+  const sectionOrder = sections.map(([title]) => title).join(',');
+
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    previousSectionOrder.current = sectionOrder.split(',');
+    const details = Array.from(panel.querySelectorAll<HTMLElement>(':scope > .patient-profile-details'));
+    const measure = () => new Map(details.map((row) => [row, row.offsetTop]));
+    const nextPositions = measure();
+    const animations: Animation[] = [];
+    if (enabled && !reduced) {
+      const duration = readDesignNumber('--app-motion-expand');
+      for (const [row, position] of nextPositions) {
+        const previous = sectionPositions.current.get(row);
+        if (previous !== undefined && previous !== position && row.animate) {
+          animations.push(row.animate(
+            [{transform: `translateY(${previous - position}px)`}, {transform: 'none'}],
+            {duration, easing: 'ease-in-out'},
+          ));
+        }
       }
     }
-    return value;
-  };
+    sectionPositions.current = nextPositions;
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => {
+      sectionPositions.current = measure();
+    });
+    observer?.observe(panel);
+    details.forEach((row) => observer?.observe(row));
+    return () => {
+      observer?.disconnect();
+      animations.forEach((animation) => animation.cancel());
+    };
+  }, [enabled, reduced, sectionOrder]);
 
   return (
-    <div className="max-h-patient-profile w-full min-w-0 overflow-x-hidden overflow-y-auto rounded-xl bg-white shadow-panel-subtle scrollbar-hidden [&>section:not(:first-child)]:mx-4">
-      <div className="sticky top-0 z-10 flex min-h-12 items-center border-b border-slate-200 bg-white px-4">
-        <h2 className="component-title py-3 text-left">
-          {t('patientProfile.interviewSummary')}
-        </h2>
+    <div ref={panelRef} className={`ui-panel min-h-0 w-full min-w-0 ${isReview ? 'flex flex-col overflow-hidden' : `overflow-x-hidden overflow-y-auto scrollbar-hidden ${basicOnly ? 'shrink-0 md:max-h-[45%]' : 'flex-1'}`}`}>
+      <div className={`ui-panel-header sticky top-0 z-10 shrink-0 bg-surface ${headerAction ? 'ui-panel-header--title-sized' : ''}`}>
+        <h2 className="text-left default-title">{t('patientProfile.interviewSummary')}</h2>
+        {headerAction}
       </div>
-      <section className="border-b border-solid border-gray-100 px-4 pt-4">
-        <dl className="space-y-2 pb-5 text-sm leading-profile">
-          {caseTitle && (
-            <div className="grid grid-cols-patient-details items-start gap-3">
-              <dt className="text-left font-normal text-gray-500">{t('patientProfile.case')}:</dt>
-              <dd className="min-w-0 break-words text-right font-normal text-gray-800">{caseTitle}</dd>
+      <section className={`ui-panel-section patient-profile-summary ${isReview ? 'shrink-0' : ''}`}>
+        <dl className={`interview-summary-details default-text ${isReview ? 'interview-summary-details--review' : ''}`}>
+          {rows.map(([label, value]) => (
+            <div key={label} className="interview-summary-pair">
+              <dt className="text-left text-neutral-500 default-text">{t(label)}:</dt>
+              {isReview && ' '}
+              <dd className="min-w-0 break-words text-neutral-800 default-text text-right">
+                {value || '—'}
+              </dd>
             </div>
-          )}
-          {patient.name && (
-            <div className="grid grid-cols-patient-details items-start gap-3">
-              <dt className="text-left font-normal text-gray-500">{t('patientProfile.name')}:</dt>
-              <dd className="min-w-0 break-words text-right font-normal text-gray-800">{patient.name}</dd>
-            </div>
-          )}
-            {Object.entries(patient.basicInfo)
-              .filter(([, value]) => value && value !== '' && value !== 0)
-              .map(([key, value]) => (
-                <div key={key} className="grid grid-cols-patient-details items-start gap-3">
-                  <dt className="text-left font-normal text-gray-500">{getFieldLabel(key)}:</dt>
-                  <dd className="min-w-0 break-words text-right font-normal text-gray-800">{getFieldValue(key, value)}</dd>
-                </div>
-              ))}
-          {personality && (
-            <div className="grid grid-cols-patient-details items-start gap-3">
-              <dt className="text-left font-normal text-gray-500">{t('patientProfile.personality')}:</dt>
-              <dd className="min-w-0 break-words text-right font-normal text-gray-800">{personality.name}</dd>
-            </div>
-          )}
+          ))}
         </dl>
       </section>
-      {patient.symptoms && patient.symptoms.length > 0 && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.currentSymptoms')}</h3>
-          <TagGroup tags={patient.symptoms} tone="warning" />
-        </section>
-      )}
-      {patient.allergies && patient.allergies.length > 0 && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.allergies')}</h3>
-          <TagGroup tags={patient.allergies} />
-        </section>
-      )}
-      {patient.diet && patient.diet.trim() !== '' && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.diet')}</h3>
-          <p className="text-sm leading-relaxed text-gray-700 bg-gray-50 p-3 rounded-lg text-left">
-            {patient.diet}
-          </p>
-        </section>
-      )}
-      {patient.illnesses && patient.illnesses.length > 0 && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.currentIllnesses')}</h3>
-          <div className="space-y-2">
-            {patient.illnesses.map((illness, index) => (
-              <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                <div className="flex justify-between items-start mb-2">
-                  <h4 className="text-sm font-semibold text-gray-800">{illness.illness}</h4>
-                  {illness.status && (
-                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-normal text-slate-700">
-                      {illness.status}
-                    </span>
-                  )}
-                </div>
-                <div className="space-y-1">
-                  {illness.diagnosisDate && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.diagnosed')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{illness.diagnosisDate}</span>
-                    </div>
-                  )}
-                  {illness.severity && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.severity')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{illness.severity}</span>
-                    </div>
-                  )}
-                  {illness.treatment && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.treatment')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{illness.treatment}</span>
-                    </div>
-                  )}
-                  {illness.notes && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.notes')}</span>
-                      <p className="text-xs text-gray-700 mt-1 leading-relaxed">{illness.notes}</p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
+      {!basicOnly && !isReview && sections.map(([title, content]) => (
+        <MotionDetails key={title}
+          className={content ? 'patient-profile-details patient-profile-details--filled' : 'patient-profile-details'}
+          summary={t(`patientProfile.${title}`)}>
+          <div className="pb-layout text-left">
+            {content ?? <p className="text-content-muted secondary-text">{t('patientProfile.emptySection')}</p>}
           </div>
-        </section>
-      )}
-      {patient.medications && patient.medications.length > 0 && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.medications')}</h3>
-          <div className="space-y-2">
-            {patient.medications.map((medication, index) => (
-              <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                <div className="mb-2">
-                  <h4 className="text-sm font-semibold text-gray-800">{medication.medication}</h4>
-                </div>
-                <div className="space-y-1">
-                  {medication.dosage && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.dosage')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{medication.dosage}</span>
-                    </div>
-                  )}
-                  {medication.frequency && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.frequency')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{medication.frequency}</span>
-                    </div>
-                  )}
-                  {medication.duration && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.duration')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{medication.duration}</span>
-                    </div>
-                  )}
-                  {medication.purpose && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.purpose')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{medication.purpose}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-      {patient.familyHistory && patient.familyHistory.length > 0 && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.familyHistory')}</h3>
-          <div className="space-y-2">
-            {patient.familyHistory.map((familyMember, index) => (
-              <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                <div className="mb-2">
-                  <h4 className="text-sm font-semibold text-gray-800">{familyMember.relationship}</h4>
-                </div>
-                <div className="space-y-1">
-                  <div>
-                    <span className="text-xs font-medium text-gray-600">{t('patientProfile.condition')}</span>
-                    <span className="text-xs text-gray-700 ml-1">{familyMember.condition}</span>
-                  </div>
-                  {familyMember.notes && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.notes')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{familyMember.notes}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-      {patient.habits && patient.habits.length > 0 && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.habits')}</h3>
-          <div className="space-y-2">
-            {patient.habits.map((habit, index) => (
-              <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                <div className="mb-2">
-                  <h4 className="text-sm font-semibold text-gray-800">{habit.habit}</h4>
-                </div>
-                <div className="space-y-1">
-                  {habit.duration && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.duration')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{habit.duration}</span>
-                    </div>
-                  )}
-                  {habit.frequency && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.frequency')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{habit.frequency}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-      {patient.workInformation && patient.workInformation.trim() !== '' && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.workInformation')}</h3>
-          <p className="text-sm leading-relaxed text-gray-700 bg-gray-50 p-3 rounded-lg text-left">
-            {patient.workInformation}
-          </p>
-        </section>
-      )}
-      {patient.medicalHistory && patient.medicalHistory.length > 0 && (
-        <section className="pt-5 pb-6 border-b border-solid border-gray-100">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.medicalHistory')}</h3>
-          <div className="space-y-2">
-            {patient.medicalHistory.map((history, index) => (
-              <div key={index} className="p-3 bg-gray-50 rounded-lg">
-                <div className="mb-2">
-                  <h4 className="text-sm font-semibold text-gray-800">{history.type}</h4>
-                </div>
-                <div className="space-y-1">
-                  {history.date && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.date')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{history.date}</span>
-                    </div>
-                  )}
-                  {history.description && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.description')}</span>
-                      <p className="text-xs text-gray-700 mt-1 leading-relaxed">{history.description}</p>
-                    </div>
-                  )}
-                  {history.outcome && (
-                    <div>
-                      <span className="text-xs font-medium text-gray-600">{t('patientProfile.outcome')}</span>
-                      <span className="text-xs text-gray-700 ml-1">{history.outcome}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
-      {patient.summary && (
-        <section className="pt-5 pb-6 text-left">
-          <h3 className="mb-4 text-left text-sm font-medium text-slate-600">{t('patientProfile.summary')}</h3>
-          <p className="text-sm leading-relaxed text-gray-700 bg-gray-50 p-3 rounded-lg">
-            {patient.summary}
-          </p>
-        </section>
-      )}
+        </MotionDetails>
+      ))}
+      {children}
     </div>
   );
 };

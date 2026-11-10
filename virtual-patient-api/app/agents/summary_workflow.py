@@ -62,8 +62,6 @@ class SummaryWorkflow:
         # Create the workflow
         self.workflow = self._create_workflow()
         
-        print(f"Summary Workflow initialized for interview: {interview_id}")
-        print(f"Target language: '{current_language}'")
     
     async def get_current_summary_node(self, state: SummaryState) -> SummaryState:
         """Node that retrieves the current progress summary from the store"""
@@ -73,21 +71,16 @@ class SummaryWorkflow:
             # Get current summary from store
             current_summary_item = self.store.get(("progress_summary", self.interview_id), "current_summary")
             if current_summary_item:
-                print(f"📋 Retrieved current summary from store for interview {self.interview_id}")
                 current_summary = current_summary_item.value
             else:
-                print(f"📋 No current summary found in store for interview {self.interview_id}")
                 current_summary = None
             
             end_time = time.time()
-            print(f"⏱️  GET_CURRENT_SUMMARY_NODE: {end_time - start_time:.3f} seconds")
             
             return {"current_summary": current_summary}
             
         except Exception as e:
-            print(f"⚠️ Could not retrieve current summary: {e}")
             end_time = time.time()
-            print(f"⏱️  GET_CURRENT_SUMMARY_NODE (ERROR): {end_time - start_time:.3f} seconds")
             return {"current_summary": None}
 
     async def create_summary_node(self, state: SummaryState) -> SummaryState:
@@ -114,7 +107,7 @@ class SummaryWorkflow:
             # Process and validate the summary data
             if summary_result:
                 try:
-                    summary_data = summary_result.dict() if hasattr(summary_result, 'dict') else summary_result
+                    summary_data = summary_result.model_dump() if hasattr(summary_result, 'model_dump') else summary_result
                     
                     # Normalize the data to ensure it matches the schema
                     normalized_data = normalize_summary_data(summary_data)
@@ -124,26 +117,22 @@ class SummaryWorkflow:
                     
                     # Update the summary_result with the validated data
                     summary_result = validated_summary
-                    print(f"✅ Generated validated summary for interview {self.interview_id}")
                     
                     # Store the summary in the namespace for future retrieval
                     try:
-                        self.store.put(("progress_summary", self.interview_id), "current_summary", summary_result.dict())
-                        print(f"💾 Stored summary in namespace for interview {self.interview_id}")
+                        self.store.put(("progress_summary", self.interview_id), "current_summary", summary_result.model_dump())
                     except Exception as store_error:
-                        print(f"⚠️ Could not store summary: {store_error}")
+                        pass
                     
                 except Exception as e:
-                    print(f"Could not validate summary: {e}")
+                    pass
         except Exception as e:
-            print(f"Error in summary extraction: {e}")
             # Create a fallback summary with basic information
             summary_result = ProgressSummarySchema(
                 summary_text=f"Interview progress summary - Error occurred during extraction: {str(e)}"
             )
         
         end_time = time.time()
-        print(f"⏱️  CREATE_SUMMARY_NODE: {end_time - start_time:.3f} seconds")
         
         # Return only the fields we're updating
         return {"summary_result": summary_result}
@@ -155,9 +144,7 @@ class SummaryWorkflow:
         summary_result = state.get("summary_result")
         
         if not summary_result:
-            print("⚠️ No summary result found to translate")
             end_time = time.time()
-            print(f"⏱️  TRANSLATE_SUMMARY_NODE: {end_time - start_time:.3f} seconds")
             return {"translated_summary": None}
 
         if self.current_language.strip().lower() == "english":
@@ -169,28 +156,20 @@ class SummaryWorkflow:
                 if isinstance(summary_result, dict):
                     summary_result = ProgressSummarySchema(**summary_result)
                 else:
-                    print(f"⚠️ Unexpected summary result type: {type(summary_result)}")
                     end_time = time.time()
-                    print(f"⏱️  TRANSLATE_SUMMARY_NODE: {end_time - start_time:.3f} seconds")
                     return {"translated_summary": None}
             
             # Translate the summary using the translator agent
-            print(f"🔄 Starting translation to {self.current_language}...")
             translated_summary = await self.translator_agent.translate_progress_summary(
                 summary_result, 
                 self.current_language
             )
-            print(f"✅ Translation completed successfully")
             
-            print(f"✅ Translated summary to {self.current_language}")
             end_time = time.time()
-            print(f"⏱️  TRANSLATE_SUMMARY_NODE: {end_time - start_time:.3f} seconds")
             return {"translated_summary": translated_summary}
             
         except Exception as e:
-            print(f"❌ Error translating summary: {e}")
             end_time = time.time()
-            print(f"⏱️  TRANSLATE_SUMMARY_NODE (ERROR): {end_time - start_time:.3f} seconds")
             # Fallback to original summary if translation fails
             return {"translated_summary": summary_result}
 

@@ -39,14 +39,6 @@ export const processSummaryData = (progressSummary: ProgressSummary) => {
   return (prevPatient: Patient) => {
     const updatedPatient = {...prevPatient};
 
-    // Update age if provided and not null
-    if (progressSummary.age !== undefined && progressSummary.age !== null) {
-      updatedPatient.basicInfo = {
-        ...updatedPatient.basicInfo,
-        age: progressSummary.age,
-      };
-    }
-
     // Update symptoms only if provided in API response
     if (progressSummary.currentSymptoms && progressSummary.currentSymptoms.length > 0) {
       updatedPatient.symptoms = progressSummary.currentSymptoms.map((symptom: Symptom) => ({

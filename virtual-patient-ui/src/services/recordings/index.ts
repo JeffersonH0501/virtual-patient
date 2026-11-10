@@ -1,10 +1,10 @@
 import {getAuthHeaders} from '../auth/authHeaders';
 import {transformToCamelCase} from '../../utils/apiTransform';
 import {API_URL} from '../../utils/request';
+import {apiFetch} from '../../utils/apiFetch';
+import {CaptureSyncError} from '../../recording/CaptureSyncError';
 import {
-  CapturedMedia,
   InterviewRecap,
-  RecapTurn,
   RecordingStatus,
 } from '../../types/recording';
 
@@ -13,144 +13,20 @@ type RecordingState = {
   recordingId: string;
   recordingStatus: RecordingStatus;
   durationMs?: number | null;
+  preservationAccepted?: boolean;
 };
 
 const requireOk = async (response: Response): Promise<Response> => {
   if (response.ok) return response;
   const body = await response.json().catch(() => ({}));
-  throw new Error(body.detail || 'Interview recording request failed');
+  throw new CaptureSyncError(response.status, typeof body.detail === 'string' ? body.detail : body.detail?.code ?? 'capture_request_failed');
 };
 
-export const startInterviewRecording = async (
-  interviewId: number,
-  startedAt: string,
-  captureConfig: Record<string, unknown>,
-): Promise<RecordingState> => {
-  const response = await requireOk(await fetch(
-    `${API_URL}/medical-interviews/${interviewId}/recording/start`,
-    {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', ...getAuthHeaders()},
-      body: JSON.stringify({started_at: startedAt, capture_config: captureConfig}),
-    },
-  ));
-  return transformToCamelCase(await response.json()) as RecordingState;
-};
 
-export const saveInterviewTurn = async (
-  interviewId: number,
-  messageId: number,
-  payload: {
-    speaker: 'student' | 'patient';
-    sequence: number;
-    startMs: number;
-    endMs: number;
-    transcript: string;
-    inputSource: string;
-    timingSource: string;
-    timingQuality: 'measured' | 'provisional' | 'estimated';
-  },
-): Promise<RecapTurn> => {
-  const response = await requireOk(await fetch(
-    `${API_URL}/medical-interviews/${interviewId}/recording/turns/${messageId}`,
-    {
-      method: 'PUT',
-      headers: {'Content-Type': 'application/json', ...getAuthHeaders()},
-      body: JSON.stringify({
-        speaker: payload.speaker,
-        sequence: payload.sequence,
-        start_ms: payload.startMs,
-        end_ms: payload.endMs,
-        transcript: payload.transcript,
-        input_source: payload.inputSource,
-        timing_source: payload.timingSource,
-        timing_quality: payload.timingQuality,
-      }),
-    },
-  ));
-  return transformToCamelCase(await response.json()) as RecapTurn;
-};
-
-export const uploadTurnVideo = async (
-  interviewId: number,
-  turnId: string,
-  video: File,
-  patientRoiSnapshots: Record<string, number>[],
-): Promise<void> => {
-  const form = new FormData();
-  form.append('video', video);
-  form.append('patient_roi_snapshots', JSON.stringify(patientRoiSnapshots));
-  await requireOk(await fetch(
-    `${API_URL}/medical-interviews/${interviewId}/recording/turns/${turnId}/video`,
-    {method: 'POST', headers: getAuthHeaders(), body: form},
-  ));
-};
-
-export const finalizeInterviewRecording = (
-  interviewId: number,
-  captured: CapturedMedia,
-  onProgress?: (progress: number) => void,
-): Promise<RecordingState> => new Promise((resolve, reject) => {
-  const form = new FormData();
-  form.append('duration_ms', String(captured.durationMs));
-  form.append('source_durations', JSON.stringify(captured.sourceDurations));
-  form.append('capture_config', JSON.stringify(captured.captureConfig));
-  Object.entries(captured.files).forEach(([kind, file]) => form.append(kind, file));
-
-  const request = new XMLHttpRequest();
-  request.open('POST', `${API_URL}/medical-interviews/${interviewId}/recording/finalize`);
-  Object.entries(getAuthHeaders()).forEach(([name, value]) => request.setRequestHeader(name, value));
-  request.upload.onprogress = (event) => {
-    if (event.lengthComputable) onProgress?.(event.loaded / event.total);
-  };
-  request.onerror = () => reject(new Error('Interview recording upload failed'));
-  request.onload = () => {
-    if (request.status < 200 || request.status >= 300) {
-      const message = (() => {
-        try {
- return JSON.parse(request.responseText).detail;
-} catch {
- return null;
-}
-      })();
-      console.error('Interview recording finalization failed', {
-        interviewId,
-        status: request.status,
-        response: message || 'No response detail',
-      });
-      reject(new Error(message || 'Interview recording upload failed'));
-      return;
-    }
-    console.info('Interview recording finalized', {
-      interviewId,
-      status: request.status,
-      durationMs: captured.durationMs,
-      assetKinds: Object.keys(captured.files),
-    });
-    resolve(transformToCamelCase(JSON.parse(request.responseText)) as RecordingState);
-  };
-  request.send(form);
-});
-
-export const markInterviewRecordingUnavailable = async (
-  interviewId: number,
-  failureCode: string,
-  durationMs?: number,
-): Promise<void> => {
-  await requireOk(await fetch(
-    `${API_URL}/medical-interviews/${interviewId}/recording/unavailable`,
-    {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json', ...getAuthHeaders()},
-      body: JSON.stringify({failure_code: failureCode, duration_ms: durationMs}),
-    },
-  ));
-};
-
-export const getInterviewRecap = async (interviewId: number): Promise<InterviewRecap> => {
-  const response = await requireOk(await fetch(
+export const getInterviewRecap = async (interviewId: number, signal?: AbortSignal): Promise<InterviewRecap> => {
+  const response = await requireOk(await apiFetch(
     `${API_URL}/medical-interviews/${interviewId}/recap`,
-    {headers: getAuthHeaders()},
+    {headers: getAuthHeaders(), signal},
   ));
   // The recap endpoint serves the single canonical layered observation schema;
   // the camelCase transform is the only read-time adaptation the UI needs.
@@ -158,8 +34,8 @@ export const getInterviewRecap = async (interviewId: number): Promise<InterviewR
 };
 
 /**
- * Trigger a full re-analysis (multimodal pipeline first, then the final text
- * evaluation) for a completed interview. The backend runs the work as a
+ * Trigger full signal extraction and integrated labeling without LLM evaluation
+ * for a completed interview. The backend runs the work as a
  * background task and reports progress through the recap's
  * ``observationProcessing`` status, so callers poll ``getInterviewRecap`` until
  * that status becomes terminal.
@@ -167,7 +43,7 @@ export const getInterviewRecap = async (interviewId: number): Promise<InterviewR
 export const reprocessInterviewRecording = async (
   interviewId: number,
 ): Promise<RecordingState> => {
-  const response = await requireOk(await fetch(
+  const response = await requireOk(await apiFetch(
     `${API_URL}/medical-interviews/${interviewId}/recording/reprocess`,
     {method: 'POST', headers: getAuthHeaders()},
   ));
@@ -177,4 +53,13 @@ export const reprocessInterviewRecording = async (
 export const resolveRecordingSource = (source?: string | null): string | null => {
   if (!source) return null;
   return source.startsWith('http') ? source : `${API_URL}${source}`;
+};
+
+/** Evaluate existing integrated labels without extracting media features. */
+export const regenerateInterviewEvaluation = async (interviewId: number): Promise<RecordingState> => {
+  const response = await requireOk(await apiFetch(
+    `${API_URL}/medical-interviews/${interviewId}/evaluation/regenerate`,
+    {method: 'POST', headers: getAuthHeaders()},
+  ));
+  return transformToCamelCase(await response.json()) as RecordingState;
 };

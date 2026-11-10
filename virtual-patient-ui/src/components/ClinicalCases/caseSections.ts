@@ -1,0 +1,43 @@
+export const caseSections = [
+  {
+    title: 'caseManagement.patient',
+    fields: [
+      'title',
+      'description',
+      'genderRestriction',
+      'femaleName',
+      'maleName',
+      'age',
+      'weightInKg',
+      'physicalRequirements',
+    ],
+  },
+  {title: 'caseManagement.context', fields: ['socioeconomicStatus', 'patientContext', 'concerns']},
+  {title: 'caseManagement.consultation', fields: ['chiefComplaint', 'presentIllness']},
+  {
+    title: 'caseManagement.history',
+    fields: ['personalMedicalHistory', 'surgicalHistory', 'familyHistory', 'allergies'],
+  },
+  {title: 'caseManagement.treatment', fields: ['medications', 'habits']},
+] as const;
+export const caseLabels: Record<string, string> = {
+  title: 'caseTitle',
+  description: 'caseDescription',
+  genderRestriction: 'genderRestriction',
+  femaleName: 'femaleName',
+  maleName: 'maleName',
+  age: 'age',
+  weightInKg: 'weight',
+  physicalRequirements: 'specialPhysicalRequirements',
+  socioeconomicStatus: 'socioeconomicCondition',
+  patientContext: 'patientContext',
+  concerns: 'concerns',
+  chiefComplaint: 'reasonForConsultation',
+  presentIllness: 'currentConsultation',
+  personalMedicalHistory: 'personalMedicalHistory',
+  surgicalHistory: 'surgicalHistory',
+  familyHistory: 'familyMedicalHistory',
+  allergies: 'allergies',
+  medications: 'medications',
+  habits: 'habits',
+};

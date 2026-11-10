@@ -1,4 +1,7 @@
+from app.routers import teacher_grading
+from app.routers import perception_survey
 import logging
+import asyncio
 
 import uvicorn
 from contextlib import asynccontextmanager
@@ -7,9 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.superuser import synchronize_superuser
+from app.speech.azure_openai import close_speech_clients
 from app.routers import (
     auth, users, organizations, clinical_cases, 
-    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, calibration
+    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, recording_segments, calibration
 )
 
 # Uvicorn configures its own handlers, but application loggers otherwise keep
@@ -22,7 +26,14 @@ async def lifespan(_: FastAPI):
     """Synchronize deployment-managed accounts whenever the API starts."""
     with SessionLocal() as session:
         print(synchronize_superuser(session))
-    yield
+    from app.multimodal.processing_jobs import run_processing_jobs
+    processor = asyncio.create_task(run_processing_jobs())
+    try:
+        yield
+    finally:
+        processor.cancel()
+        await asyncio.gather(processor, return_exceptions=True)
+        close_speech_clients()
 
 
 app = FastAPI(
@@ -131,9 +142,12 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 # Include routers
+app.include_router(teacher_grading.router)
+app.include_router(perception_survey.router)
 app.include_router(auth.router, tags=["authentication"])
 app.include_router(users.router, tags=["users"])
 app.include_router(organizations.router, tags=["organizations"])
@@ -148,6 +162,9 @@ app.include_router(personalities.router, tags=["personalities"])
 app.include_router(evaluations.router, tags=["evaluations"])
 app.include_router(speech.router, tags=["speech"])
 app.include_router(interview_recordings.router, tags=["interview-recordings"])
+app.include_router(recording_segments.router, tags=["interview-recordings"])
+from app.routers import recording_blocks
+app.include_router(recording_blocks.router, tags=["interview-recordings"])
 app.include_router(calibration.router)
 
 # Health check endpoint for Docker

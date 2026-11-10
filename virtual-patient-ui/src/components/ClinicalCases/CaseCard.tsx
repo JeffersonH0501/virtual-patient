@@ -1,36 +1,29 @@
-import {FC, MouseEvent, useEffect, useState} from 'react';
+import {FC, useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {useNavigate} from 'react-router-dom';
 import {ClinicalSession} from '../ClinicalSession';
 import type {ClinicalCaseSimplified} from '../../services/clinicalCases';
-import {CaretDown, EditIcon} from '../../icons';
+import {ChevronDown} from 'lucide-react';
 import {useUser} from '../../hooks';
-import {ROUTES} from '../../utils/routes';
+import {CaseDetailsDialog} from './CaseDetailsDialog';
+import {MotionHeight} from '../common/Motion';
+import {useEntrance} from '../common/Motion/hooks';
 
 type CaseCardProps = {
-  type: 'Default' | 'Custom';
   clinicalCase: ClinicalCaseSimplified;
   caseIndex: number;
   expanded: boolean;
   onToggle: () => void;
 };
 
-export const CaseCard: FC<CaseCardProps> = ({
-  type,
-  clinicalCase,
-  caseIndex,
-  expanded,
-  onToggle,
-}) => {
+export const CaseCard: FC<CaseCardProps> = ({clinicalCase, caseIndex, expanded, onToggle}) => {
   const {t} = useTranslation();
   const {user} = useUser();
-  const navigate = useNavigate();
+  const entrance = useEntrance<HTMLElement>(caseIndex - 1, true);
   const [hasOpened, setHasOpened] = useState(expanded);
   const displayNumber = caseIndex.toString().padStart(2, '0');
   const panelId = `case-configuration-${clinicalCase.id}`;
-  const showEditAction =
-    type === 'Custom' && (user?.role === 'teacher' || user?.role === 'superuser');
-  const canStartSimulation = user?.role !== 'superuser';
+  const isSuperuser = user?.role === 'superuser';
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     if (expanded) {
@@ -38,79 +31,59 @@ export const CaseCard: FC<CaseCardProps> = ({
     }
   }, [expanded]);
 
-  const handleEditClick = (event: MouseEvent<HTMLButtonElement>) => {
-    event.stopPropagation();
-    navigate(ROUTES.editCase.replace(':caseId', clinicalCase.id.toString()));
-  };
-
   return (
     <article
-      className={`w-full min-w-0 max-w-full rounded-lg border transition-colors duration-300 ${
+      ref={entrance}
+      className={`w-full min-w-0 max-w-full rounded-lg border motion-colors ${
         expanded ? 'overflow-visible' : 'overflow-hidden'
-      } ${
-        expanded ? 'border-blue-200 bg-white' : 'border-blue-200 bg-blue-50'
-      }`}
+      } ${expanded ? 'border-brand-200 bg-white' : 'border-brand-200 bg-brand-50'}`}
     >
-      <div className={`flex min-w-0 items-stretch overflow-hidden bg-blue-50 text-slate-800 transition-colors duration-200 hover:bg-blue-100/80 ${
-        expanded ? 'rounded-t-case' : 'rounded-case'
-      }`}>
-        <div className="flex w-11 shrink-0 items-center justify-center border-r border-blue-200 bg-blue-100 px-1 text-sm font-bold text-blue-700 sm:w-14 sm:px-2">
-          {displayNumber}
-        </div>
-        <p className="min-w-0 flex-1 break-words px-3 py-3 text-sm font-medium leading-5 sm:px-4">
-          {clinicalCase.description}
-        </p>
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={expanded}
-          aria-controls={panelId}
-          data-focus-outline="none"
-          aria-label={
-            expanded
-              ? t('clinicalCases.hideConfiguration')
-              : t('clinicalCases.configureCase')
-          }
-          className={`flex w-11 shrink-0 items-center justify-center border-0 border-l border-blue-500 bg-blue-600 p-0 text-white transition-colors hover:border-l-blue-500 hover:bg-blue-700 focus-visible:outline-none focus-visible:shadow-inset-focus sm:w-14 ${
-            expanded ? 'rounded-tr-case' : 'rounded-r-case'
-          }`}
-        >
-          <span className={`block h-5 w-5 transition-transform duration-300 [&_svg]:h-full [&_svg]:w-full ${expanded ? 'rotate-180' : ''}`}>
-            <CaretDown color="currentColor" />
-          </span>
-        </button>
-      </div>
-
-      <div
-        id={panelId}
-        aria-hidden={!expanded}
-        inert={!expanded}
-        className={`grid min-w-0 transition-disclosure duration-300 ease-out ${
-          expanded ? 'grid-rows-expanded opacity-100' : 'grid-rows-collapsed opacity-0'
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={expanded}
+        aria-controls={panelId}
+        aria-label={
+          expanded
+            ? t('clinicalCases.hideConfiguration')
+            : t('clinicalCases.configureCase')
+        }
+        aria-describedby={`case-description-${clinicalCase.id}`}
+        className={`case-disclosure-row flex w-full min-w-0 items-stretch overflow-hidden bg-brand-50 text-neutral-800 motion-colors hover:bg-brand-100/80 ${
+          expanded ? 'rounded-t-case' : 'rounded-case'
         }`}
       >
+        <span className="flex w-11 shrink-0 items-center justify-center ui-divider-right border-brand-200 bg-brand-100 px-inset text-brand-700 sm:w-14 sm:px-inset default-title">
+          {displayNumber}
+        </span>
+        <span
+          id={`case-description-${clinicalCase.id}`}
+          className="min-w-0 flex-1 break-words px-inset py-inset sm:px-inset medium-text"
+        >
+          {clinicalCase.description}
+        </span>
+        <span className="case-disclosure" aria-hidden="true">
+          <span
+            className={`block h-5 w-5 motion-chevron [&_svg]:h-full [&_svg]:w-full ${expanded ? 'rotate-180' : ''}`}
+          >
+            <ChevronDown />
+          </span>
+        </span>
+      </button>
+
+      <MotionHeight id={panelId} expanded={expanded} className="min-w-0">
         <div className={`min-h-0 min-w-0 ${expanded ? 'overflow-visible' : 'overflow-hidden'}`}>
           {hasOpened && (
-            <div className="min-w-0 max-w-full rounded-b-case border-t border-blue-200 bg-white">
-              {showEditAction && (
-                <div className="flex justify-end px-4 pt-4 sm:px-5">
-                  <button
-                    type="button"
-                    onClick={handleEditClick}
-                    className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300"
-                  >
-                    <span className="block h-4 w-4 [&_svg]:h-full [&_svg]:w-full"><EditIcon /></span>
-                    {t('clinicalCases.editCase')}
-                  </button>
-                </div>
-              )}
-              {canStartSimulation && (
-                <ClinicalSession clinicalCase={clinicalCase} onCancel={onToggle} />
-              )}
+            <div className="min-w-0 max-w-full rounded-b-case border-t border-brand-200 bg-white">
+              <ClinicalSession clinicalCase={clinicalCase} onCancel={onToggle}
+                onView={isSuperuser ? () => setDetailsOpen(true) : undefined} />
             </div>
           )}
         </div>
-      </div>
+      </MotionHeight>
+      {isSuperuser && detailsOpen && (
+        <CaseDetailsDialog caseId={clinicalCase.id} onClose={() => setDetailsOpen(false)} />
+      )}
     </article>
   );
 };

@@ -1,0 +1,4 @@
+{
+  "media_retention_months": 12,
+  "video_processing_worker_timeout_seconds": 180
+}

@@ -1,13 +1,18 @@
-import { FC } from 'react';
-import { StudentsTable } from './StudentsTable';
-import { StudentsMetricsCards } from './StudentsMetricsCards';
+import {useUser} from '../../hooks/useUser';
+import {StudentsTable} from './StudentsTable';
+import {Navigate} from 'react-router-dom';
+import {useTranslation} from 'react-i18next';
+import {ROUTES} from '../../utils/routes';
+import {PageHeader} from '../common/PageHeader';
 
-export const Students: FC = () => {
-
+export const Students = () => {
+  const {user} = useUser();
+  const {t} = useTranslation();
+  if (user?.role === 'teacher') return <Navigate to={ROUTES.interviews} replace />;
   return (
-    <main className="px-4 py-0 mx-auto my-0 w-full pt-20">
-      <StudentsMetricsCards />
+    <section className="ui-page">
+      <PageHeader eyebrow={t('interviewsPage.eyebrow')} title={t('interviewsPage.title')} titleId="interviews-title" />
       <StudentsTable />
-    </main>
+    </section>
   );
 };

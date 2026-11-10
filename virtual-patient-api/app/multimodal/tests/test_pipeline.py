@@ -144,6 +144,14 @@ class _FakeSession:
     def commit(self) -> None:
         self.commit_count += 1
 
+    @property
+    def no_autoflush(self):
+        from contextlib import nullcontext
+        return nullcontext()
+
+    def refresh(self, recording, **kwargs) -> None:
+        pass
+
     def rollback(self) -> None:
         self.rollback_count += 1
 
@@ -179,6 +187,7 @@ def _make_recording(recording_id: str = "rec-1", interview_id: int = 1):
     return SimpleNamespace(
         id=recording_id,
         medical_interview_id=interview_id,
+        duration_ms=60_000,
         capture_config={},
     )
 
@@ -199,8 +208,6 @@ def _make_asset(kind: str, recording_id: str = "rec-1"):
 def _baseline() -> pipeline_module.PersonalBaseline:
     """A realistic personal baseline (F0 in semitones, never Hz)."""
     return pipeline_module.PersonalBaseline(
-        baseline_f0_semitones=-9.0,
-        baseline_loudness=0.35,
         neutral_head_yaw=0.0,
         neutral_head_pitch=0.0,
         neutral_head_roll=0.0,
@@ -248,7 +255,8 @@ def _nonverbal_payload(conversation_speaker: str, turn_duration_ms: int = 4000) 
         "face_score_samples": [0.98, 0.97, 0.99, 0.96, 0.98, 0.97, 0.99, 0.98],
         "gaze_yaw_samples": [0.01, 0.02, -0.01, 0.0, 0.03, -0.02, 0.01, 0.0],
         "gaze_pitch_samples": [0.0, -0.01, 0.02, 0.01, -0.02, 0.0, 0.01, -0.01],
-        "au12_samples": [0.1, 0.2, 0.5, 0.6, 0.3, 0.4, 0.2, 0.1],
+        "smile_activation_samples": [0.1, 0.2, 0.5, 0.6, 0.3, 0.4, 0.2, 0.1],
+        "smile_detected_samples": [False, False, True, True, False, True, False, False],
         "head_pitch_samples": [1.0, -1.0, 2.0, -2.0, 1.5, -1.5, 1.0, -1.0],
         "head_yaw_samples": [0.0, 0.5, -0.5, 0.0, 0.5, -0.5, 0.0, 0.0],
         "head_roll_samples": [0.0, 0.1, -0.1, 0.0, 0.1, -0.1, 0.0, 0.0],
@@ -445,9 +453,9 @@ class MultimodalPipelineTests(unittest.TestCase):
                 "gaze_calibration_pending",
             )
             self.assertEqual(
-                turn.nonverbal_features["base_labels"]["visual_orientation"]
-                ["visual_alignment_ratio"]["reason"],
-                "gaze_calibration_pending",
+                turn.nonverbal_features["base_labels"]["gaze_orientation"]
+                ["interaction_gaze_ratio"]["status"],
+                "unavailable",
             )
             self.assertIsNotNone(
                 turn.nonverbal_features["processed"]["mean_smile_activation"]

@@ -3,7 +3,7 @@
 This module owns the staged, versioned multimodal pipeline that turns a
 finalized interview recording into per-turn, per-family descriptive
 observations. It coordinates the existing paraverbal (OpenSMILE) and nonverbal
-(MediaPipe, BlazeGaze, smile, and CCDb-HG) extractors, derives processed features, applies declarative
+(MediaPipe, smile, and CCDb-HG) extractors, derives processed features, applies declarative
 thresholds, and produces one integrated label per family — or an explicit
 unavailable/insufficient outcome when data is missing.
 
@@ -81,20 +81,20 @@ otherwise it yields `unavailable` or `insufficient_reference_data` with a reason
 
 Paraverbal (student-speaking turns only):
 
-- `temporal` — global speech rate, articulation rate, pause load, pause
+- `speech_timing` — global speech rate, articulation rate, pause load, pause
   duration, pause frequency (fixed bands).
 - `prosodic_level` — relative pitch shift vs. personal baseline, and
   session-relative loudness level (session P25/P75).
-- `prosodic_modulation` — F0 P20–P80 range, and session-relative loudness
+- `prosodic_variability` — F0 P20–P80 range, and session-relative loudness
   variability (session P25/P75).
 
 Nonverbal (all turn windows):
 
-- `visual_orientation` — visual alignment ratio and dwell against the calibrated
+- `gaze_orientation` — visual alignment ratio and dwell against the calibrated
   interaction center (fixed bands).
-- `head_gestural_feedback` — nod presence (binary) and session-relative nod rate,
+- `head_nods` — nod presence (binary) and session-relative nod rate,
   with interaction context carried through.
-- `facial_expressivity` — smile activity (fixed four-band) and session-relative
+- `smile_activity` — smile activity (fixed four-band) and session-relative
   smile activation.
 
 ## Module map (where each stage lives)
@@ -109,7 +109,7 @@ Nonverbal (all turn windows):
 | Config load / validate / version / hash | `config_loader.py` |
 | Personal baseline (derive + read) | `calibration.py` |
 | Typed stage contracts (Pydantic, not SQL) | `schemas.py` |
-| Methodology configuration | `config/processing.yaml`, `config/thresholds.yaml`, `config/label_rules.yaml` |
+| Methodology configuration | [`../../config/thresholds/thresholds.yaml`](../../config/thresholds/thresholds.yaml), [`../../config/labels/label_rules.yaml`](../../config/labels/label_rules.yaml) |
 | Relabel stored turns without re-extraction | `../scripts/relabel_multimodal.py` |
 
 The extractors are the only code that touches OpenSMILE, visual models, or media. The
@@ -118,17 +118,15 @@ never signal internals.
 
 ## Configuration
 
-Methodology lives in YAML (this module's `config/`); infrastructure lives in
-`.env`. All three YAML files carry a top-level `version:` string, and every
-persisted result records the three versions plus a deterministic `config_hash`
-(SHA-256 over the canonical, key-sorted merged config) so any label is traceable
-to the exact methodology that produced it.
+The two methodology YAML files live in the central backend `config/` folder.
+Each carries a `version` string. The deterministic `config_hash` covers the
+canonical, key-sorted effective threshold and rule mappings. Evaluation snapshots
+keep the exact source documents from that same cached load and compare the
+effective hash with the recorded extraction manifests. Derivation and quality
+constants live in their extractor, preprocessing and quality policy modules.
 
-- **`processing.yaml`** — derivation parameters (e.g. `min_pause_ms`,
-  `min_voiced_duration_ms`, `sample_fps`, gaze `alignment_tolerance_radians`,
-  smile `au12_active_threshold`, nod detector params).
 - **`thresholds.yaml`** — per-feature strategy bands (`fixed_bands`,
-  `baseline_delta`, `session_percentiles`, `binary`, `four_band`,
+  `session_percentiles`, `binary`, `four_band`,
   `passthrough`) with explicit inclusive-boundary semantics, plus
   `min_turns_for_session_stats`.
 - **`label_rules.yaml`** — ordered per-family rules (`all` = AND, `any` = OR,
@@ -154,31 +152,19 @@ from few turns are less stable and remain descriptive; real interviews are
 expected to provide a larger reference set. A feature with no qualifying value
 still yields `insufficient_reference_data`. Fixed-band families are unaffected.
 
-## Personal-baseline calibration flow
+## Visual calibration flow
 
-1. `POST /medical-interviews/calibration/baseline` (authenticated) receives the
-   calibration media upload without requiring or creating an interview.
-2. The upload is written to a **temporary** server file.
-3. `calibration.derive_personal_baseline(...)` runs OpenSMILE and the shared visual
-   extractors over the media and computes numeric-only metrics:
-   `baseline_f0_semitones` (median voiced F0 **in semitones, never Hertz**),
-   `baseline_loudness`, `neutral_head_yaw/pitch/roll`, and required
-   `neutral_gaze_yaw/pitch`; if either gaze axis is unavailable, the
-   complete personal baseline is unavailable rather than partially populated.
-4. The result is validated against the `PersonalBaseline` schema and returned
-   **numeric-only** to the UI, which holds it in memory.
-5. The **temporary media is deleted**; no calibration media is persisted, and no
-   new database table is introduced.
-6. Only after the user confirms starting the simulation does the UI create the
-   interview and save the technical result and complete baseline together in
-   `interview_metadata.calibration` before starting it.
+The browser captures five gaze targets for four seconds each and a five-second
+camera reference. The visual worker processes the shared MediaPipe observations.
+Authenticated, server-signed checkpoints bind the source, affine matrix, capture
+geometry, user and interview before the profile is accepted. Private capture
+references and their retention continue to use `calibration_captures`.
 
-Cancelling before confirmation therefore leaves no interview record. The legacy
-`POST /medical-interviews/{id}/calibration/baseline` endpoint remains compatible
-with existing unstarted interviews and rejects overwrites after start. The
-existing `PUT /calibration` device-check behavior is preserved.
-`calibration.read_personal_baseline(...)` is the single accessor the pipeline
-uses to read the stored baseline.
+The gaze gate uses held-out targets and the lens gate uses raw ocular geometry.
+Both reject insufficient or unstable observations for normal interviews.
+The calibrated profile and patient ROI feed the existing semantic gaze labels;
+missing observations remain unavailable. These operational checks do not
+establish scientific accuracy. See `docs/guided-calibration-checks.md`.
 
 ## Relabeling without re-extraction
 

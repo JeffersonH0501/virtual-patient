@@ -1,20 +1,37 @@
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, timezone
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, case, func
+from sqlalchemy import and_, case, func, or_
 from fastapi import HTTPException, status
 from app.models.medical_interview import (
-    MedicalInterviewDB, MedicalInterview, MedicalInterviewUpdate,
+    MedicalInterviewDB, MedicalInterview, MedicalInterviewUpdate, InterviewMessageDB,
     InterviewStatus, MedicalInterviewComplete, InterviewMessage,
-    TurnVideoAnalysisDB, TurnVideoAnalysisStatus,
+    InterviewRecordingDB, InterviewTurnDB, TurnVideoAnalysisDB, TurnVideoAnalysisStatus,
 )
-from app.models.user import UserDB, User
+from app.models.user import User, UserDB, UserRole
 from app.multimodal.calibration import calibration_passed
 from app.models.clinical_case import ClinicalCase
 from app.controllers.clinical_case_controller import ClinicalCaseController
 from app.controllers.message_controller import MessageController
 from app.controllers.hypothesis_controller import HypothesisController
 from app.controllers.progress_summary_controller import ProgressSummaryController
+from app.controllers.interview_lifecycle import lock_row
+from app.core.review_access import can_read_assessments
+from app.models.self_rating import SelfRatingDB
+from app.models.teacher_grading import TeacherAssignmentDB, TeacherRatingDB
+from app.utils.language import resolve_patient_response_language
+
+# Milestones represent completed work, not elapsed time. Evaluation still follows labeling.
+REVIEW_PROGRESS_BY_STAGE = {
+    "calibration": 5,
+    "paraverbal_extraction": 10,
+    "paraverbal_preprocessing": 30,
+    "nonverbal_extraction": 35,
+    "nonverbal_preprocessing": 65,
+    "thresholding": 70,
+    "labeling": 75,
+    "finished": 85,
+}
 
 class MedicalInterviewController:
     def __init__(self, db: Session):
@@ -22,6 +39,31 @@ class MedicalInterviewController:
         self.message_service = MessageController(db)
         self.hypothesis_service = HypothesisController(db)
         self.clinical_case_service = ClinicalCaseController(db)
+
+    def _recorded_duration(self, interview: MedicalInterviewDB) -> int | None:
+        return self._recorded_durations([interview]).get(interview.id)
+
+    def _recorded_durations(self, interviews) -> dict[int, int | None]:
+        if not interviews:
+            return {}
+        confirmed = case((and_(InterviewRecordingDB.status.in_(["ready", "partial"]),
+                              InterviewRecordingDB.ended_at.isnot(None)), InterviewRecordingDB.duration_ms))
+        rows = self.db.query(MedicalInterviewDB.id, func.coalesce(confirmed, func.max(InterviewTurnDB.end_ms))).outerjoin(
+            InterviewRecordingDB, InterviewRecordingDB.medical_interview_id == MedicalInterviewDB.id,
+        ).outerjoin(InterviewTurnDB, InterviewTurnDB.medical_interview_id == MedicalInterviewDB.id).filter(
+            MedicalInterviewDB.id.in_([interview.id for interview in interviews]),
+        ).group_by(MedicalInterviewDB.id, InterviewRecordingDB.status, InterviewRecordingDB.ended_at,
+                   InterviewRecordingDB.duration_ms).all()
+        result = {identifier: duration // 1000 if duration is not None else None for identifier, duration in rows}
+        from app.models.recording_block import InterviewRecordingBlockDB
+        block_durations = self.db.query(InterviewRecordingDB.medical_interview_id, func.sum(InterviewRecordingBlockDB.duration_ms)).outerjoin(
+            InterviewRecordingBlockDB, InterviewRecordingBlockDB.recording_id == InterviewRecordingDB.id).filter(
+            InterviewRecordingDB.medical_interview_id.in_([interview.id for interview in interviews]),
+            InterviewRecordingDB.capture_config['mediaTransport'].as_string() == 'reusable_blocks_v1').group_by(
+            InterviewRecordingDB.medical_interview_id).all()
+        for identifier, duration in block_durations:
+            result[identifier] = int(duration // 1000) if duration is not None else None
+        return result
     
     def create_interview(self, user_id: int, clinical_case_id: int, interview_metadata: Optional[Dict[str, Any]] = None,
                         patient_name: Optional[str] = None, patient_photo: Optional[str] = None,
@@ -103,14 +145,24 @@ class MedicalInterviewController:
             MedicalInterviewDB.start_time.isnot(None),
         ).order_by(MedicalInterviewDB.start_time.desc()).first()
     
-    def get_user_interviews_with_scores(self, user_id: int, status: Optional[InterviewStatus] = None, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+    def get_user_interviews_with_scores(self, user_id: int, status: Optional[InterviewStatus] = None, skip: int = 0, limit: int = 100, *, include_assigned: bool = False) -> List[Dict[str, Any]]:
         """Get all interviews for a user with evaluation scores"""
         from sqlalchemy.orm import joinedload
         
-        query = self.db.query(MedicalInterviewDB).options(
-            joinedload(MedicalInterviewDB.interview_evaluation)
-        ).filter(
-            MedicalInterviewDB.user_id == user_id,
+        score_relation = MedicalInterviewDB.multimodal_interview_evaluation
+        actor = self.db.get(UserDB, user_id)
+        visibility = MedicalInterviewDB.user_id == user_id
+        if include_assigned and actor and actor.role == UserRole.TEACHER and actor.organization_id is not None:
+            assigned = self.db.query(TeacherAssignmentDB.id).filter(
+                TeacherAssignmentDB.interview_id == MedicalInterviewDB.id,
+                TeacherAssignmentDB.teacher_id == user_id,
+            ).exists()
+            same_organization = MedicalInterviewDB.user_id.in_(
+                self.db.query(UserDB.id).filter(UserDB.organization_id == actor.organization_id)
+            )
+            visibility = or_(visibility, and_(assigned, same_organization))
+        query = self.db.query(MedicalInterviewDB).options(joinedload(score_relation)).filter(
+            visibility,
             # Only interviews that actually started (passed calibration) are kept in
             # the history. Interviews created but abandoned during calibration have
             # no start_time and must never appear.
@@ -120,9 +172,16 @@ class MedicalInterviewController:
         if status:
             query = query.filter(MedicalInterviewDB.status == status)
         
-        interviews = query.order_by(MedicalInterviewDB.start_time.desc()).offset(skip).limit(limit).all()
+        interviews = query.order_by(MedicalInterviewDB.start_time.desc(), MedicalInterviewDB.id.desc()).offset(skip).limit(limit).all()
 
         interview_ids = [interview.id for interview in interviews]
+        self_ratings = {rating.interview_id: rating for rating in self.db.query(SelfRatingDB).filter(
+            SelfRatingDB.interview_id.in_(interview_ids),
+            SelfRatingDB.interview_id.in_(self.db.query(MedicalInterviewDB.id).filter(MedicalInterviewDB.user_id == user_id)),
+        ).all()} if interview_ids else {}
+        assigned_ratings = dict(self.db.query(TeacherAssignmentDB.interview_id, TeacherRatingDB).outerjoin(
+            TeacherRatingDB, TeacherRatingDB.assignment_id == TeacherAssignmentDB.id,
+        ).filter(TeacherAssignmentDB.teacher_id == user_id, TeacherAssignmentDB.interview_id.in_(interview_ids)).all()) if interview_ids else {}
         progress_by_interview: Dict[int, Dict[str, int]] = {}
         if interview_ids:
             progress_rows = self.db.query(
@@ -144,30 +203,53 @@ class MedicalInterviewController:
                     "percentage": round((completed_count / total_count) * 100) if total_count else 0,
                 }
         
+        review_progress = self._get_review_progress(interviews)
+        durations = self._recorded_durations(interviews)
         result = []
         for interview in interviews:
             # Convert to MedicalInterview first
             interview_data = MedicalInterview.from_orm(interview)
             
-            # Calculate total_duration if not set but we have start_time and end_time
-            if interview_data.total_duration is None and interview.start_time and interview.end_time:
-                duration_seconds = int((interview.end_time - interview.start_time).total_seconds())
-                interview_data.total_duration = duration_seconds
             
             # Get evaluation score from the relationship
-            evaluation_score = None
-            if interview.interview_evaluation:
-                evaluation_score = interview.interview_evaluation.overall_score
+            evaluation = getattr(interview, score_relation.key)
+            is_assigned = interview.user_id != user_id
+            rating = assigned_ratings.get(interview.id) if is_assigned else self_ratings.get(interview.id)
+            manual_rating_status = "submitted" if rating and rating.submitted_at else "in_progress" if rating else "pending"
+            evaluation_score = evaluation.overall_score if evaluation and can_read_assessments(self.db, interview, actor) else None
             
             # Create the response with score
             interview_with_score = {
                 **interview_data.model_dump(),
+                "total_duration": durations.get(interview.id),
+                "interview_metadata": {} if is_assigned else interview_data.interview_metadata,
                 "evaluation_score": evaluation_score,
+                "is_assigned": is_assigned,
+                "manual_rating_status": manual_rating_status,
                 "analysis_progress": progress_by_interview.get(interview.id),
+                "review_progress": review_progress.get(interview.id),
             }
             result.append(interview_with_score)
         
         return result
+
+    def _get_review_progress(self, interviews: List[MedicalInterviewDB]) -> Dict[int, int]:
+        progress = {
+            interview.id: 0 for interview in interviews
+            if interview.status == InterviewStatus.PROCESSING
+        }
+        if progress:
+            recordings = self.db.query(
+                InterviewRecordingDB.medical_interview_id,
+                InterviewRecordingDB.capture_config,
+            ).filter(InterviewRecordingDB.medical_interview_id.in_(progress)).all()
+            for interview_id, config in recordings:
+                processing = (config or {}).get("observation_processing") or {}
+                if processing.get("status") == "failed":
+                    progress.pop(interview_id)
+                else:
+                    progress[interview_id] = REVIEW_PROGRESS_BY_STAGE.get(processing.get("stage"), 0)
+        return progress
     
     def update_interview(self, interview_id: int, update_data: MedicalInterviewUpdate) -> Optional[MedicalInterview]:
         """Update interview status and interview_metadata"""
@@ -181,14 +263,10 @@ class MedicalInterviewController:
         
         if update_data.end_time is not None:
             interview.end_time = update_data.end_time
-            # Calculate total duration when end_time is set
-            if interview.start_time:
-                interview.total_duration = int((update_data.end_time - interview.start_time).total_seconds())
+            interview.total_duration = self._recorded_duration(interview)
         
         if update_data.interview_metadata is not None:
-            if interview.interview_metadata is None:
-                interview.interview_metadata = {}
-            interview.interview_metadata.update(update_data.interview_metadata)
+            interview.interview_metadata = {**(interview.interview_metadata or {}), **update_data.interview_metadata}
         
         self.db.commit()
         self.db.refresh(interview)
@@ -210,31 +288,30 @@ class MedicalInterviewController:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="The interview has not started",
             )
-        processing = self.update_interview(
-            interview_id,
-            MedicalInterviewUpdate(
-                status=InterviewStatus.PROCESSING,
-                end_time=datetime.now(timezone.utc),
-            ),
-        )
-        recording = interview.recording
-        if recording is not None and recording.duration_ms is not None:
-            interview.total_duration = int(round(recording.duration_ms / 1000))
-            self.db.commit()
-            self.db.refresh(interview)
-            if processing is not None:
-                processing.total_duration = interview.total_duration
-        return processing
+        interview.status = InterviewStatus.PROCESSING
+        if interview.end_time is None:
+            interview.end_time = datetime.now(timezone.utc)
+        interview.total_duration = self._recorded_duration(interview)
+        metadata = dict(interview.interview_metadata or {})
+        metadata["completion_processing"] = {"status": "queued"}
+        interview.interview_metadata = metadata
+        self.db.commit()
+        self.db.refresh(interview)
+        return MedicalInterview.model_validate(interview)
 
     def interrupt_processing(self, interview_id: int) -> Optional[MedicalInterview]:
         """Mark an interview as interrupted after a processing failure."""
-        return self.update_interview(
-            interview_id,
-            MedicalInterviewUpdate(
-                status=InterviewStatus.INTERRUPTED,
-                end_time=datetime.now(timezone.utc),
-            ),
-        )
+        interview = lock_row(self.db, MedicalInterviewDB, interview_id)
+        if interview is None:
+            return None
+        if interview.status != InterviewStatus.PROCESSING:
+            return MedicalInterview.model_validate(interview)
+        interview.status = InterviewStatus.INTERRUPTED
+        interview.interview_metadata = {**(interview.interview_metadata or {}),
+            "completion_processing": {"status": "failed", "error_code": "completion-processing-failed"}}
+        self.db.commit()
+        self.db.refresh(interview)
+        return MedicalInterview.model_validate(interview)
 
     def complete_interview(self, interview_id: int) -> Optional[MedicalInterview]:
         """Complete an interview"""
@@ -247,30 +324,16 @@ class MedicalInterviewController:
                 detail="The interview has not started",
             )
         
-        end_time = datetime.now(timezone.utc)
-
-        completed = self.update_interview(
-            interview_id,
-            MedicalInterviewUpdate(
-                status=InterviewStatus.COMPLETED,
-                end_time=end_time
-            )
-        )
-
-        # Align the stored duration with the per-turn analysis timeline. Turns and
-        # the recap are timed against the recording clock (recording.duration_ms,
-        # measured by the browser and pause-adjusted), so prefer it as the single
-        # source of truth. Fall back to the server wall-clock span only when no
-        # recording duration is available.
-        recording = interview.recording
-        if recording is not None and recording.duration_ms:
-            interview.total_duration = int(round(recording.duration_ms / 1000))
-            self.db.commit()
-            self.db.refresh(interview)
-            if completed is not None:
-                completed.total_duration = interview.total_duration
-
-        return completed
+        if interview.status == InterviewStatus.COMPLETED:
+            return MedicalInterview.model_validate(interview)
+        if interview.status != InterviewStatus.PROCESSING:
+            raise HTTPException(status_code=409, detail="Only a processing interview can complete")
+        interview.status = InterviewStatus.COMPLETED
+        interview.interview_metadata = {**(interview.interview_metadata or {}),
+            "completion_processing": {"status": "complete"}}
+        self.db.commit()
+        self.db.refresh(interview)
+        return MedicalInterview.model_validate(interview)
 
     def start_interview(self, interview_id: int) -> Optional[MedicalInterview]:
         """Start a calibrated interview and establish its official clock."""
@@ -279,6 +342,10 @@ class MedicalInterviewController:
         ).first()
         if not interview:
             return None
+        lock_row(self.db, UserDB, interview.user_id)
+        interview = lock_row(self.db, MedicalInterviewDB, interview_id)
+        if interview is None:
+            return None
         if interview.status != InterviewStatus.IN_PROGRESS:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -286,6 +353,14 @@ class MedicalInterviewController:
             )
         if interview.start_time is not None:
             return MedicalInterview.from_orm(interview)
+        other_active = self.db.query(MedicalInterviewDB).filter(
+            MedicalInterviewDB.user_id == interview.user_id,
+            MedicalInterviewDB.id != interview.id,
+            MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS,
+            MedicalInterviewDB.start_time.isnot(None),
+        ).first()
+        if other_active is not None:
+            raise HTTPException(status_code=409, detail="You already have an interview in progress")
 
         # The calibration draft is persisted into ``interview_metadata.calibration``
         # before start. The central ``calibration_passed`` accessor checks the
@@ -298,12 +373,47 @@ class MedicalInterviewController:
             )
 
         interview.start_time = datetime.now(timezone.utc)
+        language = resolve_patient_response_language(interview.interview_metadata)
+        self.message_service.create_patient_message(
+            interview_id,
+            "Hola, mucho gusto." if language == "es" else "Hello, nice to meet you.",
+            message_metadata={"opening": True},
+            commit=False,
+        )
         self.db.commit()
         self.db.refresh(interview)
         return MedicalInterview.from_orm(interview)
     
     def abandon_interview(self, interview_id: int) -> Optional[MedicalInterview]:
         """Mark an interview as interrupted (student abandoned the session)."""
+        interview = lock_row(self.db, MedicalInterviewDB, interview_id)
+        if interview is None:
+            return None
+        if interview.status == InterviewStatus.INTERRUPTED:
+            return MedicalInterview.from_orm(interview)
+        if interview.status != InterviewStatus.IN_PROGRESS:
+            raise HTTPException(status_code=409, detail="A frozen interview cannot be abandoned")
+        recording = interview.recording
+        if recording is not None and (recording.segments or (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1'):
+            from app.controllers.recording_segments import pending_patient_message, seal_segment
+            pending_message = pending_patient_message(self.db, interview.id)
+            for segment in recording.segments:
+                seal_segment(self.db, segment, pending_message)
+            recording.duration_ms = sum(segment.duration_ms for segment in recording.segments)
+            if (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1':
+                from app.models.recording_block import InterviewRecordingBlockDB
+                blocks = self.db.query(InterviewRecordingBlockDB).filter_by(recording_id=recording.id).all()
+                confirmed = [block.duration_ms for block in blocks if block.duration_ms is not None]
+                recording.duration_ms = sum(confirmed) if confirmed else None
+                covered = {value for block in blocks for key in ('student_message_id', 'patient_message_id')
+                           if (value := block.block_metadata.get(key)) is not None}
+                messages = {item[0] for item in self.db.query(InterviewMessageDB.id).filter_by(interview_id=interview.id)}
+                previous_gaps = set((interview.interview_metadata or {}).get('missing_evidence_message_ids', []))
+                interview.interview_metadata = {**(interview.interview_metadata or {}), 'missing_evidence_message_ids': sorted(previous_gaps | (messages - covered))}
+            recording.ended_at = datetime.now(timezone.utc)
+            recording.status = "partial"
+            recording.capture_config = {key: value for key, value in (recording.capture_config or {}).items()
+                                        if key != "resume_attempt"}
         return self.update_interview(
             interview_id,
             MedicalInterviewUpdate(
@@ -311,16 +421,6 @@ class MedicalInterviewController:
                 end_time=datetime.now(timezone.utc)
             )
         )
-    
-    def validate_interview_access(self, interview_id: int, user_id: int) -> bool:
-        """Validate that user has access to this interview"""
-        interview = self.db.query(MedicalInterviewDB).filter(
-            and_(
-                MedicalInterviewDB.id == interview_id,
-                MedicalInterviewDB.user_id == user_id
-            )
-        ).first()
-        return interview is not None
     
     def get_interview_context(self, interview_id: int) -> Dict[str, Any]:
         """Get complete interview context for GPT agent"""
@@ -385,7 +485,7 @@ class MedicalInterviewController:
                     return last_message.get("content")
                 return getattr(last_message, "content", None)
         except Exception as e:
-            print(f"Error extracting agent response: {e}")
+            pass
         return None
     
     def create_message_object(self, interview_id: int, content: str, sender_type: str, 
@@ -424,76 +524,19 @@ class MedicalInterviewController:
         if summary_result:
             try:
                 # Convert summary_result to dict for response
-                if hasattr(summary_result, 'dict'):
-                    return summary_result.dict()
+                if hasattr(summary_result, 'model_dump'):
+                    return summary_result.model_dump()
                 elif hasattr(summary_result, '__dict__'):
                     return summary_result.__dict__
                 else:
                     return summary_result
                 
             except Exception as e:
-                print(f"Error extracting summary for response: {e}")
                 return None
         
         return None
     
-    def prepare_async_database_operations(self, message_service: MessageController, progress_summary_service: ProgressSummaryController, 
-                                        interview_id: int, agent_response: str, thread_id: str, 
-                                        summary_result: Any, user_message: InterviewMessage = None) -> Dict[str, Any]:
-        """Prepare data for async database operations"""
-        agent_message_data = {
-            "interview_id": interview_id,
-            "content": agent_response,
-            "message_metadata": {
-                "thread_id": thread_id,
-                "session_id": thread_id
-            }
-        }
-        
-        # Prepare user message data for database if provided
-        user_message_data = None
-        if user_message:
-            user_message_data = {
-                "interview_id": interview_id,
-                "content": user_message.content,
-                "message_metadata": user_message.message_metadata
-            }
-        
-        return {
-            "agent_message_data": agent_message_data,
-            "user_message_data": user_message_data,
-            "summary_result": summary_result,
-            "message_service": message_service,
-            "progress_summary_service": progress_summary_service
-        }
     
-    def prepare_async_message_operations(self, message_service: MessageController, 
-                                       interview_id: int, agent_response: str, thread_id: str, 
-                                       user_message: InterviewMessage = None) -> Dict[str, Any]:
-        """Prepare data for async message operations"""
-        agent_message_data = {
-            "interview_id": interview_id,
-            "content": agent_response,
-            "message_metadata": {
-                "thread_id": thread_id,
-                "session_id": thread_id
-            }
-        }
-        
-        # Prepare user message data for database if provided
-        user_message_data = None
-        if user_message:
-            user_message_data = {
-                "interview_id": interview_id,
-                "content": user_message.content,
-                "message_metadata": user_message.message_metadata
-            }
-        
-        return {
-            "agent_message_data": agent_message_data,
-            "user_message_data": user_message_data,
-            "message_service": message_service
-        }
     
     def get_interview_evaluation_data(self, interview_id: int) -> Dict[str, Any]:
         """Get all data needed for interview evaluation"""
@@ -532,6 +575,7 @@ class MedicalInterviewController:
                 # Convert to evaluation format
                 role = "user" if message.sender_type == "user" else "assistant"
                 formatted_messages.append({
+                    "id": message.id,
                     "role": role,
                     "content": message.content
                 })
@@ -541,43 +585,57 @@ class MedicalInterviewController:
         
         return formatted_messages
     
-    def get_interviews_by_organization(self, organization_id: int, current_user: User, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
-        """Get all student interviews (ignoring organization_id parameter). Superusers get all interviews including teacher interviews."""
+    def organization_interviews_query(self, organization_id: int, current_user: User):
+        """Use the same role and organization scope for rows and interview counts."""
         from sqlalchemy.orm import joinedload
         from app.models.clinical_case import ClinicalCaseDB
         from app.models.user import UserDB, UserRole
-        
-        # Query only student interviews (ignoring organization_id parameter)
+
+        # Scope the query before applying role filters and pagination.
         query = self.db.query(MedicalInterviewDB).options(
-            joinedload(MedicalInterviewDB.interview_evaluation),
+            joinedload(MedicalInterviewDB.multimodal_interview_evaluation),
             joinedload(MedicalInterviewDB.clinical_case),
             joinedload(MedicalInterviewDB.user),
             joinedload(MedicalInterviewDB.teacher_feedback)
         ).join(ClinicalCaseDB, MedicalInterviewDB.clinical_case_id == ClinicalCaseDB.id).join(
             UserDB, MedicalInterviewDB.user_id == UserDB.id
-        ).filter(MedicalInterviewDB.start_time.isnot(None))
+        ).filter(MedicalInterviewDB.start_time.isnot(None), UserDB.organization_id == organization_id)
         
         # Filter by role only if user is not a superuser
         if current_user.role != UserRole.SUPERUSER.value:
             query = query.filter(UserDB.role == UserRole.STUDENT.value)
         
+        return query
+
+    def count_organization_interviews(self, organization_id: int, current_user: User) -> int:
+        return self.organization_interviews_query(organization_id, current_user).count()
+
+    def get_organization_interview_counts(self, organization_id: int, current_user: User):
+        """Count interviews, including multiple interviews owned by the same person."""
+        query = self.organization_interviews_query(organization_id, current_user)
+        return {
+            "active_interviews_count": query.filter(MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS).count(),
+            "completed_interviews_count": query.filter(MedicalInterviewDB.status == InterviewStatus.COMPLETED).count(),
+        }
+
+    def get_interviews_by_organization(self, organization_id: int, current_user: User, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        """List organization interviews; superusers may also review teachers."""
+        query = self.organization_interviews_query(organization_id, current_user)
+
         interviews = query.order_by(MedicalInterviewDB.start_time.desc()).offset(skip).limit(limit).all()
+        review_progress = self._get_review_progress(interviews)
+        durations = self._recorded_durations(interviews)
         
         result = []
         for interview in interviews:
             # Convert to MedicalInterview first
             interview_data = MedicalInterview.from_orm(interview)
             
-            # Calculate total_duration if not set but we have start_time and end_time
-            if interview_data.total_duration is None and interview.start_time and interview.end_time:
-                duration_seconds = int((interview.end_time - interview.start_time).total_seconds())
-                interview_data.total_duration = duration_seconds
             
             # Get evaluation score from the relationship
-            evaluation_score = None
-            if interview.interview_evaluation:
-                evaluation_score = interview.interview_evaluation.overall_score
-            
+            evaluation = interview.multimodal_interview_evaluation
+            evaluation_score = evaluation.overall_score if evaluation and can_read_assessments(self.db, interview, current_user) else None
+
             # Get teacher feedback data
             teacher_feedback = []
             if interview.teacher_feedback:
@@ -592,10 +650,13 @@ class MedicalInterviewController:
             # Create the response with score and additional organization context
             interview_with_score = {
                 **interview_data.model_dump(),
+                "total_duration": durations.get(interview.id),
                 "evaluation_score": evaluation_score,
                 "teacher_feedback": teacher_feedback,
+                "review_progress": review_progress.get(interview.id),
                 "organization_id": organization_id,  # Keep in response for compatibility
                 "clinical_case_title": interview.clinical_case.title if interview.clinical_case else None,
+                "owner_role": interview.user.role if interview.user else None,
                 "user_name": interview.user.name if interview.user else None
             }
             result.append(interview_with_score)
@@ -603,7 +664,7 @@ class MedicalInterviewController:
         return result
     
     def validate_interview_access(self, interview_id: str, user_id: int) -> bool:
-        """Validate if user has access to the interview. Teachers and superusers can access any interview."""
+        """Allow owners and authorized staff within the owner's organization."""
         from app.models.user import UserDB, UserRole
         
         # Get user role
@@ -611,56 +672,61 @@ class MedicalInterviewController:
         if not user:
             return False
         
-        # Teachers and superusers can access any interview
-        if user.role == UserRole.TEACHER.value or user.role == UserRole.SUPERUSER.value:
-            return True
-        
-        # Students can only access their own interviews
         interview = self.db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id).first()
         if not interview:
             return False
         
-        return interview.user_id == user_id
+        if interview.user_id == user_id:
+            return True
+        from app.core.review_access import can_replay
+        return can_replay(self.db, interview, user)
+
+    def validate_interview_ownership(self, interview_id: int, user_id: int) -> bool:
+        """Mutations require ownership, independently of staff read access."""
+        return self.db.query(MedicalInterviewDB).filter(
+            MedicalInterviewDB.id == interview_id, MedicalInterviewDB.user_id == user_id,
+        ).first() is not None
     
     def count_active_student_conversations_by_organization(self, organization_id: int) -> int:
-        """Count the number of students who have active conversations (ignoring organization_id parameter)"""
+        """Count students with active interviews in this organization."""
         from sqlalchemy import distinct
         from app.models.user import UserDB, UserRole
         
-        # Query to count distinct students with active interviews (ignoring organization_id parameter)
+        # Count distinct students within the organization.
         count = self.db.query(distinct(MedicalInterviewDB.user_id)).join(
             UserDB, MedicalInterviewDB.user_id == UserDB.id
         ).filter(
             MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS,
             MedicalInterviewDB.start_time.isnot(None),
-            UserDB.role == UserRole.STUDENT.value
+            UserDB.role == UserRole.STUDENT.value,
+            UserDB.organization_id == organization_id,
         ).count()
         
         return count
     
     def count_completed_student_conversations_by_organization(self, organization_id: int) -> int:
-        """Count the number of students who have completed conversations (ignoring organization_id parameter)"""
+        """Count students with completed interviews in this organization."""
         from sqlalchemy import distinct
         from app.models.user import UserDB, UserRole
         
-        # Query to count distinct students with completed interviews (ignoring organization_id parameter)
+        # Count distinct students within the organization.
         count = self.db.query(distinct(MedicalInterviewDB.user_id)).join(
             UserDB, MedicalInterviewDB.user_id == UserDB.id
         ).filter(
             MedicalInterviewDB.status == InterviewStatus.COMPLETED,
-            UserDB.role == UserRole.STUDENT.value
+            UserDB.role == UserRole.STUDENT.value,
+            UserDB.organization_id == organization_id,
         ).count()
         
         return count
     
     def get_average_score_by_organization(self, organization_id: int) -> Dict[str, Any]:
-        """Get the average evaluation score for student conversations only (ignoring organization_id parameter)"""
+        """Average the textual control for completed organization interviews."""
         from sqlalchemy import func
         from app.models.medical_interview.interview_evaluation import InterviewEvaluationDB
         from app.models.user import UserDB, UserRole
         
-        # Query to get average score for student interviews only (ignoring
-        # organization_id parameter). Only completed interviews count:
+        # Only completed interviews in the organization count:
         # interrupted interviews carry no evaluation and must never contribute
         # to the overall score.
         result = self.db.query(
@@ -673,7 +739,9 @@ class MedicalInterviewController:
         ).filter(
             MedicalInterviewDB.status == InterviewStatus.COMPLETED,
             InterviewEvaluationDB.overall_score.isnot(None),
-            UserDB.role == UserRole.STUDENT.value
+            InterviewEvaluationDB.evaluation_condition == "TEXT_ONLY",
+            UserDB.role == UserRole.STUDENT.value,
+            UserDB.organization_id == organization_id,
         ).first()
         
         if result and result.average_score is not None:
@@ -709,9 +777,7 @@ class MedicalInterviewController:
         
         # Query to get average duration for completed interviews of the user
         result = self.db.query(
-            func.avg(
-                func.extract('epoch', MedicalInterviewDB.end_time - MedicalInterviewDB.start_time)
-            ).label('average_duration_seconds'),
+            func.avg(MedicalInterviewDB.total_duration).label('average_duration_seconds'),
             func.count(MedicalInterviewDB.id).label('total_completed_cases')
         ).filter(
             MedicalInterviewDB.user_id == user_id,
@@ -735,7 +801,7 @@ class MedicalInterviewController:
                 "has_data": False
             }
 
-    def get_average_score_for_user(self, user_id: int) -> Dict[str, Any]:
+    def get_average_score_for_user(self, user_id: int, *, include_text_only: bool = False) -> Dict[str, Any]:
         """Get the average evaluation score for a specific user's conversations"""
         from app.models.medical_interview.enums import InterviewStatus
         from sqlalchemy import func
@@ -752,7 +818,11 @@ class MedicalInterviewController:
         ).filter(
             MedicalInterviewDB.user_id == user_id,
             MedicalInterviewDB.status == InterviewStatus.COMPLETED,
-            InterviewEvaluationDB.overall_score.isnot(None)
+            InterviewEvaluationDB.overall_score.isnot(None),
+            InterviewEvaluationDB.evaluation_condition == ("TEXT_ONLY" if include_text_only else "TEXT_PLUS_MULTIMODAL"),
+            True if include_text_only else self.db.query(SelfRatingDB).filter(
+                SelfRatingDB.interview_id == MedicalInterviewDB.id, SelfRatingDB.submitted_at.isnot(None),
+            ).exists(),
         ).first()
         
         if result and result.average_score is not None:

@@ -218,3 +218,8 @@ __marimo__/
 
 # deploy-local.sh dependency-hash state (local dev rebuild detection)
 .deploy-local/
+
+# VM deployment policy and secrets
+/config/deployment.json
+/config/secrets/
+/virtual-patient-ui/ssl/

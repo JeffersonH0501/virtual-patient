@@ -17,31 +17,30 @@ export const NonIdealState: FC<NonIdealStateProps> = ({
   description,
   icon,
   action,
-  className = ''
+  className = '',
 }) => {
   return (
-    <div className={`flex flex-col items-center justify-center min-h-empty-state p-8 text-center ${className}`}>
+    <div className={`flex flex-col items-center justify-center p-inset text-center ${className}`}>
       {icon && (
-        <div className="mb-6 text-gray-400">
+        <div className="mb-layout text-neutral-400">
           {icon}
         </div>
       )}
-      
-      <h3 className="mb-4 text-xl font-semibold text-gray-800">
+
+      <h3 className="mb-layout text-neutral-800 default-title">
         {title}
       </h3>
-      
+
       {description && (
-        <p className="mb-8 max-w-md text-gray-600 leading-relaxed">
+        <p className="mb-layout max-w-md text-neutral-600 ">
           {description}
         </p>
       )}
-      
+
       {action && (
         <Button
           onClick={action.onClick}
           variant="primary"
-          size="md"
         >
           {action.label}
         </Button>

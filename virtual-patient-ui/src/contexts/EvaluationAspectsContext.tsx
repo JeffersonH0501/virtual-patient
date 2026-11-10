@@ -4,6 +4,7 @@ import {useUser} from '../hooks';
 
 type EvaluationAspectsContextType = {
   aspects: EvaluationAspectsResponse['aspects'] | null;
+  multimodalAspects: NonNullable<EvaluationAspectsResponse['multimodalAspects']>;
   isLoading: boolean;
   error: string | null;
 };
@@ -17,6 +18,7 @@ type EvaluationAspectsProviderProps = {
 export const EvaluationAspectsProvider: React.FC<EvaluationAspectsProviderProps> = ({children}) => {
   const [aspects, setAspects] = useState<EvaluationAspectsResponse['aspects'] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [multimodalAspects, setMultimodalAspects] = useState<NonNullable<EvaluationAspectsResponse['multimodalAspects']>>([]);
   const [error, setError] = useState<string | null>(null);
   const {user, isLoading: userLoading} = useUser();
 
@@ -29,6 +31,7 @@ export const EvaluationAspectsProvider: React.FC<EvaluationAspectsProviderProps>
           setError(null);
           const response = await getEvaluationAspects();
           setAspects(response.aspects);
+          setMultimodalAspects(response.multimodalAspects ?? []);
         } catch (err) {
           console.error('Failed to fetch evaluation aspects:', err);
           setError(err instanceof Error ? err.message : 'Failed to fetch evaluation aspects');
@@ -43,6 +46,7 @@ export const EvaluationAspectsProvider: React.FC<EvaluationAspectsProviderProps>
 
   const value: EvaluationAspectsContextType = {
     aspects,
+    multimodalAspects,
     isLoading,
     error,
   };

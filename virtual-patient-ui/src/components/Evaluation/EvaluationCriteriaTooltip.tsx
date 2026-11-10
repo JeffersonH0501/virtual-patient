@@ -1,27 +1,32 @@
-﻿import { FC } from 'react';
-import {Modal} from '../common/Modal';
-import {X} from '../../icons';
-import { useTranslation } from 'react-i18next';
-import { EvaluationResult } from '../../types/evaluation';
-import { useEvaluationAspects } from '../../contexts/EvaluationAspectsContext';
+import {Dialog} from '../common/Dialog';
+import {FC, ReactNode} from 'react';
+
+import {useTranslation} from 'react-i18next';
+import {EvaluationCondition} from '../../types/evaluation';
+import {useEvaluationAspects} from '../../contexts/EvaluationAspectsContext';
+import {getAspectDisplayName} from './helpers/evaluation';
 
 type EvaluationCriteriaTooltipProps = {
-  aspect: EvaluationResult['aspect'];
+  aspect: string;
+  condition?: EvaluationCondition;
   isVisible: boolean;
   onClose: () => void;
+  comparison?: ReactNode;
 };
-
 
 export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
   aspect,
   isVisible,
   onClose,
+  comparison,
+  condition = 'TEXT_ONLY',
 }) => {
-  const { t } = useTranslation();
-  const { aspects, error } = useEvaluationAspects();
+  const {t} = useTranslation();
+  const {aspects, multimodalAspects, error} = useEvaluationAspects();
+  const metadata = multimodalAspects.find((entry) => entry.aspect === aspect);
 
   // Convert snake_case aspect to camelCase for API response
-  const getAspectKey = (aspectName: EvaluationResult['aspect']) => {
+  const getAspectKey = (aspectName: string) => {
     switch (aspectName) {
       case 'general_communication':
         return 'generalCommunication';
@@ -41,58 +46,54 @@ export const EvaluationCriteriaTooltip: FC<EvaluationCriteriaTooltipProps> = ({
   };
 
   return (
-    <Modal
+    <Dialog
+      title={t('evaluation.evaluationCriteria')}
       open={isVisible}
-      closeAction={onClose}
-      size="medium"
+      onClose={onClose}
+      size={comparison ? 'large' : 'medium'}
       containerId={`evaluation-criteria-${aspect}`}
-      ariaLabel={t('evaluation.evaluationCriteria')}
     >
-      <header className="dialog-header gap-3">
-        <h2 className="dialog-title">
-          {t('evaluation.evaluationCriteria')}
-        </h2>
-        <button type="button" onClick={onClose} className="dialog-close-button" aria-label={t('common.close')}>
-          <X color="currentColor" />
-        </button>
-      </header>
-      <div className="dialog-content text-left">
-          {error || !aspects ? (
-            <div className="text-center py-4">
-              <p className="text-red-600 text-sm">
-                {t('evaluation.aspectsLoadError')}
-              </p>
-            </div>
-          ) : (
-            <>
-              <p className="text-sm text-gray-600 mb-4">
-                {t('evaluation.evaluationBasedOn')}
-              </p>
-              <ol className="text-sm text-gray-700 space-y-2 mb-4">
-                {(aspects as any)[getAspectKey(aspect)]?.map((criterion: string, criterionIndex: number) => (
-                  <li key={criterionIndex} className="flex items-start gap-2">
-                    <span>{criterion}</span>
-                  </li>
-                ))}
-              </ol>
-            </>
-          )}
-          {aspect !== 'completeness' && (
-            <div className="dialog-annotation">
-              <p className="text-xs text-gray-500 mb-2">
-                {t('evaluation.criteriaBuiltFrom')}
-              </p>
-              <ul className="text-xs text-gray-600 space-y-1">
-                <li>Communication Assessment Tool (CAT)</li>
-                <li>Escala de Habilidades de ComunicaciÃ³n (EHC)</li>
-                <li>Stanford Trust in Physician Scale</li>
-                <li>Medical Interview Satisfaction Scale</li>
-                <li>Patient-doctor relationship questionnaire (PDRQ-9) in primary care</li>
-              </ul>
-            </div>
-          )}
-      </div>
-    </Modal>
+      {error || !aspects ? (
+        <div className="text-center py-inset">
+          <p className="text-danger-600 default-text">{t('evaluation.aspectsLoadError')}</p>
+        </div>
+      ) : (
+        <>
+          <div className={aspect === 'completeness' ? 'dialog-reading-section dialog-reading-card' : undefined}>
+            <p className="text-neutral-600 default-text">
+              {t('evaluation.evaluationBasedOn', {component: getAspectDisplayName(aspect, t)})}
+            </p>
+            <ol className="dialog-list mt-layout text-neutral-700 default-text">
+              {(condition === 'TEXT_PLUS_MULTIMODAL' && metadata
+                ? metadata.criteria
+                : (aspects as any)[getAspectKey(aspect)]
+              )?.map((criterion: string, criterionIndex: number) => (
+                <li key={criterionIndex}>
+                  <span>{criterion}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </>
+      )}
+      {comparison && (
+        <section className="dialog-reading-section">
+          <h3 className="default-title">{t('evaluation.clinicalCaseComparison')}</h3>
+          {comparison}
+        </section>
+      )}
+      {aspect !== 'completeness' && (
+        <aside className="dialog-annotation">
+          <p className="mb-[var(--layout-gap-small)] font-semibold">{t('evaluation.criteriaBuiltFrom')}</p>
+          <ul className="dialog-list secondary-text">
+            <li>Communication Assessment Tool (CAT)</li>
+            <li>Escala de Habilidades de Comunicación (EHC)</li>
+            <li>Stanford Trust in Physician Scale</li>
+            <li>Medical Interview Satisfaction Scale</li>
+            <li>Patient-doctor relationship questionnaire (PDRQ-9) in primary care</li>
+          </ul>
+        </aside>
+      )}
+    </Dialog>
   );
 };
-

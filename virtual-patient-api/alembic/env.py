@@ -10,6 +10,7 @@ sys.path.append(str(Path(__file__).resolve().parents[1]))
 
 # Import your models here
 import app.models  # noqa: F401 - register all SQLAlchemy models
+import app.models.processing_job  # noqa: F401
 from app.core.database import Base
 
 # this is the Alembic Config object, which provides
@@ -63,6 +64,11 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    existing_connection = config.attributes.get("connection")
+    if existing_connection is not None:
+        migrate(existing_connection)
+        return
+
     # Override the sqlalchemy.url with environment-based URL
     config.set_main_option("sqlalchemy.url", get_database_url())
     
@@ -73,12 +79,13 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection, target_metadata=target_metadata
-        )
+        migrate(connection)
 
-        with context.begin_transaction():
-            context.run_migrations()
+
+def migrate(connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 if context.is_offline_mode():

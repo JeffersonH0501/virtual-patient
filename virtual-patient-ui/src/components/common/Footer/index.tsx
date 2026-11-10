@@ -4,23 +4,18 @@ import {useTranslation} from 'react-i18next';
 export const Footer: FC = () => {
   const {t} = useTranslation();
   return (
-    <footer className="flex w-full min-w-0 flex-col items-center justify-center border-t border-solid border-t-gray-200 bg-white px-4 py-4 text-center">
-      <p className="mb-2 text-sm leading-4 text-gray-500 max-sm:text-xs">
+    <footer className="flex w-full min-w-0 shrink-0 flex-col items-center justify-center border-t border-solid border-t-neutral-200 bg-white px-inset py-inset text-center">
+      <p className="text-neutral-500 default-text">
         {t('footer.copyright')}
-      </p>
-      <p className="mb-1 text-sm leading-4 text-gray-500 max-sm:text-xs">
+        <br />
         {t('footer.university')}
-      </p>
-      <p className="mb-1 text-sm leading-4 text-gray-500 max-sm:text-xs">
+        <br />
         {t('footer.recognition')}
-      </p>
-      <p className="mb-1 text-sm leading-4 text-gray-500 max-sm:text-xs">
+        <br />
         {t('footer.legalRecognition')}
-      </p>
-      <p className="mb-1 text-sm leading-4 text-gray-500 max-sm:text-xs">
+        <br />
         {t('footer.address')}
-      </p>
-      <p className="text-sm leading-4 text-gray-500 max-sm:text-xs">
+        <br />
         <a href="https://sistemas.uniandes.edu.co/es/" target="_blank" rel="noopener noreferrer">
           {t('footer.department')}
         </a>

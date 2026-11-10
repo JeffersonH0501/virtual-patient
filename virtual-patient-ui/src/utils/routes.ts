@@ -1,34 +1,47 @@
 export const ROUTES = {
   home: '/',
-  signIn: '/signin',
-  resetPassword: '/reset-password',
-  signUp: '/signup',
+  welcome: '/welcome',
   clinicalCases: '/cases',
-  createCase: '/cases/create',
-  editCase: '/cases/:caseId/edit',
-  // Pre-interview calibration. The interview row is only created once the
-  // simulation actually starts, so this route carries the case configuration
-  // via location.state instead of an interview id.
-  calibration: '/cases/calibration',
+  patientPreview: '/interviews/session-preview',
+  calibration: '/interviews/calibration',
   interviews: '/interviews',
-  interviewCalibration: '/interviews/:interviewId/calibration',
   interviewSession: '/interviews/:interviewId/session',
   interviewReview: '/interviews/:interviewId/review',
-  students: '/students',
+  users: '/users',
+  perceptionSurvey: '/perception-survey',
 };
 
-export const interviewPath = (interviewId: string | number, stage: 'calibration' | 'session' | 'review') =>
+export const interviewPath = (interviewId: string | number, stage: 'session' | 'review') =>
   `${ROUTES.interviews}/${encodeURIComponent(String(interviewId))}/${stage}`;
 
-/**
- * Case configuration carried to the calibration route via location.state. The
- * interview is created only when the simulation actually starts, so this config
- * lives on the client until then.
- */
+
+export type NavigationSection = 'cases' | 'interviews' | 'users' | 'perception';
+
+/** Resolve one visible navigation tab, including interview detail routes. */
+export const getNavigationSection = (pathname: string, role?: string): NavigationSection => {
+  if (pathname === ROUTES.perceptionSurvey && role !== 'superuser') return 'perception';
+  if (pathname === ROUTES.calibration || pathname === ROUTES.patientPreview) return 'cases';
+  if (pathname === ROUTES.clinicalCases || pathname.startsWith(ROUTES.clinicalCases + '/')) return 'cases';
+  if (pathname === ROUTES.users && role === 'superuser') return 'users';
+  if (pathname === ROUTES.interviews || pathname.startsWith(ROUTES.interviews + '/')) {
+    return 'interviews';
+  }
+  return role === 'superuser' ? 'interviews' : 'cases';
+};
+
+/** Case configuration carried to calibration before creating an interview draft. */
 export type CalibrationRouteState = {
+  calibrationTest?: boolean;
+  gazeTest?: boolean;
   clinicalCaseId: number;
   clinicalCaseTitle?: string;
   gender?: string;
   personalityId?: number;
   patientResponseLanguage: 'en' | 'es';
+};
+
+export type InterviewResumeState = {
+  resumeAttemptId: string;
+  offsetMs: number;
+  pendingPatientMessageId?: number | null;
 };

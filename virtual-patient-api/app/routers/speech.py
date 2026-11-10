@@ -3,6 +3,7 @@
 import logging
 from typing import Literal, Optional
 
+from anyio import CancelScope
 from fastapi import (
     APIRouter,
     Depends,
@@ -14,7 +15,11 @@ from fastapi import (
     status,
 )
 from pydantic import BaseModel
+from openai import OpenAIError
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
+from starlette.responses import StreamingResponse
+from starlette.responses import FileResponse
 
 from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.controllers.message_controller import MessageController
@@ -23,17 +28,43 @@ from app.core.database import get_db
 from app.models.medical_interview.enums import SenderType
 from app.models.medical_interview.medical_interview import MedicalInterviewDB
 from app.models.user import User
+from app.media.access import _current_media_user
+from app.speech.azure_openai import AzureOpenAITextToSpeechProvider
 from app.speech.contracts import (
     SpeechConfigurationError,
     SpeechProviderError,
+    SpeechSynthesisRequest,
     SpeechTranscriptionRequest,
 )
-from app.speech.service import SpeechService
+from app.speech.service import SpeechService, create_patient_synthesis_request
+from app.media.storage import get_media_storage
+from app.models.medical_interview import InterviewRecordingDB
 
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["speech"])
 MAX_TRANSCRIPTION_BYTES = 25 * 1024 * 1024
+
+
+async def _block_patient_audio(interview_id, message_id, inputs, db):
+    recording = db.query(InterviewRecordingDB).filter_by(medical_interview_id=interview_id).first()
+    if recording is None or (recording.capture_config or {}).get("mediaTransport") != "reusable_blocks_v1":
+        return None
+    from datetime import datetime, timezone
+    from app.speech.preserved_audio import preserved_patient_audio
+    if recording.failure_code == "retention_expired" or (recording.retention_expires_at and
+            recording.retention_expires_at <= datetime.now(timezone.utc)):
+        raise HTTPException(410, "Patient audio retention has expired")
+    recording_id = recording.id
+    db.rollback()
+    try:
+        path = await run_in_threadpool(preserved_patient_audio, get_media_storage(), interview_id,
+            recording_id, message_id, lambda: SpeechService().synthesize_patient_message(*inputs))
+    except (SpeechConfigurationError, SpeechProviderError) as error:
+        raise _speech_http_error(error) from error
+    except OSError as error:
+        raise HTTPException(503, "Patient audio could not be preserved") from error
+    return FileResponse(path, media_type="audio/mpeg", headers={"Cache-Control": "private, no-store"})
 
 
 class TranscriptionResponse(BaseModel):
@@ -58,19 +89,9 @@ def _speech_http_error(error: Exception) -> HTTPException:
     )
 
 
-@router.post(
-    "/medical-interviews/{interview_id}/messages/{message_id}/speech",
-    response_class=Response,
-)
-async def synthesize_patient_message(
-    interview_id: int,
-    message_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user),
-):
-    """Synthesize one authorized patient message with Azure OpenAI."""
+def _patient_speech_inputs(interview_id: int, message_id: int, db: Session, user_id: int):
     interview_controller = MedicalInterviewController(db)
-    if not interview_controller.validate_interview_access(interview_id, current_user.id):
+    if not interview_controller.validate_interview_access(interview_id, user_id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this interview",
@@ -96,13 +117,30 @@ async def synthesize_patient_message(
         if interview and interview.personality
         else None
     )
-    gender = interview.patient_gender if interview else None
+    return message.content, personality_namespace_key, interview.patient_gender if interview else None
+
+
+@router.post(
+    "/medical-interviews/{interview_id}/messages/{message_id}/speech",
+    response_class=Response,
+)
+async def synthesize_patient_message(
+    interview_id: int,
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Synthesize one authorized patient message with Azure OpenAI."""
+    inputs = _patient_speech_inputs(interview_id, message_id, db, current_user.id)
+
+    preserved = await _block_patient_audio(interview_id, message_id, inputs, db)
+    if preserved is not None:
+        return preserved
 
     try:
-        audio = SpeechService().synthesize_patient_message(
-            message.content,
-            personality_namespace_key,
-            gender,
+        audio = await run_in_threadpool(
+            SpeechService().synthesize_patient_message,
+            *inputs,
         )
     except (SpeechConfigurationError, SpeechProviderError) as error:
         logger.warning(
@@ -123,6 +161,55 @@ async def synthesize_patient_message(
             "X-Speech-Style-Version": audio.style_policy_version or "unversioned",
         },
     )
+
+
+class PatientSpeechStream(StreamingResponse):
+    async def stream_response(self, send):
+        try:
+            await super().stream_response(send)
+        finally:
+            with CancelScope(shield=True):
+                await self.body_iterator.aclose()
+
+
+def patient_speech_stream(request: SpeechSynthesisRequest, *, context: str) -> StreamingResponse:
+    chunks = AzureOpenAITextToSpeechProvider().stream(request)
+
+    async def body():
+        try:
+            chunk = await run_in_threadpool(next, chunks, None)
+            if not chunk:
+                raise SpeechProviderError("Text-to-speech provider returned empty audio")
+            while chunk is not None:
+                yield chunk
+                chunk = await run_in_threadpool(next, chunks, None)
+        except (OpenAIError, SpeechConfigurationError, SpeechProviderError, RuntimeError):
+            logger.warning("Patient speech stream failed (%s)", context)
+            raise RuntimeError("Patient speech stream failed") from None
+        finally:
+            with CancelScope(shield=True):
+                await run_in_threadpool(chunks.close)
+
+    return PatientSpeechStream(
+        body(),
+        media_type="audio/mpeg",
+        headers={"Cache-Control": "private, no-store", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/medical-interviews/{interview_id}/messages/{message_id}/speech")
+async def stream_patient_message(
+    interview_id: int,
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(_current_media_user),
+):
+    inputs = _patient_speech_inputs(interview_id, message_id, db, current_user.id)
+    preserved = await _block_patient_audio(interview_id, message_id, inputs, db)
+    if preserved is not None:
+        return preserved
+    request = create_patient_synthesis_request(*inputs)
+    return patient_speech_stream(request, context=f"interview {interview_id} message {message_id}")
 
 
 @router.post("/speech/transcriptions", response_model=TranscriptionResponse)
@@ -146,7 +233,8 @@ async def transcribe_audio(
         )
 
     try:
-        result = SpeechService().transcribe(
+        result = await run_in_threadpool(
+            SpeechService().transcribe,
             SpeechTranscriptionRequest(
                 content=content,
                 filename=audio.filename or "audio.webm",

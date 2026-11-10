@@ -1,0 +1,5 @@
+# Keep configuration bytes stable across development and production checkouts.
+*.json text eol=lf
+*.yaml text eol=lf
+# The inherited prompt templates contain significant literal whitespace.
+*.txt text eol=lf whitespace=-blank-at-eol,-blank-at-eof

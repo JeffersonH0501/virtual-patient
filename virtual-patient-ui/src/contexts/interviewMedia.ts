@@ -7,9 +7,12 @@ export type InterviewMediaContextValue = {
   microphoneStream: MediaStream | null;
   cameraState: MediaAccessState;
   microphoneState: MediaAccessState;
-  startCamera: () => Promise<void>;
-  startMicrophone: () => Promise<void>;
+  cameraDeviceId: string;
+  microphoneDeviceId: string;
+  startCamera: (deviceId?: string) => Promise<void>;
+  startMicrophone: (deviceId?: string) => Promise<void>;
   stopAll: () => void;
+  bindInterview: (interviewId: string) => void;
 };
 
 export const InterviewMediaContext = createContext<InterviewMediaContextValue | null>(null);

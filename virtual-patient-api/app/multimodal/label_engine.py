@@ -63,7 +63,8 @@ from .schemas import (
 
 _SLOT_TO_FEATURE: dict[str, dict[str, str]] = {
     # Paraverbal families
-    "temporal": {
+    "speech_timing": {
+        "pause_present": "pause_count",
         "global_rate": "speech_rate_wpm",
         "articulation": "articulation_rate_wpm",
         "pause_load": "pause_time_ratio",
@@ -71,34 +72,33 @@ _SLOT_TO_FEATURE: dict[str, dict[str, str]] = {
         "pause_frequency": "pause_frequency_per_min",
     },
     "prosodic_level": {
-        "pitch_level": "relative_pitch_shift_st",
         "loudness_level": "median_loudness",
     },
-    "prosodic_modulation": {
+    "prosodic_variability": {
         "pitch_variation": "f0_p20_p80_range_semitones",
         "loudness_variation": "loudness_p20_p80_range",
     },
     # Nonverbal families
-    "visual_orientation": {
-        "alignment": "visual_alignment_ratio",
+    "gaze_orientation": {
+        "alignment": "interaction_gaze_ratio",
         "dwell": "median_visual_alignment_dwell_ms",
     },
-    "head_gestural_feedback": {
+    "head_nods": {
         "nod_present": "nod_present",
         "nod_rate": "nod_rate_min",
         "context": "interaction_context",
     },
-    "facial_expressivity": {
+    "smile_activity": {
         "smile_activity": "smile_activity_ratio",
         "smile_activation": "mean_smile_activation",
     },
 }
 
-_PARAVERBAL_FAMILIES = ("temporal", "prosodic_level", "prosodic_modulation")
+_PARAVERBAL_FAMILIES = ("speech_timing", "prosodic_level", "prosodic_variability")
 _NONVERBAL_FAMILIES = (
-    "visual_orientation",
-    "head_gestural_feedback",
-    "facial_expressivity",
+    "gaze_orientation",
+    "head_nods",
+    "smile_activity",
 )
 
 

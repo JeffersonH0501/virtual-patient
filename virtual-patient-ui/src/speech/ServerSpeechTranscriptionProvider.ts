@@ -52,8 +52,8 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
     }
     this.language = language;
     this.active = true;
-    this.paused = false;
     this.callbacks.onError(null);
+    this.paused = false;
     void this.ensureCapture();
   }
 
@@ -71,7 +71,6 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
   resume(): void {
     if (!this.active || !this.paused) return;
     this.paused = false;
-    this.callbacks.onError(null);
     void this.ensureCapture();
   }
 
@@ -88,7 +87,7 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
     this.paused = false;
     this.inputGeneration += 1;
     this.stopAnalysis();
-    this.finishSegment(this.hasUsableSpeech());
+    this.finishSegment(false);
     this.releaseCapture();
     this.callbacks.onInterimTranscript('');
     this.callbacks.onAudioLevel?.(0);
@@ -151,6 +150,7 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
       return;
     }
     const chunks: Blob[] = [];
+    const captureGeneration = this.captureGeneration;
     const recorder = new MediaRecorder(this.stream, {mimeType}) as SegmentRecorder;
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunks.push(event.data);
@@ -162,7 +162,9 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
       const endedAt = metadata?.endedAt ?? performance.now();
       if (shouldTranscribe && chunks.length > 0) {
         const audio = new Blob(chunks, {type: mimeType});
-        this.enqueueTranscription(audio, mimeType, startedAt, endedAt, true);
+        this.enqueueTranscription(audio, mimeType, startedAt, endedAt, true, captureGeneration);
+      } else if (shouldTranscribe && this.active && captureGeneration === this.captureGeneration) {
+        this.callbacks.onError('transcription-empty');
       }
       if (this.active && !this.paused) this.startSegment();
     };
@@ -223,15 +225,18 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
     startedAt: number,
     endedAt: number,
     committedByStudent: boolean,
+    captureGeneration: number,
   ): void {
     const language = this.language.toLowerCase().startsWith('es') ? 'es' : 'en';
     const filename = `student-utterance.${extensionFor(mimeType)}`;
     const generation = this.inputGeneration;
     this.transcriptionQueue = this.transcriptionQueue
       .then(async () => {
+        if (!this.active || captureGeneration !== this.captureGeneration) return;
         const result = await transcribeStudentAudio(audio, filename, language);
         if (
           !this.active
+          || captureGeneration !== this.captureGeneration
           || (!committedByStudent && (this.paused || generation !== this.inputGeneration))
         ) return;
         const text = result.text.trim();
@@ -242,9 +247,15 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
             inputSource: 'azure_openai_stt',
             timingSource: 'client_audio_activity',
           });
+        } else {
+          this.callbacks.onError('transcription-empty');
         }
       })
-      .catch(() => this.callbacks.onError('transcription-failed'));
+      .catch(() => {
+        if (this.active && captureGeneration === this.captureGeneration) {
+          this.callbacks.onError('transcription-failed');
+        }
+      });
   }
 
   private stopAnalysis(): void {

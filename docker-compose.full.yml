@@ -1,4 +1,4 @@
-name: virtual-patient
+name: ${COMPOSE_PROJECT_NAME:-virtual-patient}
 
 x-api-environment: &api-environment
   POSTGRES_HOST: postgres
@@ -11,6 +11,7 @@ x-api-environment: &api-environment
   SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:?Set SUPERUSER_EMAIL in .env.full}
   SUPERUSER_NAME: ${SUPERUSER_NAME:?Set SUPERUSER_NAME in .env.full}
   SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:?Set SUPERUSER_PASSWORD in .env.full}
+  RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:?Set RECAPTCHA_SECRET_KEY in .env.full}
   ENV: production
   AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?Set AZURE_OPENAI_API_KEY in .env.full}
   AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:?Set AZURE_OPENAI_ENDPOINT in .env.full}
@@ -21,8 +22,21 @@ x-api-environment: &api-environment
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:?Set AZURE_OPENAI_TTS_DEPLOYMENT_NAME in .env.full}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:?Set AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME in .env.full}
   VIDEO_PROCESSING_WORKER_URL: http://video-processing-worker:8010
-  VIDEO_PROCESSING_WORKER_TOKEN: ${VIDEO_PROCESSING_WORKER_TOKEN:?Set VIDEO_PROCESSING_WORKER_TOKEN in .env.full}
-  VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS: ${VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS:-180}
+
+x-deployment-files: &deployment-files
+  configs:
+    - source: deployment_policy
+      target: /app/config/deployment.json
+  secrets:
+    - video_processing_worker_token
+
+configs:
+  deployment_policy:
+    file: ./config/deployment.json
+
+secrets:
+  video_processing_worker_token:
+    file: ./config/secrets/video-processing-worker-token.txt
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -30,7 +44,7 @@ x-api-build: &api-build
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-virtual_patient}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -45,7 +59,9 @@ services:
       retries: 20
 
   setup:
+    <<: *deployment-files
     build: *api-build
+    env_file: ./virtual-patient-api/config/native-runtime.conf
     environment: *api-environment
     command: ["python", "scripts/setup_db.py"]
     depends_on:
@@ -55,8 +71,12 @@ services:
     profiles: ["tools"]
 
   api:
+    <<: *deployment-files
     build: *api-build
+    env_file: ./virtual-patient-api/config/native-runtime.conf
     environment: *api-environment
+    cpus: 3.0
+    mem_limit: 4g
     expose:
       - "8000"
     volumes:
@@ -74,8 +94,12 @@ services:
       start_period: 30s
 
   video-processing-worker:
+    <<: *deployment-files
     build: *api-build
+    env_file: ./virtual-patient-api/config/native-runtime.conf
     environment: *api-environment
+    cpus: 3.0
+    mem_limit: 4g
     expose:
       - "8010"
     command: ["uvicorn", "app.multimodal.video_processing_worker:app", "--host", "0.0.0.0", "--port", "8010"]
@@ -104,16 +128,13 @@ services:
         VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:?Set VITE_RECAPTCHA_SITE_KEY in .env.full}
         VITE_SPEECH_INPUT_PROVIDER: ${VITE_SPEECH_INPUT_PROVIDER:-server}
     ports:
-      - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
-    volumes:
-      - ./virtual-patient-ui/ssl:/etc/nginx/ssl:ro
+      - "127.0.0.1:${HTTP_PORT:-8091}:80"
     depends_on:
       api:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "--fail", "--insecure", "https://localhost/health"]
+      test: ["CMD", "curl", "--fail", "http://127.0.0.1/health"]
       interval: 30s
       timeout: 10s
       retries: 5

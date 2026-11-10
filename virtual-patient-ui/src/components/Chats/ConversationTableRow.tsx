@@ -1,13 +1,15 @@
-import {FC, useMemo} from 'react';
-import {Badge} from '../common/Table/Badge';
+import {DateTime} from '../common/DateTime';
+import {ClinicalCaseCell} from '../common/ClinicalCaseCell';
+import {FC} from 'react';
+import {Badge} from '../common/Badge';
 import {useNavigate} from 'react-router-dom';
 import {ClinicalCaseSimplified} from '../../services/clinicalCases';
 import {useTranslation} from 'react-i18next';
 import {formatDuration} from '../../utils/duration';
 import {Personality} from '../../types/personality';
-import {interviewPath} from '../../utils/routes';
-import {Eye, Trash} from '../../icons';
-import {EvaluationScore} from '../common';
+import {interviewPath, ROUTES} from '../../utils/routes';
+import {Button, EvaluationScore} from '../common';
+import {Trash2} from 'lucide-react';
 
 type TableRowProps = {
   id: string;
@@ -18,8 +20,10 @@ type TableRowProps = {
   score?: number | null;
   clinicalCase: ClinicalCaseSimplified;
   personality?: Personality | null;
-  analysisProgress?: {completed: number; total: number; percentage: number} | null;
+  isAssigned?: boolean;
+  manualRatingStatus?: 'pending' | 'in_progress' | 'submitted';
   onDelete: (id: number) => void;
+  canRetryCompletion?: boolean;
 };
 
 export const ConversationTableRow: FC<TableRowProps> = ({
@@ -31,91 +35,89 @@ export const ConversationTableRow: FC<TableRowProps> = ({
   score,
   clinicalCase,
   personality,
+  isAssigned = false,
+  manualRatingStatus = 'pending',
   onDelete,
+  canRetryCompletion = false,
 }) => {
   const navigate = useNavigate();
   const {t} = useTranslation();
 
-  // Calculate live duration for in-progress interviews
-  const liveDuration = useMemo(() => {
-    if (status === 'in_progress' && startTime) {
-      const now = new Date().getTime();
-      const start = new Date(startTime).getTime();
-      return Math.floor((now - start) / 1000);
-    }
-    return 0;
-  }, [status, startTime]);
-
-  const canOpenInterview = status === 'completed' || status === 'in_progress';
+  const canOpenInterview = status === 'completed' || status === 'in_progress' || status === 'processing' || (status === 'interrupted' && canRetryCompletion);
   const handleOpenInterview = () => {
-    if (status === 'completed') {
+    if (!canOpenInterview) return;
+    if (status === 'completed' || status === 'processing' || (status === 'interrupted' && canRetryCompletion)) {
       navigate(interviewPath(id, 'review'));
       return;
     }
-    if (status === 'in_progress') {
-      navigate(interviewPath(id, startTime ? 'session' : 'calibration'));
+    if (status === 'in_progress' && startTime) {
+      navigate(interviewPath(id, 'session'));
+    } else if (status === 'in_progress') {
+      navigate(ROUTES.calibration, {state: {draftInterviewId: Number(id)}});
     }
   };
 
-  const statusVariant =
-    status === 'completed' ? 'green' : status === 'interrupted' ? 'red' : 'blue';
+  const awaitingManualRating = (status === 'completed' || status === 'processing') && manualRatingStatus !== 'submitted';
+  const statusVariant = status === 'completed' && !awaitingManualRating ? 'success' : status === 'interrupted' ? 'danger' : 'info';
 
   return (
-    <tr
-      className="conversation-table-columns px-0 py-4 border-b border-gray-100 border-solid max-md:min-w-table hover:bg-gray-50"
-    >
-      <td className="flex min-w-0 table-column-date flex-col justify-center gap-0.5 px-6 py-0 text-left text-sm leading-5 text-gray-500 max-sm:px-3 max-sm:py-0">
-        <span>{new Date(createdAt).toLocaleDateString(undefined, {
-          year: 'numeric',
-          month: 'short',
-          day: 'numeric',
-        })}</span>
-        <span>{new Date(createdAt).toLocaleTimeString(undefined, {
-          hour: '2-digit',
-          minute: '2-digit',
-        })}</span>
+    <tr className={canOpenInterview ? 'ui-interactive-row' : undefined}
+      tabIndex={canOpenInterview ? 0 : undefined}
+      aria-label={canOpenInterview ? `${t('conversations.viewInterview')} ${id}` : undefined}
+      onClick={handleOpenInterview}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          handleOpenInterview();
+        }
+      }}>
+      <td>{id}</td>
+      <td>
+        <DateTime value={createdAt} />
       </td>
-      <td className="flex min-w-0 table-column-case flex-col justify-center gap-0.5 px-6 py-0 text-left text-sm leading-5 max-sm:px-3 max-sm:py-0">
-        <span className="font-medium text-gray-900">{clinicalCase.title}</span>
-        <span className="text-xs text-gray-500">{personality?.name || 'N/A'}</span>
+      <td>
+        <ClinicalCaseCell title={clinicalCase.title} personality={personality?.name} />
       </td>
-      <td className="flex min-w-0 table-column-duration items-center px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
+      <td>
         {status === 'in_progress' && !startTime
           ? t('calibration.notStarted')
-          : status === 'in_progress'
-            ? formatDuration(liveDuration, t('conversations.min'))
-            : formatDuration(duration, t('conversations.min'))}
+          : duration == null ? t('conversations.notAvailable') : formatDuration(duration)}
       </td>
-      <td className="flex min-w-0 table-column-status flex-wrap items-center gap-2 px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
-        <Badge variant={statusVariant}>{status === 'in_progress' && !startTime ? t('calibration.pending') : t(`clinicalChat.${status}`)}</Badge>
+      <td>
+        <div className="flex flex-wrap gap-layout">
+        {isAssigned && <Badge tone="info">{t('conversations.assigned')}</Badge>}
+        <Badge tone={statusVariant}>
+          {status === 'in_progress' && !startTime
+            ? t('calibration.pending')
+            : awaitingManualRating
+              ? t('conversations.pendingEvaluation')
+              : status === 'processing' ? t('conversations.evaluating')
+              : t(`clinicalChat.${status}`)}
+        </Badge>
+        </div>
       </td>
-      <td className="flex min-w-0 table-column-score items-center px-6 py-0 text-left text-sm text-gray-500 max-sm:px-3 max-sm:py-0">
+      <td>
         {status === 'processing' ? null : score != null ? (
-          <EvaluationScore score={score} size="small" />
+          <EvaluationScore score={score} size="compact" />
         ) : (
-          <span className="text-xs text-slate-500">{t('conversations.notAvailable')}</span>
+          <span className="text-neutral-500 secondary-text">{t('conversations.notAvailable')}</span>
         )}
       </td>
-      <td className="flex min-w-0 table-column-action items-center justify-start gap-2 px-6 py-0 max-sm:px-3">
-        <button
-          type="button"
-          onClick={handleOpenInterview}
-          disabled={!canOpenInterview}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control border-0 bg-slate-100 text-slate-700 transition-colors hover:bg-blue-50 hover:text-blue-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-slate-100 disabled:hover:text-slate-700 [&_svg]:h-5 [&_svg]:w-5"
-          aria-label={t('conversations.viewInterview')}
-          title={t('conversations.viewInterview')}
-        >
-          <Eye />
-        </button>
-        <button
-          type="button"
-          onClick={() => onDelete(Number(id))}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-control border-0 bg-slate-100 text-slate-700 transition-colors hover:bg-danger-50 hover:text-danger-700 [&_svg]:h-5 [&_svg]:w-5"
-          aria-label={t('conversations.deleteInterview')}
-          title={t('conversations.deleteInterview')}
-        >
-          <Trash />
-        </button>
+      <td>
+        <div className="ui-table-options ui-table-options--icons">
+          {!isAssigned && <Button
+            variant="secondary"
+            onClick={(event) => {
+              event.stopPropagation();
+              onDelete(Number(id));
+            }}
+            className="ui-icon-button ui-button--hover-danger"
+            aria-label={t('conversations.deleteInterview')}
+            title={t('conversations.deleteInterview')}
+          >
+            <Trash2 aria-hidden="true" />
+          </Button>}
+        </div>
       </td>
     </tr>
   );

@@ -3,7 +3,7 @@
 
 Re-runs the full staged multimodal pipeline
 (:func:`app.multimodal.pipeline.process_multimodal_interview`) for one or more
-interviews. The pipeline re-extracts media (OpenSMILE + MediaPipe, BlazeGaze,
+interviews. The pipeline re-extracts media (OpenSMILE + MediaPipe,
 smile blendshapes, and CCDb-HG), preprocesses,
 thresholds, and labels both modalities in a single pass, then persists the
 layered per-turn result. To relabel from *already stored* raw/processed features

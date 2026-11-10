@@ -1,6 +1,6 @@
 import {useEffect, useRef} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Camera} from '../../icons';
+import {Camera} from 'lucide-react';
 
 type CallStageProps = {
   className?: string;
@@ -42,62 +42,62 @@ export const CallStage = ({
 
   return (
     <section
-      className={`grid grid-cols-1 gap-2 md:flex md:h-full md:min-h-0 md:flex-col md:items-center ${className}`}
+      className={`grid grid-cols-1 gap-layout md:flex md:h-full md:min-h-0 md:flex-col md:items-center ${className}`}
       aria-label={t('clinicalChat.call.videoArea')}
     >
-      <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-900 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
-        <span data-patient-roi-anchor className="pointer-events-none absolute inset-0" aria-hidden="true" />
+      <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-neutral-900 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
         <div
-          className={`absolute inset-0 bg-gradient-to-br from-slate-800 to-slate-950 transition-opacity ${
+          className={`absolute inset-0 bg-gradient-to-br from-neutral-800 to-neutral-950 motion-opacity ${
             patientSpeaking ? 'opacity-80' : 'opacity-100'
           }`}
         />
         <div
-          className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 ring-4 transition-all sm:h-24 sm:w-24 ${
+          className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-warning-100 ring-4 motion-speaking sm:h-24 sm:w-24 ${
             patientSpeaking
-              ? 'scale-105 ring-emerald-400 shadow-speaking'
+              ? 'scale-105 ring-success-400 shadow-speaking'
               : 'ring-white/15'
           }`}
         >
           <img
+            data-patient-roi-anchor
             src={patientAvatar}
             alt=""
             className="h-patient-avatar w-patient-avatar rounded-full object-cover"
           />
         </div>
-        <div className="absolute inset-x-0 bottom-0 bg-black/45 px-3 py-2 text-left text-xs text-white backdrop-blur-sm">
+        <div className="absolute inset-x-0 bottom-0 bg-black/45 px-inset py-inset text-left text-white backdrop-blur-sm secondary-text">
           <span className="truncate">{patientName || t('clinicalChat.call.patient')}</span>
         </div>
       </article>
 
-      <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-slate-800 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
+      <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-neutral-800 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
         {cameraEnabled && cameraStream ? (
           <video
             ref={videoRef}
             autoPlay
             muted
             playsInline
-            className="h-full w-full -scale-x-100 bg-slate-950 object-contain"
+            className="h-full w-full -scale-x-100 bg-neutral-950 object-contain"
             aria-label={t('clinicalChat.call.studentCamera')}
           />
         ) : (
-          <div className="flex max-w-camera-notice flex-col items-center gap-2 px-3 text-center text-xs text-slate-200">
+          <div className="flex max-w-camera-notice flex-col items-center gap-layout px-inset text-center text-neutral-200 secondary-text">
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
-              <span className="block h-camera-icon w-camera-icon [&_svg]:h-full [&_svg]:w-full"><Camera color="currentColor" /></span>
+              <span className="block h-camera-icon w-camera-icon [&_svg]:h-full [&_svg]:w-full"><Camera /></span>
             </span>
             <span>{cameraMessage}</span>
             {cameraErrorCode && (
               <button
                 type="button"
                 onClick={onRetryCamera}
-                className="rounded-lg border border-white/30 bg-white/10 px-2 py-1 text-xs text-white hover:bg-white/20"
+                className="rounded-lg border border-white/30 bg-white/10 px-layout py-layout text-white hover:bg-white/20 secondary-text"
               >
                 {t('clinicalChat.call.retryCamera')}
               </button>
             )}
           </div>
         )}
-        <div className="absolute inset-x-0 bottom-0 bg-black/45 px-3 py-2 text-left text-xs text-white backdrop-blur-sm">
+        <div className="absolute inset-x-0 bottom-0 bg-black/45 px-inset py-inset text-left text-white backdrop-blur-sm secondary-text">
           <span className="block truncate">{studentName}</span>
         </div>
       </article>

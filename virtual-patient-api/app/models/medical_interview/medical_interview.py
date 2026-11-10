@@ -1,5 +1,5 @@
 from __future__ import annotations
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Dict, Any, Literal
 from datetime import datetime
 from sqlalchemy import Column, String, DateTime, ForeignKey, Enum, JSON, Integer
@@ -36,14 +36,26 @@ class MedicalInterviewDB(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships
+    calibration_captures = relationship("CalibrationCaptureDB", back_populates="medical_interview", cascade="all, delete-orphan")
     user = relationship("UserDB", back_populates="medical_interviews")
     clinical_case = relationship("ClinicalCaseDB")
     personality = relationship("PersonalityDB")
-    messages = relationship("InterviewMessageDB", back_populates="medical_interview", cascade="all, delete-orphan", order_by="InterviewMessageDB.created_at")
+    messages = relationship("InterviewMessageDB", back_populates="medical_interview", cascade="all, delete-orphan", order_by="(InterviewMessageDB.created_at, InterviewMessageDB.id)")
     hypotheses = relationship("UserHypothesisDB", back_populates="medical_interview", cascade="all, delete-orphan")
     session_notes = relationship("MedicalSessionNoteDB", back_populates="medical_interview", cascade="all, delete-orphan")
     progress_summary = relationship("ProgressSummaryDB", back_populates="medical_interview", uselist=False, cascade="all, delete-orphan")
-    interview_evaluation = relationship("InterviewEvaluationDB", back_populates="medical_interview", uselist=False, cascade="all, delete-orphan")
+    interview_evaluations = relationship("InterviewEvaluationDB", back_populates="medical_interview", cascade="all, delete-orphan")
+    # Preserve singular legacy consumers and their default text-only score.
+    interview_evaluation = relationship(
+        "InterviewEvaluationDB",
+        primaryjoin="and_(MedicalInterviewDB.id == InterviewEvaluationDB.medical_interview_id, InterviewEvaluationDB.evaluation_condition == 'TEXT_ONLY')",
+        uselist=False, viewonly=True,
+    )
+    multimodal_interview_evaluation = relationship(
+        "InterviewEvaluationDB",
+        primaryjoin="and_(MedicalInterviewDB.id == InterviewEvaluationDB.medical_interview_id, InterviewEvaluationDB.evaluation_condition == 'TEXT_PLUS_MULTIMODAL')",
+        uselist=False, viewonly=True,
+    )
     teacher_feedback = relationship("TeacherFeedbackDB", back_populates="medical_interview", cascade="all, delete-orphan")
     recording = relationship(
         "InterviewRecordingDB",
@@ -69,7 +81,17 @@ class MedicalInterviewBase(BaseModel):
     personality_id: Optional[int] = None
 
 class MedicalInterviewCreate(MedicalInterviewBase):
+    calibration_test: bool = Field(default=False, strict=True)
+    draft_request_id: Optional[str] = Field(default=None, min_length=36, max_length=36)
     patient_response_language: Literal["en", "es"] = "en"
+
+    @model_validator(mode='after')
+    def require_block_transport(self):
+        metadata = dict(self.interview_metadata or {})
+        if metadata.get('recording_transport', 'reusable_blocks_v1') != 'reusable_blocks_v1':
+            raise ValueError('Only reusable_blocks_v1 recording transport is supported')
+        self.interview_metadata = {**metadata, 'recording_transport': 'reusable_blocks_v1'}
+        return self
 
 class MedicalInterviewUpdate(BaseModel):
     status: Optional[InterviewStatus] = None
@@ -79,6 +101,15 @@ class MedicalInterviewUpdate(BaseModel):
     patient_photo: Optional[str] = None
     patient_gender: Optional[str] = None
     personality_id: Optional[int] = None
+
+
+class InterviewLifecycle(BaseModel):
+    phase: Literal["preparing", "active", "resume_required", "capture_finalized", "processing", "completed", "interrupted", "completion_failed"]
+    can_resume_capture: bool
+    can_complete: bool
+    can_retry_completion: bool
+    error_code: str | None = None
+    recording_transport: str | None = None
 
 class MedicalInterview(MedicalInterviewBase):
     id: int
@@ -96,5 +127,8 @@ class MedicalInterview(MedicalInterviewBase):
         populate_by_name = True
 
 class MedicalInterviewWithScore(MedicalInterview):
+    is_assigned: bool = False
+    manual_rating_status: Literal["pending", "in_progress", "submitted"] = "pending"
     evaluation_score: Optional[float] = Field(None, ge=0, le=5, description="Overall evaluation score from 0 to 5")
     analysis_progress: Optional[Dict[str, int]] = None
+    review_progress: Optional[int] = Field(None, ge=0, lt=100)

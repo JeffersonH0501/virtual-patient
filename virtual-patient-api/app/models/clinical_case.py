@@ -120,38 +120,7 @@ class ClinicalCaseBase(BaseModel):
     female_name_translations: Optional[Dict[str, str]] = {}
     male_name_translations: Optional[Dict[str, str]] = {}
 
-class ClinicalCaseCreate(ClinicalCaseBase):
-    pass
 
-class ClinicalCaseUpdate(BaseModel):
-    case_key: Optional[str] = None  # Unique key for default cases (e.g., 'diabetes', 'copd')
-    title: Optional[str] = None
-    description: Optional[str] = None
-    case_type: Optional[CaseType] = None
-    organization_id: Optional[int] = None
-    active: Optional[bool] = None
-    created_by: Optional[int] = None  # Only for custom cases
-    icon: Optional[str] = None
-    age: Optional[int] = None
-    weight_in_kg: Optional[float] = None
-    physical_requirements: Optional[str] = None
-    socioeconomic_status: Optional[str] = None
-    # New fields for gender-specific data
-    female_photo: Optional[str] = None
-    male_photo: Optional[str] = None
-    female_name: Optional[str] = None
-    male_name: Optional[str] = None
-    gender_restriction: Optional[str] = None  # Optional: "male", "female", or None (both allowed)
-    patient_context: Optional[str] = None
-    chief_complaint: Optional[str] = None
-    present_illness: Optional[str] = None
-    personal_medical_history: Optional[str] = None
-    surgical_history: Optional[str] = None
-    family_history: Optional[str] = None
-    medications: Optional[str] = None
-    habits: Optional[str] = None
-    allergies: Optional[str] = None
-    concerns: Optional[str] = None
 
 class CreatedByUser(BaseModel):
     """User who created the clinical case (only for custom cases)"""

@@ -1,71 +1,42 @@
 import {API_URL} from '../../utils/request';
+import {apiFetch} from '../../utils/apiFetch';
 import {getAuthHeaders} from '../auth/authHeaders';
 
 export type StudentsMetrics = {
-  activeStudentsCount: number;
-  completedStudentsCount: number;
+  activeCount: number;
+  completedCount: number;
   averageScore: number;
-  totalEvaluations: number;
   hasData: boolean;
 };
 
-export const getStudentsMetrics = async (organizationId: string): Promise<StudentsMetrics> => {
-  const authHeaders = getAuthHeaders();
-  
-  try {
-    // Fetch all three metrics in parallel
-    const [activeStudentsResponse, completedStudentsResponse, averageScoreResponse] = await Promise.all([
-      fetch(`${API_URL}/medical-interviews/organization/${organizationId}/active-students-count`, {
-        method: 'GET',
-        headers: {
-          accept: 'application/json',
-          ...authHeaders,
-        },
-      }),
-      fetch(`${API_URL}/medical-interviews/organization/${organizationId}/completed-students-count`, {
-        method: 'GET',
-        headers: {
-          accept: 'application/json',
-          ...authHeaders,
-        },
-      }),
-      fetch(`${API_URL}/medical-interviews/organization/${organizationId}/average-score`, {
-        method: 'GET',
-        headers: {
-          accept: 'application/json',
-          ...authHeaders,
-        },
-      }),
-    ]);
-
-    // Check if all requests were successful
-    if (!activeStudentsResponse.ok || !completedStudentsResponse.ok || !averageScoreResponse.ok) {
-      throw new Error('Failed to fetch students metrics');
-    }
-
-    // Parse responses
-    const [activeStudentsData, completedStudentsData, averageScoreData] = await Promise.all([
-      activeStudentsResponse.json(),
-      completedStudentsResponse.json(),
-      averageScoreResponse.json(),
-    ]);
-
-    return {
-      activeStudentsCount: activeStudentsData.active_students_count || 0,
-      completedStudentsCount: completedStudentsData.completed_students_count || 0,
-      averageScore: averageScoreData.average_score || 0,
-      totalEvaluations: averageScoreData.total_evaluations || 0,
-      hasData: averageScoreData.has_data || false,
-    };
-  } catch (error) {
-    console.error('Error fetching students metrics:', error);
-    // Return default values on error
-    return {
-      activeStudentsCount: 0,
-      completedStudentsCount: 0,
-      averageScore: 0,
-      totalEvaluations: 0,
-      hasData: false,
-    };
-  }
+export const getStudentsMetrics = async (
+  organizationId: string,
+  countInterviews = false,
+): Promise<StudentsMetrics> => {
+  const getMetric = async (path: string) => {
+    const response = await apiFetch(
+      API_URL + '/medical-interviews/organization/' + organizationId + '/' + path,
+      {headers: {accept: 'application/json', ...getAuthHeaders()}},
+    );
+    if (!response.ok) throw new Error('errors.generic');
+    return response.json();
+  };
+  const [counts, average] = await Promise.all([
+    countInterviews
+      ? getMetric('interview-counts')
+      : Promise.all([
+          getMetric('active-students-count'),
+          getMetric('completed-students-count'),
+        ]).then(([active, completed]) => ({
+          active_interviews_count: active.active_students_count,
+          completed_interviews_count: completed.completed_students_count,
+        })),
+    getMetric('average-score'),
+  ]);
+  return {
+    activeCount: counts.active_interviews_count,
+    completedCount: counts.completed_interviews_count,
+    averageScore: average.average_score ?? 0,
+    hasData: average.has_data,
+  };
 };

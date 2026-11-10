@@ -50,7 +50,7 @@ def _valid_thresholds() -> dict[str, Any]:
         "version": "thresholds_v1",
         "min_turns_for_session_stats": 4,
         "paraverbal": {
-            "temporal": {
+            "speech_timing": {
                 "speech_rate_wpm": {
                     "strategy": "fixed_bands",
                     "low_below": 110,
@@ -60,7 +60,7 @@ def _valid_thresholds() -> dict[str, Any]:
             }
         },
         "nonverbal": {
-            "visual_orientation": {
+            "gaze_orientation": {
                 "visual_alignment_ratio": {
                     "strategy": "fixed_bands",
                     "low_below": 0.30,
@@ -76,9 +76,9 @@ def _valid_label_rules() -> dict[str, Any]:
     """A minimal structurally valid label_rules config."""
 
     return {
-        "version": "label_rules_v1",
+        "version": "label_rules_v2_no_voice_baseline",
         "families": {
-            "temporal": {
+            "speech_timing": {
                 "rules": [
                     {"value": "typical", "all": {"global_rate": "typical"}},
                 ],
@@ -142,8 +142,10 @@ def test_load_real_config_exposes_expected_versions_and_hash() -> None:
 
     assert isinstance(config, MethodologyConfig)
     # Versions come from the real bundled files (only the two research files).
-    assert config.versions.thresholds == "thresholds_v1"
-    assert config.versions.label_rules == "label_rules_v1"
+    assert config.versions.thresholds == "thresholds_v5_interaction_vad"
+    assert config.versions.label_rules == "label_rules_v3_interaction_vad"
+    assert len(config.versions.glossary_sha256) == 64
+    assert "glossary.yaml" in config.source_documents
     # Sections are parsed mappings.
     assert isinstance(config.thresholds, dict)
     assert isinstance(config.label_rules, dict)
@@ -157,8 +159,13 @@ def test_load_real_config_exposes_expected_versions_and_hash() -> None:
 def test_default_config_dir_points_at_bundled_config() -> None:
     """Sanity check that the default config directory holds the two files."""
 
-    assert (DEFAULT_CONFIG_DIR / _THRESHOLDS_FILE).is_file()
-    assert (DEFAULT_CONFIG_DIR / _LABEL_RULES_FILE).is_file()
+    assert (DEFAULT_CONFIG_DIR / "thresholds" / _THRESHOLDS_FILE).is_file()
+    assert (DEFAULT_CONFIG_DIR / "labels" / _LABEL_RULES_FILE).is_file()
+
+
+def test_glossary_changes_methodology_hash():
+    from app.multimodal.config_loader import _compute_config_hash
+    assert _compute_config_hash({}, {}, {"label": "first"}) != _compute_config_hash({}, {}, {"label": "second"})
 
 
 # ---------------------------------------------------------------------------
@@ -339,11 +346,11 @@ def test_present_null_value_is_preserved_as_none(tmp_path: Path) -> None:
     """
 
     thresholds = _valid_thresholds()
-    thresholds["paraverbal"]["temporal"]["speech_rate_wpm"]["low_below"] = None
+    thresholds["paraverbal"]["speech_timing"]["speech_rate_wpm"]["low_below"] = None
     config_dir = _write_config_dir(tmp_path / "cfg", thresholds=thresholds)
 
     config = load_methodology_config(config_dir=config_dir)
 
-    entry = config.thresholds["paraverbal"]["temporal"]["speech_rate_wpm"]
+    entry = config.thresholds["paraverbal"]["speech_timing"]["speech_rate_wpm"]
     assert "low_below" in entry
     assert entry["low_below"] is None

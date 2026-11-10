@@ -1,3 +1,4 @@
+import {LIST_PAGE_SIZE} from '../../utils/pagination';
 import {transformToCamelCase} from '../../utils/apiTransform';
 import {API_URL} from '../../utils/request';
 import {apiFetch} from '../../utils/apiFetch';
@@ -7,14 +8,14 @@ import {OrganizationInterview} from '../../types/interview';
 export const getOrganizationInterviews = async (
   organizationId: string,
   skip = 0,
-  limit = 100
+  limit = LIST_PAGE_SIZE,
 ) => {
   const authHeaders = getAuthHeaders();
   const params = new URLSearchParams({
     skip: skip.toString(),
     limit: limit.toString(),
   });
-  
+
   const response = await apiFetch(
     `${API_URL}/medical-interviews/organization/${organizationId}?${params.toString()}`,
     {
@@ -23,7 +24,7 @@ export const getOrganizationInterviews = async (
         accept: 'application/json',
         ...authHeaders,
       },
-    }
+    },
   );
 
   if (!response.ok) {
@@ -32,5 +33,12 @@ export const getOrganizationInterviews = async (
   }
 
   const data = await response.json();
-  return transformToCamelCase(data) as OrganizationInterview[];
+  const total = Number(response.headers.get('X-Total-Count'));
+  if (!response.headers.has('X-Total-Count') || !Number.isInteger(total) || total < 0) {
+    throw new Error('errors.generic');
+  }
+  return {
+    interviews: transformToCamelCase(data) as OrganizationInterview[],
+    total,
+  };
 };

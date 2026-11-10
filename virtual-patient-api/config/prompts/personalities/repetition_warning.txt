@@ -1,0 +1,4 @@
+
+CRITICAL - AVOID REPETITION:
+You have already used certain phrases in previous responses. DO NOT repeat them.
+Look at what you've said before and do not add strong personality traits in every response if you mentioned them before.

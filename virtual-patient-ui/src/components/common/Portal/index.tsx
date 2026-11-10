@@ -1,8 +1,9 @@
 import {FC, PropsWithChildren as WithChildren, useState, useEffect} from 'react';
 import * as ReactDOM from 'react-dom';
 
-import {useDebounce, useOnKeyDown, useOnOutsideClick} from '../../../hooks/';
-import {ESC_KEY_CODE} from '../../../hooks/useOnKeyDown';
+import {useDebounce} from '../../../hooks/useDebounce';
+import {useOnKeyDown, ESC_KEY_CODE} from '../../../hooks/useOnKeyDown';
+import {useOnOutsideClick} from '../../../hooks/useOnOutsideClick';
 import {DurationInMs} from '../../../types';
 import {awaitPortalUnmount, createContainerHTMLElement} from './utils';
 

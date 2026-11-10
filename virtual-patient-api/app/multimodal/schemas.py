@@ -56,19 +56,17 @@ class UnavailableReason(str, Enum):
     FEATURE_UNAVAILABLE = "feature_unavailable"
     PROCESSING_ERROR = "processing_error"
     GAZE_CALIBRATION_PENDING = "gaze_calibration_pending"
+    OUTSIDE_CALIBRATED_GEOMETRY = "outside_calibrated_geometry"
     NOD_MODEL_PENDING = "nod_model_pending"
 
 
 class PersonalBaseline(BaseModel):
     """Per-participant numeric reference derived from calibration media.
 
-    Fundamental frequency is stored in semitones only, never in Hertz
-    (Requirement 7.6, 15.6). Both gaze axes are required so every valid baseline
+    Both gaze axes are required so every valid baseline
     supports participant-relative visual alignment.
     """
 
-    baseline_f0_semitones: float
-    baseline_loudness: float
     neutral_head_yaw: float
     neutral_head_pitch: float
     neutral_head_roll: float
@@ -88,12 +86,19 @@ class ParaverbalRawFeatures(BaseModel):
     segmentation, per-signal metadata, and quality; it carries no labels.
     """
 
-    word_count: int
+    word_count: int | None
+    transcript_ref: dict | None = None
     voiced_duration_ms: int
     f0_samples_semitones: list[float]
     loudness_samples: list[float]
     pause_segments_ms: list[float]
     turn_duration_ms: int
+    vad_speech_intervals_ms: list[tuple[float, float]] | None = None
+    vad_probabilities: list[float] = Field(default_factory=list)
+    vad_model: dict = Field(default_factory=dict)
+    audio_start_ms: int | None = None
+    f0_timestamps_ms: list[float] = Field(default_factory=list)
+    loudness_timestamps_ms: list[float] = Field(default_factory=list)
     extractor: dict
     audio_quality: dict
 
@@ -102,13 +107,14 @@ class ParaverbalProcessedFeatures(BaseModel):
     """Derived paraverbal metrics computed by preprocessing.
 
     Every field is optional so that a feature that could not be derived is
-    represented as ``None`` rather than a fabricated number. ``relative_pitch_shift_st``
-    requires a ``PersonalBaseline`` and is ``None`` when no baseline is available.
+    represented as ``None`` rather than a fabricated number.
     Field names match the derivation formulas in the design.
     """
 
     speech_rate_wpm: float | None = None
     articulation_rate_wpm: float | None = None
+    speech_window_duration_ms: float | None = None
+    speech_active_duration_ms: float | None = None
     pause_count: int | None = None
     total_pause_duration_ms: float | None = None
     median_pause_duration_ms: float | None = None
@@ -118,7 +124,6 @@ class ParaverbalProcessedFeatures(BaseModel):
     f0_median_semitones: float | None = None
     f0_p20_p80_range_semitones: float | None = None
     loudness_p20_p80_range: float | None = None
-    relative_pitch_shift_st: float | None = None
 
 
 class FamilyLabel(BaseModel):
@@ -143,29 +148,29 @@ class ParaverbalBaseLabels(BaseModel):
     produced by the threshold engine.
     """
 
-    temporal: dict[str, FamilyLabel]
+    speech_timing: dict[str, FamilyLabel]
     prosodic_level: dict[str, FamilyLabel]
-    prosodic_modulation: dict[str, FamilyLabel]
+    prosodic_variability: dict[str, FamilyLabel]
 
 
 class ParaverbalIntegratedLabels(BaseModel):
     """Exactly one integrated paraverbal label per family."""
 
-    temporal: FamilyLabel
+    speech_timing: FamilyLabel
     prosodic_level: FamilyLabel
-    prosodic_modulation: FamilyLabel
+    prosodic_variability: FamilyLabel
 
 
 # ---------------------------------------------------------------------------
 # Nonverbal contracts (symmetric to the paraverbal contracts, Requirement 3.2)
-# Families: visual_orientation, head_gestural_feedback, facial_expressivity.
+# Families: gaze_orientation, head_nods, smile_activity.
 # ---------------------------------------------------------------------------
 
 
 class NonverbalRawFeatures(BaseModel):
     """Signal-level nonverbal outputs of extraction, before derivation.
 
-    Produced by the shared MediaPipe/BlazeGaze/CCDb-HG extractor. Contains raw
+    Produced by the shared MediaPipe/CCDb-HG extractor. Contains raw
     observations and turn-level event summaries,
     segmentation, per-signal metadata, and frame-level quality; it carries no
     labels. The field names and units are preserved unchanged from the previous
@@ -174,13 +179,14 @@ class NonverbalRawFeatures(BaseModel):
     """
 
     face_score_samples: list[float]
-    gaze_yaw_samples: list[float]
-    gaze_pitch_samples: list[float]
-    au12_samples: list[float]
+    gaze_yaw_samples: list[float] = Field(default_factory=list)
+    gaze_pitch_samples: list[float] = Field(default_factory=list)
+    smile_activation_samples: list[float]
     smile_detected_samples: list[bool] = Field(default_factory=list)
+    smile_observations: list[dict] = Field(default_factory=list)
     gaze_observations: list[dict] = Field(default_factory=list)
     gaze_semantic_observations: list[dict] = Field(default_factory=list)
-    head_pitch_samples: list[float]
+    head_pitch_samples: list[float] = Field(default_factory=list)
     # Optional head yaw/roll raw series. These are used to derive the neutral
     # head pose (all three axes) for the personal baseline in calibration
     # (Requirement 15.1). They default to empty so existing turn extraction and
@@ -189,6 +195,8 @@ class NonverbalRawFeatures(BaseModel):
     head_yaw_samples: list[float] = Field(default_factory=list)
     head_roll_samples: list[float] = Field(default_factory=list)
     nod_events: list[dict] = Field(default_factory=list)
+    nod_predictions: list[dict] = Field(default_factory=list)
+    nod_frame_features: list[dict] = Field(default_factory=list)
     nod_count: int | None = None
     nod_rate_min: float | None = None
     nod_unavailable_reason: UnavailableReason | None = None
@@ -209,6 +217,10 @@ class NonverbalProcessedFeatures(BaseModel):
     """
 
     visual_alignment_ratio: float | None = None
+    interaction_gaze_duration_ms: float | None = None
+    outside_gaze_duration_ms: float | None = None
+    interaction_gaze_ratio: float | None = None
+    median_interaction_dwell_ms: float | None = None
     median_visual_alignment_dwell_ms: float | None = None
     nod_count: int | None = None
     nod_rate_min: float | None = None
@@ -220,17 +232,17 @@ class NonverbalProcessedFeatures(BaseModel):
 class NonverbalBaseLabels(BaseModel):
     """Per-feature nonverbal base labels grouped by family."""
 
-    visual_orientation: dict[str, FamilyLabel]
-    head_gestural_feedback: dict[str, FamilyLabel]
-    facial_expressivity: dict[str, FamilyLabel]
+    gaze_orientation: dict[str, FamilyLabel]
+    head_nods: dict[str, FamilyLabel]
+    smile_activity: dict[str, FamilyLabel]
 
 
 class NonverbalIntegratedLabels(BaseModel):
     """Exactly one integrated nonverbal label per family."""
 
-    visual_orientation: FamilyLabel
-    head_gestural_feedback: FamilyLabel
-    facial_expressivity: FamilyLabel
+    gaze_orientation: FamilyLabel
+    head_nods: FamilyLabel
+    smile_activity: FamilyLabel
 
 
 # ---------------------------------------------------------------------------

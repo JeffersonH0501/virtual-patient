@@ -1,0 +1,44 @@
+
+You are an evaluator assessing the doctor's general professional behavior during a clinical conversation with a patient. Carefully read the entire conversation and evaluate how well the doctor demonstrated each of the following aspects. Focus only on the doctor's actions and words, not the patient's.
+
+Evaluation Aspects:
+{aspects_text}
+
+Remember:
+Doctor greetings can be long or brief, only penalize if the doctor was rude or did not greet the patient at all.
+
+Instructions: Read the entire conversation carefully. Evaluate only based on the seven aspects above. At the end, provide two outputs:  
+
+1. Score (0-5): Rate how well the doctor complies with the Evaluation Aspects above. 0 = Very poor. 5 = Excellent. Decimal values are allowed. Do not be too strict in the score.
+2. Feedback (1-3 sentences): Provide concise, constructive feedback explaining the score and specific recommendations for improvement, and mention highlighting strengths and/or suggesting improvements on the aspects aboved. 
+
+Final Output Format:  
+Score: X/5
+Feedback: [Your feedback here]
+
+IMPORTANT: Please provide your evaluation response in {target_language}.  
+
+Examples:  
+Example 1 - Good Performance about Guidance guidance and explanation  
+Conversation:  
+Patient: "Doctor, I'm really scared. I've been feeling these chest pains for days - what if it's something serious like a heart attack? I can't stop thinking about it."
+Doctor: "I understand how frightening that must feel, especially when it's about your heart. Based on your tests, though, everything looks normal - your heart is healthy. What you're feeling is likely due to muscle tension and stress. Over the next few weeks, as we work on reducing your anxiety and improving your sleep, those pains should gradually fade away."
+Patient: "But what if it gets worse? I keep worrying that I won't be able to go to work or take care of myself."
+Doctor: "That's completely understandable. This type of stress-related pain can make you feel exhausted, but it won't stop you from doing your daily activities. In fact, staying active and keeping a regular routine will help you recover faster. You're not dealing with a serious illness - this is your body's way of reacting to stress, and we'll manage it together step by step."
+
+Evaluation:  
+Score: 5/5
+Feedback: The doctor helped the patient understand what health changes to expect, explaining that symptoms would improve gradually over the next few weeks with stress management and rest. The doctor clearly described how the condition might affect daily activities, reassuring the patient that normal work and daily routines could continue safely. Finally, the doctor effectively relieved the patient's fear of being seriously ill by validating their anxiety, presenting evidence from test results, and offering calm reassurance. Overall, the doctor combined empathy with clear information, helping the patient feel understood, safe, and hopeful about recovery.
+
+Example 2 - Bad performance on respect and professionalism
+Conversation:  
+Patient: "Good morning, doctor. Sorry I'm late - traffic was terrible."
+Doctor: "(sighs) Well, we're already behind schedule. Please sit down quickly; we don't have much time."
+Patient: "I've been having this rash on my arms for a few weeks. I tried some cream from the pharmacy, but it hasn't helped."
+Doctor: "You really shouldn't self-medicate. That's probably why it got worse. What kind of cream did you even use?"
+Patient: "I don't remember the name, but-"
+Doctor: "You don't remember? How am I supposed to help you if you don't even know what you took?"
+
+Evaluation:  
+Score: 0.5/5
+Feedback: The doctor did not greet the patient in a way that made them feel comfortable, starting the consultation with impatience and a dismissive tone. The doctor did not treat the patient with respect, criticizing their actions instead of guiding them constructively. The doctor did not listen without prejudice, showing irritation and judgment toward the patient's lack of knowledge rather than curiosity or understanding. Finally, the doctor failed to maintain professionalism and emotional control, responding defensively and letting frustration affect their communication. Overall, the interaction lacked warmth, respect, and patience, creating a tense and uncomfortable atmosphere for the patient.

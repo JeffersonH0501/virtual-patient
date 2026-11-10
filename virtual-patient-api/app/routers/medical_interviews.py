@@ -1,3 +1,4 @@
+from app.core.review_access import can_replay, redact_interview
 import asyncio
 import logging
 import json
@@ -6,19 +7,21 @@ from time import perf_counter
 from typing import List, Dict, Any, Literal, Optional
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     HTTPException,
+    Header,
     Query,
+    Response,
     status,
 )
 from sqlalchemy.orm import Session
 from sqlalchemy.orm.attributes import flag_modified
 from pydantic import BaseModel, Field, model_validator
-from app.core.database import SessionLocal, get_db
+from app.core.database import SessionLocal, admit_review_transaction, get_db
 from app.core.auth import get_current_active_user
 from app.multimodal.schemas import PersonalBaseline
-from app.models.user import User, UserRole
+from app.models.user import User, UserDB, UserRole
+from app.models.clinical_case import ClinicalCase
 from app.models.medical_interview import (
     MedicalInterviewDB, MedicalInterview, MedicalInterviewCreate, MedicalInterviewUpdate,
     MedicalInterviewComplete, MedicalInterviewWithScore, InterviewRecordingDB,
@@ -30,6 +33,7 @@ from app.controllers.progress_summary_controller import ProgressSummaryControlle
 from app.controllers.clinical_case_controller import ClinicalCaseController
 from app.controllers.interview_evaluation_controller import InterviewEvaluationController
 from app.controllers.personality_controller import PersonalityController
+from app.controllers.interview_lifecycle import lock_row
 from app.agents.evaluation_agent import EvaluationAgent
 from app.agents.schemas import EvaluationResult
 from app.utils.language import (
@@ -39,6 +43,7 @@ from app.utils.language import (
 )
 from app.media.storage import get_media_storage
 from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.multimodal.evaluation_service import evaluate_and_store_multimodal, validate_text_control
 
 logger = logging.getLogger(__name__)
 
@@ -117,6 +122,28 @@ async def _wait_for_multimodal_analysis(
         await asyncio.sleep(_ANALYSIS_COMPLETION_POLL_SECONDS)
 
 
+async def _ensure_final_summary(db, interview_id, source_data, formatted_messages):
+    """Summarize the frozen transcript using the existing canonical workflow."""
+    from app.controllers.summary_controller import SummaryController
+    from app.agents.schemas.progress_summary import ProgressSummarySchema
+    controller = ProgressSummaryController(db)
+    existing = controller.get_progress_summary_record(interview_id)
+    last_id = source_data["messages"][-1].id if source_data["messages"] else None
+    if existing is not None and existing.last_updated_message_id == last_id:
+        return controller.get_progress_summary(interview_id)
+    result = await SummaryController().process_summary(
+        interview_id=interview_id,
+        messages=[{"role": message["role"], "content": message["content"]} for message in formatted_messages],
+        clinical_case=source_data["clinical_case"], user_preferred_language="English")
+    summary = result.get("summary_result")
+    if summary is None:
+        raise RuntimeError("Final canonical summary generation returned no summary")
+    if not isinstance(summary, ProgressSummarySchema):
+        summary = ProgressSummarySchema.model_validate(summary)
+    return controller.update_progress_summary(interview_id, summary, last_id,
+        source_language="en", localized_versions={"en": summary.model_dump()})
+
+
 async def _evaluate_and_complete_interview(
     interview_id: int,
     user_language_code: str,
@@ -133,13 +160,15 @@ async def _evaluate_and_complete_interview(
         formatted_messages = interview_controller.format_messages_for_evaluation(
             source_data["messages"]
         )
+        source_data["progress_summary"] = await _ensure_final_summary(db, interview_id, source_data, formatted_messages)
         timings_ms["data_load"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         evaluation_agent = EvaluationAgent(
             target_language=convert_language_code_to_name(user_language_code),
             patient_gender=patient_gender,
         )
-        evaluation_results = await evaluation_agent.evaluate_all_aspects(
+        stored_control = InterviewEvaluationController(db).get_evaluation_by_interview_id(interview_id)
+        evaluation_results = (stored_control.evaluation_results if stored_control is not None else await evaluation_agent.evaluate_all_aspects(
             conversation_messages=formatted_messages,
             clinical_case=source_data["clinical_case"],
             progress_summary=source_data["progress_summary"],
@@ -152,20 +181,28 @@ async def _evaluate_and_complete_interview(
                 "speak_clearly",
                 "open_communication",
             ],
-        )
+        ))
+        validate_text_control(evaluation_results)
         timings_ms["agent_evaluation"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         if evaluation_results:
             from app.models.medical_interview import InterviewEvaluationCreate
 
             evaluation_controller = InterviewEvaluationController(db)
-            evaluation_controller.create_evaluation(
-                interview_id,
-                InterviewEvaluationCreate(
-                    evaluation_results=evaluation_results,
-                    overall_score=evaluation_controller.calculate_overall_score(evaluation_results),
-                ),
+            payload = InterviewEvaluationCreate(
+                evaluation_results=evaluation_results,
+                overall_score=evaluation_controller.calculate_overall_score(evaluation_results),
             )
+            if evaluation_controller.get_evaluation_by_interview_id(interview_id) is None:
+                from app.multimodal.evaluation_runs import stage_evaluation_run
+                stage_evaluation_run(db, interview_id, payload.evaluation_condition, evaluation_agent, {
+                    "canonical_messages": formatted_messages,
+                    "clinical_case": source_data["clinical_case"],
+                    "progress_summary": source_data["progress_summary"],
+                    "hypotheses": source_data.get("hypotheses", []),
+                    "prompts": evaluation_agent.evaluation_prompts,
+                }, payload)
+                evaluation_controller.create_evaluation(interview_id, payload)
         phase_started = perf_counter()
         logger.info(
             "performance_event component=interview_completion operation=wait_for_multimodal "
@@ -176,6 +213,15 @@ async def _evaluate_and_complete_interview(
         timings_ms["multimodal_wait"] = (perf_counter() - phase_started) * 1000
         if multimodal_status == "failed":
             raise RuntimeError("Multimodal analysis finished with a failed status")
+        from app.models.medical_interview.interview_evaluation import EvaluationCondition
+        stored_multimodal = InterviewEvaluationController(db).get_evaluation_by_interview_id(
+            interview_id, EvaluationCondition.TEXT_PLUS_MULTIMODAL)
+        if stored_multimodal is None:
+            await evaluate_and_store_multimodal(
+                db, interview_id, evaluation_agent, canonical_messages=formatted_messages,
+            )
+        else:
+            validate_text_control(stored_multimodal.evaluation_results)
         phase_started = perf_counter()
         interview_controller.complete_interview(interview_id)
         timings_ms["persistence_and_completion"] = (perf_counter() - phase_started) * 1000
@@ -224,6 +270,8 @@ class CalibrationResultRequest(BaseModel):
     profile: Dict[str, Any] | None = None
     quality: Dict[str, Any] | None = None
     personal_baseline: PersonalBaseline | None = None
+    attestations: Dict[str, str] = Field(default_factory=dict)
+    resume_attempt_id: str | None = None
 
     @model_validator(mode="after")
     def validate_passed_result(self):
@@ -277,13 +325,26 @@ async def create_interview(
     Note: If patient_gender is provided but patient_name is not, the system will automatically
     select the appropriate name (female_name or male_name) and photo from the clinical case.
     """
-    if current_user.role == UserRole.SUPERUSER:
+    if interview_data.calibration_test and current_user.role != UserRole.SUPERUSER:
+        raise HTTPException(status_code=403, detail="Calibration tests are only available to superusers")
+    if interview_data.calibration_test:
+        raise HTTPException(status_code=410, detail="Use the temporary nonverbal test")
+    if current_user.role == UserRole.SUPERUSER and not interview_data.calibration_test:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Superusers cannot start medical interview simulations",
         )
 
     service = MedicalInterviewController(db)
+
+    if interview_data.draft_request_id:
+        lock_row(db, UserDB, current_user.id)
+        existing_draft = db.query(MedicalInterviewDB).filter(
+            MedicalInterviewDB.user_id == current_user.id,
+            MedicalInterviewDB.interview_metadata["draft_request_id"].as_string() == interview_data.draft_request_id,
+        ).first()
+        if existing_draft is not None:
+            return InterviewResponse(interview=MedicalInterview.from_orm(existing_draft))
 
     # A student may only run one interview at a time: block creation while an
     # already started (in-progress) interview exists.
@@ -299,7 +360,17 @@ async def create_interview(
         interview_data.patient_response_language,
     )
     interview_metadata.pop("calibration", None)
-    
+    interview_metadata.pop("calibration_activity_at", None)
+    interview_metadata.pop("calibration_discarded", None)
+    interview_metadata.pop("calibration_test", None)
+    interview_metadata.pop("draft_request_id", None)
+    if interview_data.draft_request_id:
+        interview_metadata["draft_request_id"] = interview_data.draft_request_id
+
+    from app.models.clinical_case import ClinicalCaseDB, CaseType
+    case = db.get(ClinicalCaseDB, interview_data.clinical_case_id)
+    if case is None or case.case_type != CaseType.DEFAULT or not case.active:
+        raise HTTPException(404, "Clinical case not found")
     interview = service.create_interview(
         user_id=current_user.id,
         clinical_case_id=interview_data.clinical_case_id,
@@ -322,13 +393,13 @@ async def save_calibration_result(
 ):
     """Persist a calibration draft into an interview before it starts.
 
-    The draft is produced by the temporary ``POST /calibration/process`` flow and
+    The draft is produced by ``POST /calibration/process-stage`` and
     kept in the client's memory. This endpoint stores the whole calibration
     result (status, profile, quality, personal baseline) into
     ``interview_metadata.calibration`` so the multimodal pipeline can read the
     gaze affine profile and personal baseline from a single canonical location
-    (``read_personal_baseline``). No calibration media is retained and no
-    calibration table row is created.
+    (``read_personal_baseline``). Signed capture IDs link this accepted profile
+    to private calibration videos and outcomes retained separately.
 
     Calibration can only be saved before the interview starts: the request is
     rejected with 409 once ``start_time`` is set, preventing an arbitrary
@@ -340,19 +411,36 @@ async def save_calibration_result(
     ).first()
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
+    if not interview or interview.user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
     if interview.status != "in_progress":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Interview is not in progress")
-    if interview.start_time is not None:
+    attempt_id = calibration.resume_attempt_id
+    if interview.start_time is not None and attempt_id is None:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The interview has already started")
+    if attempt_id is not None:
+        from app.media.calibration import require_pending_resume
+        recording, attempt = require_pending_resume(db, interview, attempt_id)
+        if calibration.status != "passed":
+            raise HTTPException(422, "Resume requires a passed calibration")
+    if (interview.interview_metadata or {}).get("calibration_discarded"):
+        raise HTTPException(410, "Calibration preparation was discarded")
 
     # ``personal_baseline`` is serialized as a plain dict so
     # ``read_personal_baseline`` reads it back through the ``PersonalBaseline``
     # schema. The profile (including the gaze affine matrix) is preserved for the
     # multimodal pipeline.
-    result = calibration.model_dump()
+    from app.multimodal.calibration_attestation import verify_calibration_checkpoints
+    result = verify_calibration_checkpoints(current_user.id, interview_id, calibration.attestations, attempt_id) if calibration.status == "passed" else calibration.model_dump(exclude={"attestations", "resume_attempt_id"})
     result["completed_at"] = datetime.now(timezone.utc).isoformat()
+    if attempt_id is not None:
+        recording.capture_config = {**recording.capture_config, "resume_attempt": {**attempt, "calibration": result}}
+        db.commit()
+        return MedicalInterview.model_validate(interview)
     metadata = dict(interview.interview_metadata or {})
     metadata["calibration"] = result
+    metadata["calibration_activity_at"] = datetime.now(timezone.utc).isoformat()
     interview.interview_metadata = metadata
     flag_modified(interview, "interview_metadata")
     db.commit()
@@ -367,9 +455,13 @@ async def start_interview(
     db: Session = Depends(get_db),
 ):
     """Start the official interview clock after successful calibration."""
+    if current_user.role == UserRole.SUPERUSER:
+        raise HTTPException(status_code=403, detail="Superusers cannot start medical interview simulations")
     service = MedicalInterviewController(db)
     if not service.validate_interview_access(interview_id, current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this interview")
+    if not service.validate_interview_ownership(interview_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Only the owner can start an interview")
     interview = service.start_interview(interview_id)
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
@@ -414,15 +506,15 @@ async def get_interview(
             interview.interview_evaluation = evaluation
     
     # Add isOwner field to the response
-    interview_dict = interview.model_dump() if hasattr(interview, 'model_dump') else interview.dict()
+    interview_dict = interview.model_dump()
     interview_dict['isOwner'] = interview_dict.get('user_id') == current_user.id
     
     interface_language = resolve_ui_language(language, current_user.preferred_language)
     localize_interview_content(interview_dict, interface_language)
-    
-    return interview_dict
 
-@router.get("/{interview_id}/complete", response_model=MedicalInterviewComplete)
+    return redact_interview(db, db.get(MedicalInterviewDB, int(interview_id)), current_user, interview_dict)
+
+@router.get("/{interview_id}/complete", response_model=MedicalInterviewComplete, dependencies=[Depends(admit_review_transaction)])
 async def get_interview_complete(
     interview_id: str,
     language: Optional[Literal["en", "es"]] = Query(default=None),
@@ -453,18 +545,33 @@ async def get_interview_complete(
         )
     
     # Add isOwner field to the response
-    interview_dict = interview.model_dump() if hasattr(interview, 'model_dump') else interview.dict()
+    interview_dict = interview.model_dump()
     interview_dict['isOwner'] = interview_dict.get('user_id') == current_user.id
     
     interface_language = resolve_ui_language(language, current_user.preferred_language)
     localize_interview_content(interview_dict, interface_language)
     
-    return interview_dict
+    if interview.status == "completed" and interview_dict.get("progress_summary"):
+        from app.routers.summary import _resolve_localized_summary
+
+        controller = ProgressSummaryController(db)
+        stored_summary = controller.get_progress_summary(int(interview_id))
+        if stored_summary is not None:
+            try:
+                localized = await _resolve_localized_summary(
+                    int(interview_id), stored_summary, interface_language, controller,
+                )
+                interview_dict["progress_summary"].update(localized.model_dump())
+            except Exception:
+                db.rollback()
+                logger.warning("Review summary localization failed interview_id=%s", interview_id)
+
+    return redact_interview(db, db.get(MedicalInterviewDB, int(interview_id)), current_user, interview_dict)
 
 @router.get("", response_model=List[MedicalInterviewWithScore])
-async def get_user_interviews(
-    skip: int = 0,
-    limit: int = 100,
+def get_user_interviews(
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=100, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
@@ -480,40 +587,52 @@ async def get_user_interviews(
     interviews_with_scores = interview_controller.get_user_interviews_with_scores(
         user_id=current_user.id,
         skip=skip,
-        limit=limit
+        limit=limit,
+        include_assigned=current_user.role == UserRole.TEACHER,
     )
     
     # Translate personality names based on user's preferred language
     user_language = current_user.preferred_language or "en"
     for interview in interviews_with_scores:
-        interview_dict = interview if isinstance(interview, dict) else (interview.model_dump() if hasattr(interview, 'model_dump') else interview.dict())
+        interview_dict = interview if isinstance(interview, dict) else (interview.model_dump())
         translate_interview_personality(interview_dict, user_language)
     
     return interviews_with_scores
 
+def require_organization_staff(current_user: User, organization_id: int):
+    """Keep organization history and metrics restricted to authorized staff."""
+    if current_user.role != UserRole.SUPERUSER:
+        raise HTTPException(status_code=403, detail="Organization staff access required")
+    if current_user.organization_id is None or current_user.organization_id != organization_id:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+
+@router.get("/organization/{organization_id}/interview-counts")
+async def get_organization_interview_counts(
+    organization_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_user),
+):
+    """Return interview totals in the same scope as organization history."""
+    require_organization_staff(current_user, organization_id)
+    return MedicalInterviewController(db).get_organization_interview_counts(organization_id, current_user)
+
+
 @router.get("/organization/{organization_id}", response_model=List[Dict[str, Any]])
 async def get_interviews_by_organization(
     organization_id: int,
-    skip: int = 0,
-    limit: int = 100,
+    response: Response,
+    skip: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """
-    Get all student medical interviews (ignoring organization_id parameter).
-
-    - **organization_id**: Unique identifier for the organization (ignored in logic)
-    - **skip**: Number of interviews to skip (for pagination)
-    - **limit**: Maximum number of interviews to return
-
-    Returns a list of student interviews with evaluation scores and additional context including:
-    - organization_id: The organization ID (for compatibility)
-    - clinical_case_title: Title of the clinical case
-    - user_name: Name of the student who conducted the interview
-    - evaluation_score: Overall evaluation score (null if no evaluation exists)
-    - teacher_feedback: List of teacher feedback for the interview
-    """
+    """List started interviews in the caller's organization with an exact total."""
+    require_organization_staff(current_user, organization_id)
     interview_controller = MedicalInterviewController(db)
+    response.headers["X-Total-Count"] = str(
+        interview_controller.count_organization_interviews(organization_id, current_user)
+    )
     interviews = interview_controller.get_interviews_by_organization(
         organization_id=organization_id,
         current_user=current_user,
@@ -544,11 +663,20 @@ async def update_interview(
     Returns the updated interview.
     """
     service = MedicalInterviewController(db)
-    if update_data.interview_metadata and "calibration" in update_data.interview_metadata:
+    if update_data.interview_metadata and {"calibration_test", "missing_evidence_message_ids", "recording_transport", "calibration", "calibration_activity_at", "calibration_discarded", "completion_processing", "completion_reason", "draft_request_id", "message_request"}.intersection(update_data.interview_metadata):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Use the calibration endpoint to update technical calibration",
+            detail="Use the dedicated endpoints to update server lifecycle metadata",
         )
+    if not service.validate_interview_ownership(interview_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Only the owner can update an interview")
+    if update_data.status is not None or update_data.end_time is not None:
+        raise HTTPException(status_code=422, detail="Use the dedicated interview lifecycle endpoints for status and timing")
+    from app.controllers.interview_lifecycle import require_capture_open
+    interview_record = lock_row(db, MedicalInterviewDB, int(interview_id))
+    if interview_record is None:
+        raise HTTPException(status_code=404, detail="Interview not found")
+    require_capture_open(interview_record)
     
     # Validate access
     if not service.validate_interview_access(interview_id, current_user.id):
@@ -566,13 +694,34 @@ async def update_interview(
     
     return interview
 
+@router.get("/{interview_id}/clinical-case", response_model=ClinicalCase)
+def get_review_clinical_case(
+    interview_id: int,
+    current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+):
+    """Expose the source case to authorized reviewers after the conversation ends."""
+    interview = db.get(MedicalInterviewDB, interview_id)
+    if not can_replay(db, interview, current_user):
+        raise HTTPException(status_code=404, detail="Interview not found")
+    if interview.status not in {"processing", "completed"}:
+        raise HTTPException(status_code=409, detail="The interview is not ready for review")
+    case = ClinicalCaseController(db).get_clinical_case_in_language(
+        interview.clinical_case_id, current_user.preferred_language or "en",
+    )
+    if case is None:
+        raise HTTPException(status_code=404, detail="Clinical case not found")
+    return case
+
+
 @router.post("/{interview_id}/complete", response_model=CompleteInterviewResponse)
-async def complete_interview(
+def complete_interview(
     interview_id: str,
-    background_tasks: BackgroundTasks,
     completion_data: CompleteInterviewRequest | None = None,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    storage = Depends(get_media_storage),
+    capture_segment_id: str | None = Header(default=None, alias="X-Capture-Segment"),
 ):
     """
     Complete an interview session and get evaluation results.
@@ -581,6 +730,7 @@ async def complete_interview(
     
     Marks the interview as completed, sets the end time, and returns evaluation results.
     """
+    db.info['capture_wait'] = True
     interview_controller = MedicalInterviewController(db)
     
     # Validate access
@@ -590,9 +740,19 @@ async def complete_interview(
             detail="Access denied to this interview"
         )
 
-    interview_to_complete = db.query(MedicalInterviewDB).filter(
-        MedicalInterviewDB.id == interview_id
-    ).first()
+    interview_to_complete = lock_row(db, MedicalInterviewDB, int(interview_id))
+    if interview_to_complete:
+        from app.controllers.interview_lifecycle import require_no_pending_reply
+        require_no_pending_reply(interview_to_complete)
+    if interview_to_complete and interview_to_complete.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Only the owner can complete an interview")
+    if interview_to_complete:
+        lifecycle_status = getattr(interview_to_complete.status, "value", interview_to_complete.status)
+        if lifecycle_status in {"processing", "completed"}:
+            return CompleteInterviewResponse(interview=interview_controller.get_interview(interview_id), evaluation_results=[])
+        failure = (interview_to_complete.interview_metadata or {}).get("completion_processing", {})
+        if lifecycle_status != "in_progress" and not (lifecycle_status == "interrupted" and failure.get("status") == "failed"):
+            raise HTTPException(status_code=409, detail="Interview capture is closed")
     if not interview_to_complete or interview_to_complete.start_time is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -603,7 +763,7 @@ async def complete_interview(
     # conversation transcript is still preserved, but the interview is marked as
     # interrupted and receives no evaluation.
     if interview_to_complete.recording is None:
-        interrupted = interview_controller.interrupt_processing(interview_id)
+        interrupted = interview_controller.abandon_interview(interview_id)
         if interrupted is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -613,6 +773,27 @@ async def complete_interview(
             interview=interrupted,
             evaluation_results=[],
         )
+
+    recording = interview_to_complete.recording
+    if lifecycle_status == "in_progress" and not (
+        capture_segment_id is None and (recording.capture_config or {}).get("block_finalization") is not None
+        and recording.status in {"ready", "partial"} and recording.ended_at is not None
+        and not (recording.capture_config or {}).get("resume_attempt")
+    ):
+        from app.controllers.recording_segments import require_capture_epoch
+        require_capture_epoch(db, int(interview_id), capture_segment_id)
+    if (recording.status not in {"ready", "partial"}
+            or recording.ended_at is None or (recording.duration_ms is None and (recording.capture_config or {}).get('mediaTransport') != 'reusable_blocks_v1')
+            or (not recording.segments and not any(asset.status == "ready" for asset in recording.assets))):
+        raise HTTPException(status_code=409, detail="Interview media has not been finalized")
+    try:
+        for asset in recording.assets:
+            if asset.status == "ready":
+                path = storage.resolve(asset.storage_key)
+                if asset.size_bytes <= 0 or path.stat().st_size != asset.size_bytes:
+                    raise ValueError("Finalized media size does not match its persisted metadata")
+    except (FileNotFoundError, ValueError) as error:
+        raise HTTPException(status_code=409, detail="Finalized interview media is missing") from error
 
     try:
         completion_reason = (
@@ -627,23 +808,68 @@ async def complete_interview(
             metadata = dict(interview_record.interview_metadata or {})
             metadata["completion_reason"] = completion_reason
             interview_record.interview_metadata = metadata
-            db.commit()
+            db.flush()
 
         # Persist the end of the interaction before returning. Evaluation then
         # continues asynchronously so the browser is never held on "Saving".
+        from app.multimodal.processing_jobs import stage_processing_job
+        from app.models.processing_job import InterviewProcessingJobDB
+        pending = db.query(InterviewProcessingJobDB).filter(
+            InterviewProcessingJobDB.medical_interview_id == int(interview_id),
+            InterviewProcessingJobDB.kind == "completion",
+            InterviewProcessingJobDB.status.in_(["queued", "processing"]),
+        ).first()
+        if pending is not None:
+            raise HTTPException(status_code=409, detail="The previous completion attempt is still finishing; retry")
+        if lifecycle_status == "interrupted" and (recording.capture_config or {}).get("observation_processing", {}).get("status") == "failed":
+            failed_turns = db.query(TurnVideoAnalysisDB).filter(
+                TurnVideoAnalysisDB.medical_interview_id == int(interview_id),
+                TurnVideoAnalysisDB.status == "failed",
+            ).all()
+            for turn_job in failed_turns:
+                try:
+                    source = (turn_job.result or {}).get("block_source")
+                    if source:
+                        import hashlib
+                        from app.models.recording_block import InterviewRecordingBlockDB
+                        from app.models.medical_interview import InterviewRecordingSegmentDB
+                        from app.multimodal.block_turns import source_identity
+                        block = db.get(InterviewRecordingBlockDB, source["block_id"])
+                        if block is None or block.recording_id != recording.id:
+                            raise ValueError("Block source does not belong to this recording")
+                        segment = db.get(InterviewRecordingSegmentDB, block.capture_attempt_id)
+                        if source_identity(block, segment, source["window"]) != source["identity"]:
+                            raise ValueError("Block source identity changed")
+                        with storage.resolve(block.storage_key).open("rb") as original:
+                            if hashlib.file_digest(original, "sha256").hexdigest() != block.sha256:
+                                raise ValueError("Block original changed")
+                    else:
+                        storage.resolve(turn_job.storage_key)
+                except (FileNotFoundError, ValueError, TypeError, KeyError) as error:
+                    raise HTTPException(status_code=409, detail="A failed turn has no recoverable source") from error
+                turn_job.status = "queued"
+                turn_job.error = None
+                turn_job.started_at = None
+                turn_job.completed_at = None
+            active_pipeline = db.query(InterviewProcessingJobDB).filter(
+                InterviewProcessingJobDB.medical_interview_id == int(interview_id),
+                InterviewProcessingJobDB.kind == "pipeline",
+                InterviewProcessingJobDB.status.in_(["queued", "processing"]),
+            ).first()
+            if active_pipeline is None:
+                stage_processing_job(db, int(interview_id), "pipeline", {"recording_id": recording.id})
+            recording.capture_config = {**(recording.capture_config or {}),
+                "observation_processing": {"status": "queued", "stage": "queued"}}
+        stage_processing_job(db, int(interview_id), "completion", {
+            "language": current_user.preferred_language or "en",
+            "patient_gender": interview_to_complete.patient_gender,
+        })
         if interview_controller.mark_processing(interview_id) is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Interview not found"
             )
-        user_language_code = current_user.preferred_language or "en"
         processing_interview = interview_controller.get_interview(interview_id)
-        background_tasks.add_task(
-            _evaluate_and_complete_interview,
-            int(interview_id),
-            user_language_code,
-            interview_to_complete.patient_gender,
-        )
         return CompleteInterviewResponse(
             interview=processing_interview,
             evaluation_results=[],
@@ -666,14 +892,16 @@ async def complete_interview(
             )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error completing interview: {str(e)}"
+            detail="Error completing interview"
         )
 
 @router.post("/{interview_id}/abandon", response_model=MedicalInterview)
-async def abandon_interview(
+def abandon_interview(
     interview_id: str,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    capture_segment_id: str | None = Header(default=None, alias="X-Capture-Segment"),
+    resume_attempt_id: str | None = Header(default=None, alias="X-Resume-Attempt"),
 ):
     """
     Abandon an interview session.
@@ -682,6 +910,7 @@ async def abandon_interview(
     
     Marks the interview as abandoned and sets the end time.
     """
+    db.info['capture_wait'] = True
     service = MedicalInterviewController(db)
     
     # Validate access
@@ -691,6 +920,12 @@ async def abandon_interview(
             detail="Access denied to this interview"
         )
     
+    if not service.validate_interview_ownership(interview_id, current_user.id):
+        raise HTTPException(status_code=403, detail="Only the owner can abandon an interview")
+    locked = lock_row(db, MedicalInterviewDB, int(interview_id))
+    if locked.status == "in_progress":
+        from app.controllers.recording_segments import require_capture_epoch
+        require_capture_epoch(db, int(interview_id), capture_segment_id, resume_attempt_id, allow_resume=True)
     interview = service.abandon_interview(interview_id)
     if not interview:
         raise HTTPException(
@@ -703,48 +938,31 @@ async def abandon_interview(
     return interview
 
 @router.delete("/{interview_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_interview(
+def delete_interview(
     interview_id: str,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Permanently delete an owned interview and its private media."""
-    interview = db.query(MedicalInterviewDB).filter(
-        MedicalInterviewDB.id == interview_id,
-        MedicalInterviewDB.user_id == current_user.id,
-    ).first()
+    """Delete an owned interview, or an organization interview as superuser."""
+    query = db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id)
+    if current_user.role == UserRole.SUPERUSER:
+        if current_user.organization_id is None:
+            raise HTTPException(status_code=404, detail="Interview not found")
+        query = query.join(UserDB, MedicalInterviewDB.user_id == UserDB.id).filter(
+            UserDB.organization_id == current_user.organization_id,
+            UserDB.role.in_([UserRole.STUDENT, UserRole.TEACHER]),
+        )
+    else:
+        query = query.filter(MedicalInterviewDB.user_id == current_user.id)
+    interview = query.first()
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Interview not found",
         )
 
-    numeric_interview_id = interview.id
-    try:
-        # This summary references the last message independently of its interview
-        # relationship, so it must be removed before cascading message deletion.
-        if interview.progress_summary is not None:
-            interview.progress_summary = None
-            db.flush()
-        db.delete(interview)
-        db.flush()
-        get_media_storage().delete_interview(numeric_interview_id)
-        db.commit()
-    except Exception:
-        db.rollback()
-        logger.exception(
-            "Failed to permanently delete interview",
-            extra={"interview_id": numeric_interview_id, "user_id": current_user.id},
-        )
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Interview deletion failed",
-        )
-
-    logger.info(
-        "Interview permanently deleted",
-        extra={"interview_id": numeric_interview_id, "user_id": current_user.id},
-    )
+    from app.controllers.administrative_deletion import delete_parent
+    delete_parent(db, interview, "interview")
     return None
 
 
@@ -761,6 +979,7 @@ async def get_active_students_count_by_organization(
 
     Returns the count of distinct students with active interviews.
     """
+    require_organization_staff(current_user, organization_id)
     interview_controller = MedicalInterviewController(db)
     count = interview_controller.count_active_student_conversations_by_organization(
         organization_id=organization_id
@@ -781,6 +1000,7 @@ async def get_completed_students_count_by_organization(
 
     Returns the count of distinct students with completed interviews.
     """
+    require_organization_staff(current_user, organization_id)
     interview_controller = MedicalInterviewController(db)
     count = interview_controller.count_completed_student_conversations_by_organization(
         organization_id=organization_id
@@ -801,6 +1021,7 @@ async def get_average_score_by_organization(
 
     Returns the average score, total evaluations count, and whether data exists.
     """
+    require_organization_staff(current_user, organization_id)
     interview_controller = MedicalInterviewController(db)
     result = interview_controller.get_average_score_by_organization(
         organization_id=organization_id
@@ -869,5 +1090,5 @@ async def get_my_average_score(
     Returns the average score, total evaluations count, and whether data exists for the authenticated user.
     """
     interview_controller = MedicalInterviewController(db)
-    result = interview_controller.get_average_score_for_user(current_user.id)
+    result = interview_controller.get_average_score_for_user(current_user.id, include_text_only=current_user.role == UserRole.SUPERUSER)
     return result

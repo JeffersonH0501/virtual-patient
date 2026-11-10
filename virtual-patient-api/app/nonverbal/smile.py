@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from statistics import fmean
+from math import isfinite
 
 from app.nonverbal.shared_observations import SharedFrameObservation
 
@@ -26,6 +27,8 @@ def extract_smile(observation: SharedFrameObservation) -> SmileObservation | Non
     left = observation.blendshapes.get("mouthSmileLeft")
     right = observation.blendshapes.get("mouthSmileRight")
     if left is None or right is None:
+        return None
+    if not isfinite(left) or not isfinite(right):
         return None
     activation = (left + right) / 2.0
     return SmileObservation(

@@ -11,6 +11,7 @@ from time import perf_counter
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from app.models.medical_interview import TurnVideoAnalysisStatus
 from app.multimodal import video_processing_worker as worker
@@ -34,7 +35,7 @@ def _calibration(path: Path, request_id: str, mode: str = "gaze") -> worker.Cali
     )
 
 
-def test_calibration_has_strict_priority_and_fifo_order(monkeypatch, tmp_path):
+def test_calibration_overtakes_queued_turns_preserving_fifo_within_priority(monkeypatch, tmp_path):
     events: list[str] = []
     instances = []
 
@@ -57,7 +58,6 @@ def test_calibration_has_strict_priority_and_fifo_order(monkeypatch, tmp_path):
     monkeypatch.setattr(worker, "_mark_job_failed", lambda *args: None)
     worker._scheduled_turn_ids.update({"turn-1", "turn-2"})
     worker._enqueue(worker.BACKGROUND_PRIORITY, "turn-1")
-    worker._enqueue(worker.BACKGROUND_PRIORITY, "turn-2")
     gaze_path = tmp_path / "gaze.webm"
     camera_path = tmp_path / "camera.webm"
     gaze_path.write_bytes(b"gaze")
@@ -65,6 +65,7 @@ def test_calibration_has_strict_priority_and_fifo_order(monkeypatch, tmp_path):
     gaze = _calibration(gaze_path, "gaze")
     camera = _calibration(camera_path, "camera", "camera")
     worker._enqueue(worker.INTERACTIVE_PRIORITY, gaze)
+    worker._enqueue(worker.BACKGROUND_PRIORITY, "turn-2")
     worker._enqueue(worker.INTERACTIVE_PRIORITY, camera)
     worker._enqueue(99, None)
 
@@ -85,6 +86,19 @@ def test_calibration_has_strict_priority_and_fifo_order(monkeypatch, tmp_path):
     assert camera.future.result(timeout=0) == {"passed": True}
     assert not gaze_path.exists()
     assert not camera_path.exists()
+
+
+def test_turn_backlog_cannot_fill_calibration_reserve(monkeypatch, tmp_path):
+    queue = PriorityQueue(maxsize=worker.CALIBRATION_QUEUE_RESERVE + 1)
+    monkeypatch.setattr(worker, "_jobs", queue)
+    worker._enqueue(worker.BACKGROUND_PRIORITY, "queued-turn")
+    with pytest.raises(HTTPException) as failure:
+        worker._enqueue(worker.BACKGROUND_PRIORITY, "durable-turn")
+    assert failure.value.status_code == 503
+    gaze = _calibration(tmp_path / "gaze.webm", "gaze")
+    worker._enqueue(worker.INTERACTIVE_PRIORITY, gaze)
+    assert queue.get_nowait()[2] == gaze
+    assert queue.get_nowait()[2] == "queued-turn"
 
 
 def test_native_failure_recreates_worker_for_next_job(monkeypatch):

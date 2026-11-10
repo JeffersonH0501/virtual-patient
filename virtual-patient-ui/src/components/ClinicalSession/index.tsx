@@ -1,16 +1,16 @@
-import {FC, useEffect, useState} from 'react';
+import {FC, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {ActionButtons} from './ActionButtons';
 import {ROUTES, type CalibrationRouteState} from '../../utils/routes';
 import type {ClinicalCaseSimplified} from '../../services/clinicalCases';
-import {getPersonalities} from '../../services/personalities';
+import {useSessionList} from '../../contexts/SessionLists';
 import {CustomSelect} from '../common';
-import {Personality} from '../../types';
 
 type Props = {
   clinicalCase: ClinicalCaseSimplified;
-  onCancel: () => void;
+  onView?: () => void;
+  onCancel?: () => void;
 };
 
 type ReadOnlyFieldProps = {
@@ -19,45 +19,33 @@ type ReadOnlyFieldProps = {
 };
 
 const ReadOnlyField: FC<ReadOnlyFieldProps> = ({label, value}) => (
-  <div className="min-w-0">
-    <p className="mb-3 text-left text-sm text-black">{label}</p>
-    <div className="min-h-12 truncate rounded-xl border border-slate-300 bg-slate-100 px-3 py-3 text-sm text-slate-700">
+  <div className="ui-field">
+    <span className="ui-field-label">{label}</span>
+    <div className="ui-field-value truncate">
       {value}
     </div>
   </div>
 );
 
-export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
+export const ClinicalSession: FC<Props> = ({clinicalCase, onView, onCancel}) => {
   const {t} = useTranslation();
   const [personalityId, setPersonalityId] = useState<number | null>(null);
   const [gender, setGender] = useState<string>('');
   // The patient response language is fixed to Spanish and cannot be changed.
   const patientResponseLanguage = 'es';
-  const [personalities, setPersonalities] = useState<Personality[]>([]);
-  const [isLoadingPersonalities, setIsLoadingPersonalities] = useState(true);
+  const {items: personalities = [], loading: isLoadingPersonalities} = useSessionList('personalities');
   const navigate = useNavigate();
-
-  useEffect(() => {
-    const fetchPersonalities = async () => {
-      try {
-        const personalitiesData = await getPersonalities();
-        setPersonalities(personalitiesData);
-      } catch (error) {
-        console.error('Failed to fetch personalities:', error);
-      } finally {
-        setIsLoadingPersonalities(false);
-      }
-    };
-
-    fetchPersonalities();
-  }, []);
 
   const personalityOptions = personalities.map((personality) => personality.name);
   const genderOptions = [t('clinicalSession.male'), t('clinicalSession.female')];
-  const patientAge = clinicalCase.age
-    ? t('clinicalCases.ageValue', {age: clinicalCase.age})
-    : t('clinicalCases.notSpecified');
   const isFormValid = personalityId !== null && gender !== '';
+  const configuration: CalibrationRouteState = {
+    clinicalCaseId: clinicalCase.id,
+    clinicalCaseTitle: clinicalCase.title,
+    gender: gender || undefined,
+    personalityId: personalityId ?? undefined,
+    patientResponseLanguage,
+  };
 
   const onStartSession = () => {
     if (!isFormValid) {
@@ -67,28 +55,16 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
     // The interview is not created here: it is only persisted once the
     // simulation actually starts, after calibration. Carry the configuration to
     // the calibration screen via location.state.
-    const state: CalibrationRouteState = {
-      clinicalCaseId: clinicalCase.id,
-      clinicalCaseTitle: clinicalCase.title,
-      gender: gender || undefined,
-      personalityId: personalityId || undefined,
-      patientResponseLanguage,
-    };
-    navigate(ROUTES.calibration, {state});
+    navigate(ROUTES.calibration, {state: configuration});
   };
 
   return (
-    <div className="min-w-0 max-w-full overflow-x-clip p-4 sm:p-5">
-      <h4 className="mb-4 text-sm font-semibold text-slate-800">
-        {t('clinicalSession.patientInformation')}
-      </h4>
-      <div className="grid min-w-0 gap-x-4 gap-y-4 sm:grid-cols-2">
+    <div className="ui-panel-body max-w-full overflow-x-clip">
+      <div className="grid min-w-0 gap-x-layout gap-y-layout sm:grid-cols-3">
         <ReadOnlyField
           label={t('clinicalSession.patientResponseLanguage')}
           value={t('clinicalSession.spanish')}
         />
-
-        <ReadOnlyField label={t('clinicalCases.patientAge')} value={patientAge} />
 
         <div className="min-w-0">
           <CustomSelect
@@ -113,7 +89,6 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
             }}
             options={personalityOptions}
             disabled={isLoadingPersonalities}
-            margin={false}
           />
         </div>
 
@@ -139,7 +114,6 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
               setGender(genderValue);
             }}
             options={genderOptions}
-            margin={false}
           />
         </div>
       </div>
@@ -148,6 +122,18 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onCancel}) => {
         onCancel={onCancel}
         onStartSession={onStartSession}
         isFormValid={isFormValid}
+        onView={onView}
+        onCalibrationPreview={onView ? () => navigate(ROUTES.calibration, {state: {...configuration, calibrationTest: true}}) : undefined}
+        onGazePreview={onView ? () => navigate(ROUTES.calibration, {state: {...configuration, gazeTest: true}}) : undefined}
+        onPreview={onView ? () => navigate(ROUTES.patientPreview, {
+          state: {
+            ...configuration,
+            patientName: gender === 'female' ? clinicalCase.femaleName : clinicalCase.maleName,
+            patientAge: clinicalCase.age,
+            patientWeight: clinicalCase.weightInKg,
+            personality: personalities.find((item) => item.id === personalityId),
+          },
+        }) : undefined}
       />
     </div>
   );

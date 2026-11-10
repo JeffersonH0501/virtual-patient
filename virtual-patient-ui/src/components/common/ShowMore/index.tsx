@@ -1,5 +1,6 @@
 import {FC} from 'react';
-import {CaretDown, CaretUp} from '../../../icons';
+import {useTranslation} from 'react-i18next';
+import {ChevronDown} from 'lucide-react';
 
 type ShowMoreProps = {
   onClick: () => void;
@@ -7,22 +8,15 @@ type ShowMoreProps = {
 };
 
 export const ShowMore: FC<ShowMoreProps> = ({onClick, expanded}) => {
+  const {t} = useTranslation();
   return (
     <button
-      className="mt-4 flex cursor-pointer items-center gap-1.5 border-none text-sm font-semibold text-blue-600 [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0"
+      className="ui-button ui-button--text mt-layout flex cursor-pointer items-center gap-layout [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0"
       onClick={onClick}
+      aria-expanded={expanded}
     >
-      {expanded ? (
-        <>
-          <span>Show Less</span>
-          <CaretUp />
-        </>
-      ) : (
-        <>
-          <span>Show More</span>
-          <CaretDown />
-        </>
-      )}{' '}
+      <span>{t(expanded ? 'common.showLess' : 'common.showMore')}</span>
+      <ChevronDown className={expanded ? 'motion-chevron rotate-180' : 'motion-chevron'} />
     </button>
   );
 };

@@ -76,7 +76,7 @@ class AuthenticationIdentifierTests(unittest.TestCase):
         self.assertIsNone(auth.get_current_user_from_token(token, self.db))
 
     def test_refresh_token_is_not_an_access_token(self):
-        token = auth.create_refresh_token({"sub": str(self.account.id)})
+        token = auth.create_access_token({"sub": str(self.account.id), "type": "refresh"})
         self.assertIsNone(auth.get_current_user_from_token(token, self.db))
 
     def test_case_variant_email_collision_is_rejected(self):

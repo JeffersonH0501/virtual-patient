@@ -6,9 +6,14 @@ Virtual patient application for clinical history-taking training. The repository
 
 This repository extends the earlier Virtual Patient implementation developed by Andrea Bayona. The current work builds on that foundation as part of a master's thesis focused on expanding the platform toward multimodal clinical-interview training and evaluation.
 
-The original authorship and license notices included in the inherited source code are preserved. New work in this repository includes the current deployment structure and the ongoing multimodal extensions, including interview recording, synchronized recap, paraverbal analysis with OpenSMILE/eGeMAPSv02, non-verbal feature extraction with MediaPipe Face Landmarker, BlazeGaze/WebEyeTrack and CCDb-HG, and related research-oriented processing infrastructure.
+The original authorship and license notices included in the inherited source code are preserved. New work in this repository includes the current deployment structure and the ongoing multimodal extensions, including interview recording, synchronized recap, paraverbal analysis with OpenSMILE/eGeMAPSv02, non-verbal feature extraction with MediaPipe Face Landmarker and CCDb-HG, and related research-oriented processing infrastructure.
 
 ## Structure
+
+The initial two-condition evaluation preserves the inherited text-only control
+and adds a complete six-category condition with multimodal interest, empathy and
+clarity assessment and exact reuse of the other textual results. See [multimodal evaluation](docs/multimodal-evaluation.md)
+for persistence, contracts, focused Docker tests, API examples and manual checks.
 
 ```text
 virtual-patient/
@@ -41,11 +46,21 @@ Virtual-patient personality is split between semantic behavior and vocal deliver
 
 The interview screen is presented as a call and captures four private, continuous sources on one browser timeline: student microphone audio, student camera canvas, patient TTS audio, and the rendered patient canvas. Turning off the microphone or camera preserves silence or a disabled-camera frame instead of shortening the timeline. Temporary chunks use OPFS when available and fall back to memory; completed files are uploaded to authenticated private storage.
 
-After an interview, the recap view synchronizes the two recorded video panels and mixes the two audio sources locally. Seeking also updates the cumulative transcript. Legacy interviews and failed captures retain their full transcript and explicitly report that no recording is available. At finalization, the API derives descriptive OpenSMILE/eGeMAPSv02 observations for student speech and non-verbal observations from the private student video using the shared MediaPipe Face Landmarker, BlazeGaze/WebEyeTrack gaze and CCDb-HG head-gesture path. The turn-details dialog presents only the selected raw variables grouped by family. Gaze aggregates that require calibration remain unavailable until configured. These processing parameters do not validate VAD, visual alignment, nod detection, non-verbal inference, or multimodal evaluation.
+After an interview, the recap view synchronizes the two recorded video panels and mixes the two audio sources locally. Seeking also updates the cumulative transcript. Failed captures retain their full transcript and explicitly report that no recording is available. At finalization, the API derives descriptive OpenSMILE/eGeMAPSv02 observations for student speech and non-verbal observations from the private student video using the shared MediaPipe Face Landmarker, calibrated MediaPipe gaze and CCDb-HG head-gesture path. The turn-details dialog presents only the selected raw variables grouped by family. Gaze aggregates that require calibration remain unavailable until configured. These processing parameters do not validate VAD, visual alignment, nod detection, non-verbal inference, or multimodal evaluation.
 
 ## Security and Configuration
 
 Runtime secrets and credentials must not be committed to the repository. Local and deployment configuration should be created from the provided `.env.*.example` files and stored only in ignored `.env.local` or `.env.full` files. Administrative accounts must be provisioned separately; database migrations do not contain default administrator credentials.
+
+## Processing ownership
+
+Processing ownership: `app/multimodal/pipeline.py` coordinates extraction and
+recording lifecycle; `turn_results.py` owns shared reference, label and persisted
+layer assembly used by both processing and explicit maintenance. Extraction
+manifests identify both sources. The UI keeps playback/capture in its interview
+views, turn evidence presentation in `TurnEvidenceDetails`, and review regeneration
+polling in `useReviewRefresh`. Native isolation, scientific rules and historical
+result compatibility remain unchanged.
 
 ## Quick start
 

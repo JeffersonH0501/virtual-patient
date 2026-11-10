@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Multi-stage build for production optimization
-FROM python:3.12-slim AS builder
+FROM python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 AS builder
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -11,7 +11,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 # Install build dependencies.
 #
 # The image/codec -dev libraries and OpenGL/GLib runtime libs are required by
-# the MediaPipe/WebEyeTrack computer-vision stack
+# the MediaPipe computer-vision stack
 # so its wheels build and import cleanly. libgl1 / libglib2.0-0 satisfy the
 # shared-object imports OpenCV performs at runtime.
 RUN apt-get update && apt-get install -y \
@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements before application code so dependency installation
 # remains cached when only source code changes.
-COPY requirements.txt .
+COPY requirements.txt requirements.constraints.txt ./
 
 # Install Python dependencies using a persistent BuildKit pip cache.
 #
@@ -43,21 +43,24 @@ COPY requirements.txt .
 # The cache mount allows downloaded wheels (PyTorch, OpenCV, etc.)
 # to be reused when requirements.txt changes and this layer must run again.
 RUN --mount=type=cache,target=/root/.cache/pip \
-    pip install --upgrade pip && \
+    pip install --upgrade pip==26.2.1 && \
     # CCDb-HG inference is CPU-only; CUDA is not a runtime requirement.
     pip install \
         --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://pypi.org/simple \
+        -c requirements.constraints.txt \
         torch==2.2.2 && \
-    pip install -r requirements.txt && \
-    sed -i 's/from dataclasses import dataclass/from dataclasses import dataclass, field/' /usr/local/lib/python3.12/site-packages/webeyetrack/webeyetrack.py && \
-    sed -i 's/kalman_config: KalmanFilterConfig = KalmanFilterConfig()/kalman_config: KalmanFilterConfig = field(default_factory=KalmanFilterConfig)/' /usr/local/lib/python3.12/site-packages/webeyetrack/webeyetrack.py && \
-    sed -i 's/calib_config: CalibConfig = CalibConfig()/calib_config: CalibConfig = field(default_factory=CalibConfig)/' /usr/local/lib/python3.12/site-packages/webeyetrack/webeyetrack.py && \
-    sed -i 's/norm_pog: np.ndarray = np.array(\[0.5, 0.5\])/norm_pog: np.ndarray = field(default_factory=lambda: np.array([0.5, 0.5]))/' /usr/local/lib/python3.12/site-packages/webeyetrack/data_protocols.py
+    pip install -r requirements.txt -c requirements.constraints.txt
+
+# Metadata checks alone do not catch native NumPy/Arrow import incompatibility.
+RUN pip check && python -c "import opensmile, pyarrow"
+
+RUN python -c "import hashlib,pathlib,urllib.request; p=pathlib.Path('/tmp/silero_vad.onnx'); p.write_bytes(urllib.request.urlopen('https://raw.githubusercontent.com/snakers4/silero-vad/60b7ffa243625ebdc1070275a29f18c87843786a/src/silero_vad/data/silero_vad.onnx').read()); assert hashlib.sha256(p.read_bytes()).hexdigest() == '1a153a22f4509e292a94e67d6f9b85e8deb25b4988682b7e174c65279d8788e3'"
 
 
 # Shared runtime stage. Local development stops before application source is
 # copied because docker-compose bind-mounts it into /app.
-FROM python:3.12-slim AS runtime
+FROM python:3.12-slim@sha256:b18b261e1b4974b4f321451ad5251ded85abb22c2b8b262da527dda1d031ab30 AS runtime
 
 # Set environment variables
 ENV PYTHONDONTWRITEBYTECODE=1 \
@@ -103,6 +106,8 @@ COPY --from=builder \
     /usr/local/bin \
     /usr/local/bin
 
+COPY --from=builder /tmp/silero_vad.onnx /usr/local/share/silero-vad/silero_vad.onnx
+
 # Create runtime directories with the ownership required by the API process.
 RUN mkdir -p /app/logs /app/temp /app/media && \
     chown -R appuser:appuser /app
@@ -113,6 +118,11 @@ USER appuser
 # Development image: dependencies only. Source is provided by the bind mount,
 # so normal Python edits neither require nor invalidate an image build.
 FROM runtime AS development
+
+USER root
+COPY requirements-dev.txt .
+RUN pip install --no-cache-dir -r requirements-dev.txt
+USER appuser
 
 ENV ENV=development
 

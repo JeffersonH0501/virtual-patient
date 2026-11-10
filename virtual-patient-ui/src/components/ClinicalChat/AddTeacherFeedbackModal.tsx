@@ -1,8 +1,12 @@
-﻿import { FC, useState, useEffect } from 'react';
-import { useTranslation } from 'react-i18next';
-import { Modal } from '../common/Modal';
-import { createTeacherFeedback, updateTeacherFeedback } from '../../services/teacherFeedback';
-import { CreateTeacherFeedbackRequest, UpdateTeacherFeedbackRequest, TeacherFeedback } from '../../types/teacherFeedback';
+import {Dialog} from '../common/Dialog';
+import {FC, useState, useEffect, useRef, useId} from 'react';
+import {useTranslation} from 'react-i18next';
+import {createTeacherFeedback, updateTeacherFeedback} from '../../services/teacherFeedback';
+import {
+  CreateTeacherFeedbackRequest,
+  UpdateTeacherFeedbackRequest,
+  TeacherFeedback,
+} from '../../types/teacherFeedback';
 
 type AddTeacherFeedbackModalProps = {
   isOpen: boolean;
@@ -19,9 +23,12 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
   onFeedbackAdded,
   editingFeedback,
 }) => {
-  const { t } = useTranslation();
+  const {t} = useTranslation();
+  const feedbackId = useId();
   const [newFeedback, setNewFeedback] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitting = useRef(false);
+  const hasChanges = !editingFeedback || newFeedback.trim() !== editingFeedback.feedback.trim();
 
   // Initialize feedback content when editing
   useEffect(() => {
@@ -33,9 +40,10 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
   }, [editingFeedback]);
 
   const handleSaveFeedback = async () => {
-    if (!newFeedback.trim()) return;
+    if (!newFeedback.trim() || !hasChanges || submitting.current) return;
 
     try {
+      submitting.current = true;
       setIsSubmitting(true);
 
       if (editingFeedback) {
@@ -64,6 +72,7 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
     } catch (err) {
       console.error('Error saving teacher feedback:', err);
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
@@ -74,50 +83,56 @@ export const AddTeacherFeedbackModal: FC<AddTeacherFeedbackModalProps> = ({
   };
 
   return (
-    <Modal open={isOpen} closeAction={handleClose} size="medium" containerId="add-teacher-feedback-modal" hasActions>
-      <div className="dialog-shell">
-        <div className="dialog-header">
-          <h2 className="dialog-title">
-            {editingFeedback ? t('clinicalChat.editTeacherFeedback') : t('clinicalChat.addTeacherFeedback')}
-          </h2>
-        </div>
-
-        <div className="dialog-content flex-1">
-          <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                {t('clinicalChat.addFeedbackPrompt')}
-              </label>
-              <textarea
-                value={newFeedback}
-                onChange={(e) => setNewFeedback(e.target.value)}
-                placeholder={t('clinicalChat.teacherFeedbackPlaceholder')}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-gray-900"
-                rows={6}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="dialog-footer">
-          <div className="dialog-actions">
-            <button
-              onClick={handleClose}
-              className="dialog-action dialog-action--secondary"
-            >
-              {t('common.cancel')}
-            </button>
-            <button
-              onClick={handleSaveFeedback}
-              disabled={!newFeedback.trim() || isSubmitting}
-              className="dialog-action dialog-action--primary"
-            >
-              {isSubmitting ? t('common.loading') : (editingFeedback ? t('clinicalChat.updateFeedback') : t('clinicalChat.saveFeedback'))}
-            </button>
-          </div>
+    <Dialog
+      title={
+        editingFeedback
+          ? t('clinicalChat.editTeacherFeedback')
+          : t('clinicalChat.addTeacherFeedback')
+      }
+      open={isOpen}
+      onClose={handleClose}
+      busy={isSubmitting}
+      containerId="add-teacher-feedback-modal"
+      hasDismissAction
+      actions={
+        <>
+          <button
+            type="button"
+            disabled={isSubmitting}
+            onClick={handleClose}
+            className="ui-button ui-button--secondary"
+          >
+            {t('common.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={handleSaveFeedback}
+            disabled={!newFeedback.trim() || !hasChanges || isSubmitting}
+            className="ui-button ui-button--primary"
+          >
+            {isSubmitting
+              ? t('common.loading')
+              : editingFeedback
+                ? t('clinicalChat.updateFeedback')
+                : t('clinicalChat.saveFeedback')}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-layout">
+        <div className="ui-field">
+          <label htmlFor={feedbackId} className="ui-field-label">{t('clinicalChat.addFeedbackPrompt')}</label>
+          <textarea
+            id={feedbackId}
+            disabled={isSubmitting}
+            value={newFeedback}
+            onChange={(e) => setNewFeedback(e.target.value)}
+            placeholder={t('clinicalChat.teacherFeedbackPlaceholder')}
+            className="ui-textarea resize-none"
+            rows={6}
+          />
         </div>
       </div>
-    </Modal>
+    </Dialog>
   );
 };
-

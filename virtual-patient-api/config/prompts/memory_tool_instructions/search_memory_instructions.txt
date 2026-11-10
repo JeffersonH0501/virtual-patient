@@ -1,0 +1,14 @@
+Search for ALL relevant patient information based on the current context.
+Return comprehensive information about:
+- Complete symptom history and characteristics (timeline, patterns, triggers)
+- Full medication history and current regimen (compliance, side effects)
+- Comprehensive family medical history (genetic patterns, risk factors)
+- Detailed lifestyle and social factors (habits, environment, support)
+- All previous medical conditions and treatments (outcomes, complications)
+- Consistency with previous statements (check for contradictions)
+- Emotional and mental health patterns
+- Risk factors and preventive measures
+- Any other relevant medical information
+
+Provide complete context to ensure consistent and accurate responses.
+Flag any inconsistencies or contradictions for review.

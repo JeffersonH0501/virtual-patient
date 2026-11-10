@@ -40,7 +40,7 @@ async def process_calibration_video(
     mode: str,
 ) -> dict:
     """Send a temporary calibration clip to the single visual worker."""
-    if mode not in {"video", "gaze", "camera"}:
+    if mode not in {"gaze", "camera", "unified", "guided", "live-gaze"}:
         raise ValueError(f"Unsupported visual calibration mode: {mode}")
 
     headers = {"X-Video-Worker-Token": settings.video_processing_worker_token}

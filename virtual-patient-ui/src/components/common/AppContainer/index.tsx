@@ -1,5 +1,6 @@
-import {useEffect, useState} from 'react';
-import {Outlet, useLocation, matchPath, useNavigate} from 'react-router-dom';
+import {useTranslation} from 'react-i18next';
+import {Suspense, useEffect, useRef, useState} from 'react';
+import {Navigate, Outlet, useLocation, matchPath, useNavigate} from 'react-router-dom';
 import {Header} from '../Header';
 import {Footer} from '../Footer';
 import {TokenExpiredScreen} from '../../TokenExpiredScreen';
@@ -8,92 +9,132 @@ import {interviewPath, ROUTES} from '../../../utils/routes';
 import {InterviewMediaProvider} from '../../../contexts/InterviewMediaContext';
 import {getActiveInterview} from '../../../services/interviews';
 import {useUser} from '../../../hooks/useUser';
-
-export type AppContainerOutletContext = {
-  setClinicalSimulationActive: (active: boolean) => void;
-};
+import {MotionContent} from '../Motion';
+import {SessionListsProvider} from '../../../contexts/SessionLists';
+import {InterviewContentLoading} from '../../ClinicalChat/InterviewContentLoading';
 
 export const AppContainer = () => {
-  const { isTokenExpired } = useAuthError();
+  const {user} = useUser();
+  return <AccountAppContainer key={`${user?.id}:${user?.role}:${user?.organizationId}`} />;
+};
+
+const AccountAppContainer = () => {
+  const {t} = useTranslation();
+  const {isTokenExpired} = useAuthError();
   const {user, isLoading: isUserLoading} = useUser();
   const navigate = useNavigate();
-  const {pathname} = useLocation();
-  const legacyCalibrationMatch = matchPath(ROUTES.interviewCalibration, pathname);
-  const preInterviewCalibrationMatch = matchPath(ROUTES.calibration, pathname);
-  const calibrationMatch = legacyCalibrationMatch || preInterviewCalibrationMatch;
+  const navigateRef = useRef(navigate);
+  const mainRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    navigateRef.current = navigate;
+  }, [navigate]);
+  const {pathname, state} = useLocation();
+  useEffect(() => {
+    if (mainRef.current) mainRef.current.scrollTop = 0;
+  }, [pathname]);
+  const calibrationMatch = matchPath(ROUTES.calibration, pathname);
   const sessionMatch = matchPath(ROUTES.interviewSession, pathname);
   const reviewMatch = matchPath(ROUTES.interviewReview, pathname);
-  const interviewId = legacyCalibrationMatch?.params.interviewId || sessionMatch?.params.interviewId;
-  const isClinicalChat = Boolean(sessionMatch || reviewMatch);
-  const isInterviewFlow = Boolean(calibrationMatch || sessionMatch || reviewMatch);
-  const [clinicalSimulationActive, setClinicalSimulationActive] = useState(false);
+  const isPatientPreview = pathname === ROUTES.patientPreview;
+  const interviewId = sessionMatch?.params.interviewId;
+  const isClinicalChat = Boolean(sessionMatch || reviewMatch || isPatientPreview);
+  const isInterviewFlow = Boolean(calibrationMatch || isClinicalChat);
+  const activeFlowPath = calibrationMatch || sessionMatch ? pathname : null;
+  const resumeInterviewId = calibrationMatch && state?.resume?.resumeAttemptId
+    ? state.draftInterviewId : undefined;
+  const userId = user?.id;
+  const userRole = user?.role;
   const [checkingActiveInterview, setCheckingActiveInterview] = useState(true);
+  const initialCheckDone = useRef(false);
 
   useEffect(() => {
     if (isUserLoading) return;
-    if (!user || user.role !== 'student' || isTokenExpired) {
+    if (userId == null || (userRole !== 'student' && userRole !== 'teacher') || isTokenExpired) {
       setCheckingActiveInterview(false);
       return;
     }
 
     let current = true;
-    setCheckingActiveInterview(true);
+    if (!initialCheckDone.current) setCheckingActiveInterview(true);
     void getActiveInterview()
       .then((activeInterview) => {
         if (!current) return;
         if (
-          activeInterview?.status === 'in_progress'
-          && activeInterview.startTime
-          && String(sessionMatch?.params.interviewId) !== String(activeInterview.id)
+          activeInterview?.status === 'in_progress' &&
+          activeInterview.startTime &&
+          String(sessionMatch?.params.interviewId) !== String(activeInterview.id) &&
+          String(resumeInterviewId) !== String(activeInterview.id)
         ) {
-          navigate(interviewPath(activeInterview.id, 'session'), {replace: true});
+          navigateRef.current(interviewPath(activeInterview.id, 'session'), {replace: true});
           return;
         }
+        initialCheckDone.current = true;
         setCheckingActiveInterview(false);
       })
       .catch(() => {
-        if (current) setCheckingActiveInterview(false);
+        if (current) {
+          initialCheckDone.current = true;
+          setCheckingActiveInterview(false);
+        }
       });
     return () => {
       current = false;
     };
-  }, [isTokenExpired, isUserLoading, navigate, pathname, sessionMatch?.params.interviewId, user]);
-
-  useEffect(() => {
-    if (!isClinicalChat) setClinicalSimulationActive(false);
-  }, [isClinicalChat]);
+  }, [activeFlowPath, isTokenExpired, isUserLoading, resumeInterviewId, sessionMatch?.params.interviewId, userId, userRole]);
 
   if (isTokenExpired) {
     return <TokenExpiredScreen />;
   }
 
+  if (!isUserLoading && !user) {
+    return <Navigate to={ROUTES.welcome} replace />;
+  }
+
   if (isUserLoading || checkingActiveInterview) {
-    return null;
+    if (isClinicalChat || pathname === ROUTES.interviews) return <InterviewContentLoading />;
+    return (
+      <div className="ui-empty-state" role="status">
+        {t('common.loading')}
+      </div>
+    );
   }
 
   return (
-    <InterviewMediaProvider interviewId={interviewId}>
-      <div
-        className={`flex w-full min-w-0 flex-col overflow-hidden ${calibrationMatch ? 'bg-neutral-950' : 'bg-neutral-100'} ${
-          isInterviewFlow ? 'h-dvh' : 'min-h-screen'
-        }`}
-      >
-        {!calibrationMatch && <Header clinicalSimulationActive={clinicalSimulationActive} />}
-        <main
-          className={`flex w-full min-w-0 flex-1 flex-col items-center ${
-            isClinicalChat
-              ? 'min-h-0 overflow-hidden px-3 py-3 sm:px-4 lg:px-6 lg:py-4'
-              : calibrationMatch
-                ? 'min-h-0 overflow-auto'
-              : 'mb-6 px-4 py-6 sm:px-6 md:py-8 lg:px-20 lg:pt-10'
-          }`}
+    <SessionListsProvider user={user} interviewFlow={Boolean(sessionMatch || reviewMatch)}>
+      <InterviewMediaProvider interviewId={interviewId}>
+        <div
+          data-ui-motion="app"
+          className={`app-shell flex w-full min-w-0 flex-col overflow-hidden ${calibrationMatch ? 'bg-neutral-950' : 'bg-neutral-100'}`}
         >
-          <div className="flex h-full min-h-0 w-full min-w-0 flex-col items-start">
-            <Outlet context={{setClinicalSimulationActive}} />
-          </div>
-        </main>
-        {!isInterviewFlow && <Footer />}
-      </div>
-    </InterviewMediaProvider>
+          <a className="ui-skip-link" href="#main-content">
+            {t('common.skipToContent')}
+          </a>
+          {!calibrationMatch && !sessionMatch && !isPatientPreview && <Header />}
+          <main
+            ref={mainRef}
+            id="main-content"
+            tabIndex={-1}
+            className={`flex min-h-0 w-full min-w-0 flex-1 flex-col items-center ${isInterviewFlow ? 'ui-viewport' : ''} ${
+              isClinicalChat && !reviewMatch
+                ? 'overflow-hidden'
+                : calibrationMatch
+                  ? 'overflow-auto'
+                  : 'overflow-y-auto'
+            }`}
+          >
+            <MotionContent
+              changeKey={pathname === ROUTES.interviews || pathname === ROUTES.users ? undefined : pathname}
+              className={`flex w-full min-w-0 flex-col items-start ${reviewMatch ? 'review-viewport-content min-h-0 shrink-0' : isInterviewFlow ? 'min-h-0 h-full' : 'ui-viewport flex-1 shrink-0'}`}
+            >
+              <Suspense fallback={isClinicalChat || pathname === ROUTES.interviews
+                ? <InterviewContentLoading /> : <div className="ui-empty-state" role="status">{t('common.loading')}</div>}>
+                <Outlet />
+              </Suspense>
+            </MotionContent>
+            {!isInterviewFlow && <Footer />}
+          </main>
+        </div>
+      </InterviewMediaProvider>
+    </SessionListsProvider>
   );
 };

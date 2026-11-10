@@ -1,24 +1,7 @@
 # Nonverbal model artifacts
 
-`blazegaze_mpiifacegaze.keras` is the unmodified BlazeGaze artifact from
-WebEyeTrack commit `75fbd2f5f784f2eb3a39675a8dcbf1b01c697f1c`.
-
-The Python package is installed from that exact commit. The backend adapter calls
-`WebEyeTrack.step` with the shared MediaPipe result; `process_frame` is not used.
-The Docker build applies only Python 3.12 dataclass-default compatibility fixes;
-the preprocessing and inference algorithms remain unchanged.
-
-- Upstream: https://github.com/RedForestAI/WebEyeTrack
-- License: MIT
-- Artifact: `python/webeyetrack/model_weights/blazegaze_mpiifacegaze.keras`
-- SHA-256: `5b011cfe82466896e27b1ac3e18130117cafbc02dbc964a1ad7315f62005cc05`
-- Serialization metadata: Keras 3.10.0
-
-The artifact must not be regenerated or converted implicitly. The API verifies
-its digest before loading it.
-
 `face_landmarker_v2_with_blendshapes.task` is the unmodified MediaPipe model
-distributed in the same pinned WebEyeTrack commit. Its SHA-256 is
+distributed in the pinned source artifact. Its SHA-256 is
 `64184e229b263107bc2b804c6625db1341ff2bb731874b0bcc2fe6544e0bc9ff`.
 
 ## CCDb-HG Wave 3 input

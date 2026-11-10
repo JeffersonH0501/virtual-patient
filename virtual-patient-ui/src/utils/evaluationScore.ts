@@ -11,7 +11,7 @@ export const getEvaluationScoreBand = (score: number): EvaluationScoreBand => {
   return 'low';
 };
 
-export const formatEvaluationScoreValue = (score: number): string => score.toFixed(1);
-
-export const formatEvaluationScore = (score: number): string =>
-  `${formatEvaluationScoreValue(score)}/${EVALUATION_SCORE_MAX}`;
+export const formatEvaluationScoreValue = (score: number, language = 'en'): string => {
+  const rounded = score.toFixed(1);
+  return language.startsWith('es') ? rounded.replace('.', ',') : rounded;
+};

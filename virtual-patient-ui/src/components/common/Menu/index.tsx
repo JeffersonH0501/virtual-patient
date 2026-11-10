@@ -1,7 +1,10 @@
-import {FC, useState} from 'react';
+import {Badge} from '../Badge';
+import {FC, useEffect, useRef, useState} from 'react';
 import {useOnOutsideClick, useUser} from '../../../hooks';
 import {useTranslation} from 'react-i18next';
 import {LanguageSwitcher} from '../LanguageSwitcher';
+import {Button} from '../Button';
+import {useAppMotion, useMotionVisibility} from '../Motion/hooks';
 
 type Props = {
   open: boolean;
@@ -11,16 +14,46 @@ type Props = {
 };
 
 export const Menu: FC<Props> = ({open, onOutsideClick, onSignOut, triggerElement = null}) => {
+  const {enabled} = useAppMotion();
+  const visible = useMotionVisibility();
+  open = open && visible;
   const [elementReference, setElementReference] = useState<HTMLDivElement | null>(null);
   const {user} = useUser();
   const {t} = useTranslation();
+  const returnFocus = useRef(false);
   useOnOutsideClick(onOutsideClick, [elementReference, triggerElement], !open);
+  useEffect(
+    () => () => {
+      if (returnFocus.current || elementReference?.contains(document.activeElement)) {
+        triggerElement?.focus();
+      }
+    },
+    [elementReference, triggerElement],
+  );
 
-  const roleLabel = user?.role === 'teacher'
-    ? t('common.teacher')
-    : user?.role === 'superuser'
-      ? t('common.superuser')
-      : t('common.student');
+  useEffect(() => {
+    if (!open || !elementReference) return;
+    returnFocus.current = false;
+    elementReference.querySelector<HTMLElement>('select, button')?.focus();
+    const handleKey = (event: KeyboardEvent) => {
+      if (
+        event.key === 'Escape' &&
+        !elementReference.querySelector('[role="combobox"][aria-expanded="true"]')
+      ) {
+        returnFocus.current = true;
+        onOutsideClick?.();
+      }
+    };
+    elementReference.addEventListener('keydown', handleKey);
+    return () => elementReference.removeEventListener('keydown', handleKey);
+  }, [open, elementReference, triggerElement]);
+
+  const roleLabel =
+    user?.role === 'teacher'
+      ? t('common.teacher')
+      : user?.role === 'superuser'
+        ? t('common.superuser')
+        : t('common.student');
 
   const handleSignOut = () => {
     onOutsideClick?.();
@@ -29,37 +62,38 @@ export const Menu: FC<Props> = ({open, onOutsideClick, onSignOut, triggerElement
 
   return (
     <div
-      className="profile-menu absolute right-0 z-50 mt-1 w-72 overflow-hidden rounded-panel border border-border bg-surface text-left shadow-modal"
+      className="profile-menu motion-popup absolute right-0 z-50 mt-layout w-72 overflow-hidden rounded-panel border border-border bg-surface text-left shadow-modal"
+      data-ui-motion={enabled ? 'app' : undefined}
+      data-motion-state={open ? 'open' : 'closed'}
+      aria-hidden={!open || undefined}
+      inert={!open}
       ref={setElementReference}
-      role="menu"
+      id="profile-menu"
+      role="group"
+      aria-label={t('navigation.profile')}
     >
       {user && (
-        <div className="border-b border-border px-4 py-4">
-          <span className="inline-flex rounded-full bg-brand-100 px-2.5 py-1 text-xs font-semibold text-brand-700">
-            {roleLabel}
-          </span>
-          <p className="mt-3 truncate text-sm font-semibold text-slate-800">
-            {user.name}
-          </p>
-          <p className="mt-1 truncate text-xs text-slate-500" title={user.email}>
-            {user.email}
-          </p>
+        <div className="flex flex-col items-start gap-layout ui-divider-bottom border-border p-inset">
+          <Badge tone="success">{roleLabel}</Badge>
+          <div className="ui-text-pair w-full">
+            <p className="truncate text-neutral-800 default-text">{user.name}</p>
+            <p className="truncate text-neutral-500 secondary-text" title={user.email}>
+              {user.email}
+            </p>
+          </div>
         </div>
       )}
 
-      <div className="flex items-center justify-between gap-3 border-b border-border px-4 py-3">
-        <span className="text-sm font-medium text-slate-700">{t('common.language')}</span>
+      <div className="flex items-center justify-between gap-layout ui-divider-bottom border-border px-inset py-inset">
+        <span className="text-neutral-700 medium-text">{t('common.language')}</span>
         <LanguageSwitcher />
       </div>
 
-      <button
-        type="button"
-        role="menuitem"
-        onClick={handleSignOut}
-        className="block w-full px-4 py-3 text-left text-sm font-medium text-slate-700 transition-colors hover:bg-danger-50 hover:text-danger-700 focus-visible:bg-danger-50 focus-visible:text-danger-700 focus-visible:outline-none"
-      >
-        {t('auth.signOut')}
-      </button>
+      <div className="ui-button-group--large flex justify-center p-inset">
+        <Button variant="danger" onClick={handleSignOut}>
+          {t('auth.signOut')}
+        </Button>
+      </div>
     </div>
   );
 };

@@ -15,6 +15,8 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
   const activeInterviewRef = useRef(interviewId);
   const cameraRef = useRef<MediaStream | null>(null);
   const microphoneRef = useRef<MediaStream | null>(null);
+  const cameraDeviceRef = useRef('');
+  const microphoneDeviceRef = useRef('');
   const cameraRequestRef = useRef<Promise<void> | null>(null);
   const microphoneRequestRef = useRef<Promise<void> | null>(null);
   const requestGenerationRef = useRef(0);
@@ -22,6 +24,8 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
   const [microphoneStream, setMicrophoneStream] = useState<MediaStream | null>(null);
   const [cameraState, setCameraState] = useState<MediaAccessState>('idle');
   const [microphoneState, setMicrophoneState] = useState<MediaAccessState>('idle');
+  const [cameraDeviceId, setCameraDeviceId] = useState('');
+  const [microphoneDeviceId, setMicrophoneDeviceId] = useState('');
 
   const stopAll = useCallback(() => {
     requestGenerationRef.current += 1;
@@ -37,9 +41,16 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
     setMicrophoneState('idle');
   }, []);
 
-  const startCamera = useCallback(async () => {
-    if (cameraRef.current?.active) return;
+  const startCamera = useCallback(async (deviceId = cameraDeviceRef.current) => {
     if (cameraRequestRef.current) return cameraRequestRef.current;
+    if (deviceId !== cameraDeviceRef.current) {
+      cameraDeviceRef.current = deviceId;
+      setCameraDeviceId(deviceId);
+      cameraRef.current?.getTracks().forEach((track) => track.stop());
+      cameraRef.current = null;
+      setCameraStream(null);
+    }
+    if (cameraRef.current?.active) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setCameraState('unsupported');
       return;
@@ -49,7 +60,7 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
     const request = navigator.mediaDevices.getUserMedia({
       audio: false,
       video: {
-        facingMode: 'user',
+        ...(deviceId ? {deviceId: {exact: deviceId}} : {facingMode: 'user'}),
         width: {ideal: 1280},
         height: {ideal: 720},
         aspectRatio: {ideal: 16 / 9},
@@ -79,9 +90,16 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
     return request;
   }, []);
 
-  const startMicrophone = useCallback(async () => {
-    if (microphoneRef.current?.active) return;
+  const startMicrophone = useCallback(async (deviceId = microphoneDeviceRef.current) => {
     if (microphoneRequestRef.current) return microphoneRequestRef.current;
+    if (deviceId !== microphoneDeviceRef.current) {
+      microphoneDeviceRef.current = deviceId;
+      setMicrophoneDeviceId(deviceId);
+      microphoneRef.current?.getTracks().forEach((track) => track.stop());
+      microphoneRef.current = null;
+      setMicrophoneStream(null);
+    }
+    if (microphoneRef.current?.active) return;
     if (!navigator.mediaDevices?.getUserMedia) {
       setMicrophoneState('unsupported');
       return;
@@ -90,7 +108,10 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
     const generation = requestGenerationRef.current;
     const request = navigator.mediaDevices.getUserMedia({
       video: false,
-      audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
+      audio: {
+        ...(deviceId ? {deviceId: {exact: deviceId}} : {}),
+        echoCancellation: true, noiseSuppression: true, autoGainControl: true,
+      },
     }).then((stream) => {
       if (generation !== requestGenerationRef.current) {
         stream.getTracks().forEach((track) => track.stop());
@@ -124,15 +145,22 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
 
   useEffect(() => () => stopAll(), [stopAll]);
 
+  const bindInterview = useCallback((id: string) => {
+    activeInterviewRef.current = id;
+  }, []);
+
   return (
     <InterviewMediaContext.Provider value={{
       cameraStream,
       microphoneStream,
       cameraState,
       microphoneState,
+      cameraDeviceId,
+      microphoneDeviceId,
       startCamera,
       startMicrophone,
       stopAll,
+      bindInterview,
     }}>
       {children}
     </InterviewMediaContext.Provider>

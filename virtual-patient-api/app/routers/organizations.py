@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from typing import List
 from app.models.organization import Organization, OrganizationCreate, OrganizationUpdate, OrganizationDB
 from app.models.user import User
-from app.core.auth import get_current_active_user
+from app.core.auth import get_current_active_user, require_superuser
 from app.core.database import get_db
 
 router = APIRouter(
@@ -15,7 +15,7 @@ router = APIRouter(
 async def create_organization(
     organization: OrganizationCreate, 
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_superuser)
 ):
     # Check if organization ID already exists
     db_organization = db.query(OrganizationDB).filter(OrganizationDB.id == organization.id).first()
@@ -65,8 +65,10 @@ async def update_organization(
     organization_id: int,
     organization_update: OrganizationUpdate,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_superuser)
 ):
+    if current_user.organization_id != organization_id:
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
     db_organization = db.query(OrganizationDB).filter(OrganizationDB.id == organization_id).first()
     if db_organization is None:
         raise HTTPException(
@@ -87,8 +89,10 @@ async def update_organization(
 async def delete_organization(
     organization_id: int,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
+    current_user: User = Depends(require_superuser)
 ):
+    if current_user.organization_id != organization_id:
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
     db_organization = db.query(OrganizationDB).filter(OrganizationDB.id == organization_id).first()
     if db_organization is None:
         raise HTTPException(
@@ -100,4 +104,4 @@ async def delete_organization(
     db_organization.active = False
     db.commit()
     
-    return {"message": "Organization deleted successfully"} 
+    return {"message": "Organization deleted successfully"}

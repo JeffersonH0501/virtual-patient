@@ -26,6 +26,10 @@ llm = create_chat_model(temperature=0.2)
 llm_personality = create_chat_model(temperature=1)
 
 
+class PatientResponseError(RuntimeError):
+    """A patient response could not be finalized for clinical use."""
+
+
 class TranslatorAgent:
     """
     Agent that translates messages to specific languages and adds personality traits
@@ -34,7 +38,6 @@ class TranslatorAgent:
     def __init__(self):
         self.llm = llm
         self.llm_personality = llm_personality
-        print("Translator Agent initialized with Azure OpenAI")
     
     async def basic_translate(
         self, 
@@ -65,7 +68,6 @@ class TranslatorAgent:
             return response.content.strip()
             
         except Exception as e:
-            print(f"Error in basic_translate: {e}")
             return f"Translation error: {str(e)}"
     
     async def translate_patient_with_personality(
@@ -115,12 +117,13 @@ class TranslatorAgent:
             # Create message and get response ASYNC
             messages = [HumanMessage(content=formatted_prompt)]
             response = await self.llm_personality.ainvoke(messages)
-            
-            return response.content.strip()
-            
-        except Exception as e:
-            print(f"Error in translate_patient_with_personality: {e}")
-            return f"Translation error: {str(e)}"
+            rewritten = response.content.strip()
+            if not rewritten:
+                raise ValueError("Empty patient rewrite")
+            return rewritten
+
+        except Exception as error:
+            raise PatientResponseError("Patient response rewriting failed") from error
     
     
     async def translate_progress_summary(
@@ -155,31 +158,22 @@ class TranslatorAgent:
             messages = [HumanMessage(content=formatted_prompt)]
             
             # Use structured output with ProgressSummarySchema
-            print(f"🔄 Creating structured model for {target_language}...")
             model_with_structure = self.llm.with_structured_output(ProgressSummarySchema)
-            print(f"✅ Structured model created")
             
             # Get structured response with timeout handling
-            print(f"🔄 Invoking LLM for translation...")
             try:
                 # Add timeout to prevent hanging
                 translated_summary = await asyncio.wait_for(
                     model_with_structure.ainvoke(messages), 
                     timeout=35.0
                 )
-                print(f"✅ LLM translation completed")
                 return translated_summary
             except asyncio.TimeoutError:
-                print(f"⚠️ LLM translation timed out after 35 seconds")
-                print(f"🔄 Falling back to original summary...")
                 return progress_summary
             except Exception as llm_error:
-                print(f"⚠️ LLM translation failed: {llm_error}")
-                print(f"🔄 Falling back to original summary...")
                 return progress_summary
                 
         except Exception as e:
-            print(f"Error in translate_progress_summary: {e}")
             # Return original data if translation fails
             return progress_summary
     
@@ -215,31 +209,22 @@ class TranslatorAgent:
             messages = [HumanMessage(content=formatted_prompt)]
             
             # Use structured output with ClinicalCaseTranslatableFields
-            print(f"🔄 Creating structured model for clinical case translation to {target_language}...")
             model_with_structure = self.llm.with_structured_output(ClinicalCaseTranslatableFields)
-            print(f"✅ Structured model created")
             
             # Get structured response with timeout handling
-            print(f"🔄 Invoking LLM for clinical case translation...")
             try:
                 # Add timeout to prevent hanging
                 translated_fields = await asyncio.wait_for(
                     model_with_structure.ainvoke(messages),
                     timeout=35.0
                 )
-                print(f"✅ LLM translation completed")
                 return translated_fields
             except asyncio.TimeoutError:
-                print(f"⚠️ LLM translation timed out after 35 seconds")
-                print(f"🔄 Falling back to original fields...")
                 return clinical_case_fields
             except Exception as llm_error:
-                print(f"⚠️ LLM translation failed: {llm_error}")
-                print(f"🔄 Falling back to original fields...")
                 return clinical_case_fields
                 
         except Exception as e:
-            print(f"Error in translate_clinical_case_fields: {e}")
             # Return original data if translation fails
             return clinical_case_fields
     

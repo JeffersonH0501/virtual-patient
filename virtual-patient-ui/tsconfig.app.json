@@ -24,10 +24,6 @@
     "noUncheckedSideEffectImports": true
   },
   "include": ["src"],
-  // Test files are excluded from the production build. No test runner is
-  // configured yet (no `vitest`/`jest` dependency), so co-located `*.test.ts`
-  // files import a runner module that is not installed; excluding them keeps
-  // `tsc -b && vite build` green while leaving the tests ready to run once a
-  // runner (vitest, matching this Vite project) is added.
+  // Co-located tests run with Vitest and remain outside the production build.
   "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
 }

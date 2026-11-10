@@ -1,0 +1,3 @@
+
+GENDER-SPECIFIC INSTRUCTIONS:
+- The patient is FEMALE. Use feminine forms in your feedback when referring to the patient.

@@ -13,6 +13,7 @@ from app.nonverbal.ccdbhg import (
     resample_windows,
 )
 from app.nonverbal.shared_observations import SharedFrameObservation
+from app.nonverbal.gaze import GazeObservation
 from app.nonverbal.video_observations import TurnWindow, build_turn_raw_features
 
 
@@ -43,6 +44,17 @@ def test_head_pose_official_axis_and_euler_convention():
     expected_xyz = np.array([.1, -.2, .3])
     matrix[:3, :3] = np.diag([1., -1., -1.]) @ Rotation.from_euler("xyz", expected_xyz).as_matrix() @ np.diag([1., -1., -1.])
     np.testing.assert_allclose(head_pose_features(matrix), [-.2, .3, .1], atol=1e-12)
+
+
+def test_invalid_frame_does_not_discard_other_frames_or_bridge_the_gap():
+    points = [SimpleNamespace(x=.5, y=.5, z=0) for _ in range(478)]
+    valid = lambda time: SharedFrameObservation(time, None, True, points,
+        facial_transformation_matrix=np.eye(4), frame_width=640, frame_height=480)
+    invalid = SharedFrameObservation(100, None, True, points[:2],
+        facial_transformation_matrix=np.eye(4), frame_width=640, frame_height=480)
+    features = ccdbhg.frame_features([valid(0), invalid, valid(200)])
+    assert [item.timestamp_ms for item in features] == [0, 200]
+    assert features[0].continuity_id != features[1].continuity_id
 
 
 def test_channel_order_is_exact_and_finite():
@@ -105,10 +117,33 @@ def test_overlapping_predictions_consolidate_and_short_events_are_removed():
 def test_turn_assignment_is_half_open_and_valid_zero_is_available():
     turns = [TurnWindow("a", 0, 1000, "student"), TurnWindow("b", 1000, 2000, "patient")]
     events = [NodEvent(900, 1100, 1000, .9)]
-    assigned = assign_nods_to_turns(events, turns)
-    assert assigned["a"] == (0, 0)
-    assert assigned["b"] == (1, 60)
+    observations = [SimpleNamespace(shared=SimpleNamespace(timestamp_ms=1000, face_valid=False, sampling_max_gap_ms=100),
+        smile=None, gaze=GazeObservation(1000, False, "unavailable"))]
+    analysis = NodAnalysis(tuple(events), True, evaluated_timestamps_ms=(1000,),
+                           predictions=(WindowPrediction(999, 0, .7), WindowPrediction(1000, 1, .9)))
+    result = build_turn_raw_features(observations, turns[1], nod_analysis=analysis)
+    assert result.nod_count == 1
+    assert result.nod_predictions == [{"timestamp_ms": 1000, "class_id": 1, "confidence": .9}]
     raw = build_turn_raw_features([], turns[0], nod_analysis=NodAnalysis((), True))
-    assert raw.nod_count == 0 and raw.nod_rate_min == 0
+    assert raw.nod_count is None and raw.nod_rate_min is None
     unavailable = build_turn_raw_features([], turns[0], nod_analysis=NodAnalysis((), False, "insufficient_signal"))
     assert unavailable.nod_count is None and unavailable.nod_unavailable_reason.value == "insufficient_signal"
+
+
+def test_sparse_frames_cannot_be_interpolated_into_valid_windows():
+    features = [CCDbHGFrameFeatures(t, np.full(18, t)) for t in np.arange(0, 1500, 150)]
+    assert resample_windows(features) == []
+
+
+def test_nod_events_do_not_bridge_missing_inference_time():
+    predictions = [WindowPrediction(i * 33.333, 1, .9) for i in range(5)]
+    predictions += [WindowPrediction(10_000 + i * 33.333, 1, .9) for i in range(5)]
+    assert nod_events(predictions) == []
+
+
+def test_overlapping_windows_do_not_duplicate_nod_events():
+    windows = [TurnWindow("a", 0, 2000, "patient"), TurnWindow("b", 1000, 3000, "student")]
+    assigned = assign_nods_to_turns([NodEvent(900, 1100, 1000, .9)], windows)
+    assert sum(count for count, _ in assigned.values()) == 1
+
+

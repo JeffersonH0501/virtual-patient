@@ -3,7 +3,9 @@ import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from langgraph.prebuilt import create_react_agent
-from langgraph.store.postgres import PostgresStore
+from app.core.memory_store import PostgresStore
+from app.core.async_work import run_sync_owned
+from copy import deepcopy
 from langgraph.store.base import BaseStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
@@ -46,7 +48,6 @@ async def process_background_memories_standalone(
         patient_response: The patient's response as AIMessage
     """
     try:
-        print(f"\n🔧 [BACKGROUND] Starting memory processing for interview {interview_id}")
         
         # Create a new PostgresStore connection for this background task
         with PostgresStore.from_conn_string(
@@ -65,11 +66,9 @@ async def process_background_memories_standalone(
                 patient_response
             )
             
-            print(f"✅ [BACKGROUND] Memory processing completed for interview {interview_id}")
             
     except Exception as e:
         # Don't raise - this is a background task and shouldn't affect the main response
-        print(f"⚠️ [BACKGROUND] Memory processing failed for interview {interview_id}: {e}")
         import traceback
         traceback.print_exc()
 
@@ -80,18 +79,19 @@ class VirtualPatientAgent:
     using PostgreSQL storage with semantic search capabilities.
     """
     
-    def __init__(self, store: BaseStore, checkpointer: BaseCheckpointSaver, interview_id: str):
+    def __init__(self, store: BaseStore, checkpointer: BaseCheckpointSaver, interview_id: str,
+                 *, persist_background_memory: bool = True):
         # Set up PostgreSQL store with semantic search capabilities
         
         self.store = store
         self.llm = llm
         self.checkpointer = checkpointer
         self.interview_id = interview_id
+        self.persist_background_memory = persist_background_memory
     
         # Initialize enhanced memory manager
         self.enhanced_memory = EnhancedMemoryManager(store, interview_id, llm)
         
-        print(f"Enhanced Memory Manager initialized for interview: {interview_id}")
         
         # Initialize patient attributes (will be set by workflow)
         self._patient_name = 'Virtual Patient'
@@ -109,9 +109,6 @@ class VirtualPatientAgent:
     
     def _create_interview_prompt(self, state):
         """Create prompt for virtual patient using interview structure - for pre_model_hook"""
-        print("\n" + "─"*60)
-        print("⏱️  PRE-MODEL HOOK TIMING (inside agent invoke)")
-        print("─"*60)
         
         # Get the current question
         current_question = state["messages"][-1].content
@@ -125,17 +122,14 @@ class VirtualPatientAgent:
                 timeout=0.6  # 500ms timeout for memory search
             )
         except Exception as e:
-            print(f"⚠️ Memory retrieval timeout or error: {e}")
             # Use empty context on timeout
             memory_context = {"background_memories": [], "response_guidance": ""}
         memory_retrieval_time = time.time() - memory_start
-        print(f"⏱️  Memory Retrieval: {memory_retrieval_time:.3f}s")
         
         # Format memories for the prompt
         format_start = time.time()
         memories = self.enhanced_memory.format_enhanced_memories(memory_context)
         format_time = time.time() - format_start
-        print(f"⏱️  Memory Formatting: {format_time:.3f}s")
         
         # Get clinical case information from the agent's stored clinical case
         summary_start = time.time()
@@ -144,7 +138,6 @@ class VirtualPatientAgent:
         # Use cached summary if available
         clinical_case_summary = self._get_clinical_case_summary_cached(clinical_case)
         summary_time = time.time() - summary_start
-        print(f"⏱️  Clinical Case Summary: {summary_time:.3f}s")
         
         # Get current time
         current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -164,16 +157,9 @@ class VirtualPatientAgent:
             question=current_question
         )
         prompt_time = time.time() - prompt_start
-        print(f"⏱️  Prompt Creation: {prompt_time:.3f}s")
-        print("─"*60)
         
         # Print the complete interview prompt for debugging
-        print("\n" + "="*80)
-        print("📋 COMPLETE INTERVIEW PROMPT:")
-        print("="*80)
-        print(interview_prompt)
-        print("="*80 + "\n")
-    
+
         # Add the SystemMessage at the end
         system_message = SystemMessage(content=interview_prompt)
         
@@ -196,13 +182,13 @@ class VirtualPatientAgent:
         # Store the clinical case for reference
         self._current_clinical_case = clinical_case
         
-        print(f"Patient attributes set: Name={name}, Gender={gender}")
     
     async def process_medical_interview_message(
         self, 
         messages: List[Dict[str, str]], 
         clinical_case: ClinicalCaseDB,
-        thread_id: Optional[str] = None
+        thread_id: Optional[str] = None,
+        client_request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Process a medical interview message using hot path memory management.
@@ -219,11 +205,13 @@ class VirtualPatientAgent:
         
         # Start total timer
         total_start_time = time.time()
-        print("\n" + "="*80)
-        print("⏱️  PERFORMANCE TIMING - INTERVIEW PROCESSING")
-        print("="*80)
         
         # Store the clinical case in the agent instance for access in pre_model_hook
+        if isinstance(clinical_case, ClinicalCaseDB):
+            clinical_case = ClinicalCaseDB(**{
+                column.key: deepcopy(getattr(clinical_case, column.key))
+                for column in ClinicalCaseDB.__table__.columns
+            })
         self._current_clinical_case = clinical_case
         
         # Ensure thread_id is set (should always be provided by router)
@@ -240,22 +228,35 @@ class VirtualPatientAgent:
             "recursion_limit": 100
         }
         setup_time = time.time() - setup_start
-        print(f"⏱️  Setup & Config: {setup_time:.3f}s")
         
-        print(f"Invoking agent with {len(messages)} messages")
-        print(f"🔍 AGENT DEBUG: interview_id: {self.interview_id}")
-        print(f"🔍 AGENT DEBUG: thread_id: {thread_id}")
-        print(f"🔍 AGENT DEBUG: clinical_case.id: {clinical_case.id}")
         
         agent_start = time.time()
-        response = self.hot_path_agent.invoke(
-            {"messages": messages},
+        graph_input = {"messages": messages}
+        if client_request_id:
+            message_id = f"client-request-{client_request_id}"
+            saved = await run_sync_owned(self.hot_path_agent.get_state, config)
+            saved_messages = saved.values.get("messages", []) if saved.values else []
+            original = next((message for message in saved_messages if message.id == message_id), None)
+            if original is not None:
+                last_question = next((message for message in reversed(saved_messages) if isinstance(message, HumanMessage)), None)
+                if original is not last_question:
+                    raise RuntimeError("The checkpoint advanced beyond the unpersisted exchange")
+                if original.content != messages[-1]["content"]:
+                    raise ValueError("Message request identifier has a different checkpointed question")
+                if not saved.next:
+                    if not saved_messages or not isinstance(saved_messages[-1], AIMessage):
+                        raise RuntimeError("The checkpointed exchange is incomplete")
+                    return {**saved.values, "_request_translation_finalized":
+                        saved_messages[-1].additional_kwargs.get("finalized_client_request_id") == client_request_id}
+                graph_input = None
+            else:
+                graph_input = {"messages": [*messages[:-1], {**messages[-1], "id": message_id}]}
+        response = await run_sync_owned(self.hot_path_agent.invoke,
+            graph_input,
             config=config
         )
 
         agent_time = time.time() - agent_start
-        print(f"⏱️  Hot Path Agent Invoke: {agent_time:.3f}s")
-        print(f"     └─ This includes: memory retrieval, prompt creation, and LLM call")
 
         ##print(f"AGENT RESPONSE: \n\n {response} \n\n")
 
@@ -271,9 +272,8 @@ class VirtualPatientAgent:
         
         # Schedule background memory processing (non-blocking)
         # Uses standalone function with its own database connection
-        if doctor_content and last_message:
-            print(f"🧠 Scheduling background memory processing...")
-            asyncio.create_task(
+        if self.persist_background_memory and doctor_content and last_message:
+            self.background_task = asyncio.create_task(
                 process_background_memories_standalone(
                     interview_id=self.interview_id,
                     doctor_question=doctor_content,
@@ -283,12 +283,6 @@ class VirtualPatientAgent:
          
         # Print total time (without memory processing blocking)
         total_time = time.time() - total_start_time
-        print("\n" + "-"*80)
-        print(f"⏱️  TOTAL PROCESSING TIME: {total_time:.3f}s")
-        print(f"     ├─ Setup & Config: {setup_time:.3f}s ({(setup_time/total_time)*100:.1f}%)")
-        print(f"     ├─ Hot Path Agent: {agent_time:.3f}s ({(agent_time/total_time)*100:.1f}%)")
-        print(f"     └─ Background memory processing scheduled (non-blocking)")
-        print("="*80 + "\n")
        
         return response
     
@@ -300,7 +294,6 @@ class VirtualPatientAgent:
             return create_clinical_case_summary(clinical_case)
                 
         except Exception as e:
-            print(f"Error getting clinical case summary from object: {e}")
             return "Patient information not available"
     
     def _get_clinical_case_summary_cached(self, clinical_case: ClinicalCaseDB) -> str:
@@ -320,11 +313,9 @@ class VirtualPatientAgent:
         
         # Check module-level cache first
         if clinical_case_id in _clinical_case_summary_cache:
-            print(f"📦 Using cached clinical case summary (ID: {clinical_case_id})")
             return _clinical_case_summary_cache[clinical_case_id]
         
         # Generate new summary and cache it at module level
-        print(f"🔄 Generating new clinical case summary (ID: {clinical_case_id})")
         summary = self._get_clinical_case_summary_from_object(clinical_case)
         _clinical_case_summary_cache[clinical_case_id] = summary
         

@@ -9,10 +9,11 @@ export {getInterviews} from './getInterviews';
 export {sendMessage} from './sendMessage';
 export {deleteInterview} from './deleteInterview';
 export {
-  processTemporaryCalibration,
   saveCalibrationResult,
   startInterview,
   processCalibrationStage,
   warmUpCalibration,
+  discardCalibrationDraft,
+  discardResumeCalibration,
 } from './calibration';
-export type {CalibrationDraft, CalibrationResultPayload, CalibrationStageResult} from './calibration';
+export type {CalibrationResultPayload, CalibrationStageResult} from './calibration';

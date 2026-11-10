@@ -16,7 +16,6 @@ from app.multimodal.tests.test_pipeline import (
     _make_recording,
     _make_turn,
 )
-from app.nonverbal.gaze import create_tracker
 from app.nonverbal.ccdbhg import analyze_nods
 from app.nonverbal.mediapipe_extractor import create_face_landmarker
 from app.nonverbal.preprocessing import preprocess_nonverbal_turn
@@ -53,17 +52,15 @@ class CountingLandmarker:
         return self.delegate.detect_for_video(image, timestamp_ms)
 
 
-def test_real_video_single_pass_mediapipe_to_blazegaze_and_turn_features(tmp_path):
+def test_real_video_single_pass_mediapipe_and_turn_features(tmp_path):
     video_path = tmp_path / "face.mp4"
     write_fixture_video(video_path, frame_count=35, fps=30.0)
 
     delegate = create_face_landmarker()
     landmarker = CountingLandmarker(delegate)
-    tracker = create_tracker()
-    assert not hasattr(tracker, "face_landmarker")
     try:
         observations = extract_nonverbal_video_observations(
-            video_path, sample_fps=30.0, landmarker=landmarker, tracker=tracker
+            video_path, sample_fps=30.0, landmarker=landmarker
         )
     finally:
         delegate.close()
@@ -71,9 +68,7 @@ def test_real_video_single_pass_mediapipe_to_blazegaze_and_turn_features(tmp_pat
     assert observations
     assert landmarker.calls == len(observations)
     assert any(item.smile is not None for item in observations)
-    valid_gaze = [item.gaze for item in observations if item.gaze.valid]
-    assert valid_gaze
-    assert all(np.isfinite([item.unclipped_x, item.unclipped_y]).all() for item in valid_gaze)
+    assert all(not item.gaze.valid for item in observations)
 
     nod_analysis = analyze_nods([item.shared for item in observations])
     assert nod_analysis.evaluated
@@ -115,8 +110,8 @@ def test_product_pipeline_reads_stored_video_and_persists_nonverbal_features(tmp
         ))
 
     persisted = turn.nonverbal_features
-    assert persisted["raw"]["extractor"]["name"] == "mediapipe_blazegaze_ccdbhg"
+    assert persisted["raw"]["extractor"]["name"] == "mediapipe_ccdbhg"
     assert persisted["raw"]["gaze_observations"]
     assert persisted["processed"]["smile_activity_ratio"] is not None
     assert persisted["quality"]["feature_reasons"]["visual_alignment_ratio"] == "gaze_calibration_pending"
-    assert persisted["base_labels"]["visual_orientation"]["visual_alignment_ratio"]["reason"] == "gaze_calibration_pending"
+    assert persisted["base_labels"]["gaze_orientation"]["interaction_gaze_ratio"]["status"] == "unavailable"

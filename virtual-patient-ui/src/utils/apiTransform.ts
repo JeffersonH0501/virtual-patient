@@ -28,7 +28,7 @@ export function transformToCamelCase<T>(obj: T): TransformObject<T> {
   if (obj !== null && typeof obj === 'object') {
     return Object.entries(obj).reduce((acc, [key, value]) => {
       const camelKey = key.replace(/_([a-z])/g, (_, letter) =>
-        letter.toUpperCase()
+        letter.toUpperCase(),
       );
       return {
         ...acc,
@@ -49,7 +49,7 @@ export function transformToSnakeCase<T>(obj: T): TransformToSnakeCase<T> {
     return Object.entries(obj).reduce((acc, [key, value]) => {
       const snakeKey = key.replace(
         /[A-Z]/g,
-        (letter) => `_${letter.toLowerCase()}`
+        (letter) => `_${letter.toLowerCase()}`,
       );
       return {
         ...acc,
@@ -59,4 +59,4 @@ export function transformToSnakeCase<T>(obj: T): TransformToSnakeCase<T> {
   }
 
   return obj as TransformToSnakeCase<T>;
-} 
+}

@@ -4,17 +4,35 @@ from types import SimpleNamespace
 import unittest
 
 from fastapi import HTTPException, status
+import pytest
 
+from app.media import patient_roi
+from app.media.access import _parse_range, _require_owner, _require_replay_access
+from app.media.patient_roi import validate_patient_roi as _validate_patient_roi
 from app.models.user import UserRole
 from app.models.medical_interview import RecordingStatus, TurnUpsertRequest
 from app.routers.interview_recordings import (
-    _parse_range,
-    _require_owner,
-    _require_replay_access,
-    _status_for_asset_count,
-    _validate_source_durations,
     _without_none,
 )
+
+
+def test_roi_requires_bounded_ordered_finite_samples(monkeypatch):
+    sample = {"timestampMs": 10, "xNormalized": -0.05, "yNormalized": 0.1,
+              "widthNormalized": 0.2, "heightNormalized": 0.2}
+    monkeypatch.setattr(patient_roi, "MAX_ROI_SNAPSHOTS", 2)
+    _validate_patient_roi([sample, {**sample, "timestampMs": 20}], 20)
+    for invalid in (
+        [sample, sample, sample],
+        [{**sample, "timestampMs": 21}],
+        [sample, {**sample, "timestampMs": 9}],
+        [{**sample, "widthNormalized": float("nan")}],
+        [{**sample, "heightNormalized": -0.1}],
+        [{**sample, "xNormalized": True}],
+        [{**sample, "xNormalized": 2}],
+    ):
+        with pytest.raises(HTTPException) as error:
+            _validate_patient_roi(invalid, 20)
+        assert error.value.status_code == 422
 
 
 class RecordingRangeTests(unittest.TestCase):
@@ -44,9 +62,10 @@ class RecordingAuthorizationTests(unittest.TestCase):
             _require_owner(self.interview, SimpleNamespace(id=8))
         self.assertEqual(context.exception.status_code, status.HTTP_403_FORBIDDEN)
 
-    def test_teacher_in_same_organization_can_replay(self) -> None:
+    def test_teacher_without_assignment_cannot_replay(self) -> None:
         teacher = SimpleNamespace(id=8, organization_id=3, role=UserRole.TEACHER)
-        _require_replay_access(self.interview, teacher)
+        with self.assertRaises(HTTPException):
+            _require_replay_access(self.interview, teacher)
 
     def test_student_from_another_account_cannot_replay(self) -> None:
         student = SimpleNamespace(id=8, organization_id=3, role=UserRole.STUDENT)
@@ -55,74 +74,8 @@ class RecordingAuthorizationTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, status.HTTP_403_FORBIDDEN)
 
 
-class RecordingDurationTests(unittest.TestCase):
-    def setUp(self) -> None:
-        self.uploads = {
-            "student_audio": object(),
-            "student_video": object(),
-            "patient_audio": object(),
-            "patient_video": object(),
-        }
-
-    def test_four_sources_accept_small_timeline_differences(self) -> None:
-        durations = {
-            "student_audio": 10_000,
-            "student_video": 10_100,
-            "patient_audio": 9_900,
-            "patient_video": 10_000,
-        }
-
-        result = _validate_source_durations(durations, self.uploads, 10_000)
-
-        self.assertEqual(result, durations)
-
-    def test_source_outside_tolerance_is_rejected(self) -> None:
-        durations = {kind: 10_000 for kind in self.uploads}
-        durations["patient_video"] = 11_000
-
-        with self.assertRaises(HTTPException) as context:
-            _validate_source_durations(durations, self.uploads, 10_000)
-
-        self.assertEqual(context.exception.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-    def test_missing_source_duration_is_rejected(self) -> None:
-        durations = {kind: 10_000 for kind in self.uploads if kind != "patient_audio"}
-
-        with self.assertRaises(HTTPException) as context:
-            _validate_source_durations(durations, self.uploads, 10_000)
-
-        self.assertEqual(context.exception.status_code, status.HTTP_422_UNPROCESSABLE_ENTITY)
-
-    def test_overlapping_turns_remain_valid_independent_intervals(self) -> None:
-        patient = TurnUpsertRequest(
-            speaker="patient",
-            sequence=1,
-            start_ms=100,
-            end_ms=900,
-            transcript="Patient speech",
-            input_source="tts",
-            timing_source="tts_playback",
-            timing_quality="measured",
-        )
-        student = TurnUpsertRequest(
-            speaker="student",
-            sequence=2,
-            start_ms=700,
-            end_ms=1_200,
-            transcript="Student speech",
-            input_source="browser_speech",
-            timing_source="browser_speech_events",
-            timing_quality="provisional",
-        )
-
-        self.assertLess(student.start_ms, patient.end_ms)
 
 
-class RecordingStatusTests(unittest.TestCase):
-    def test_ready_requires_all_four_sources(self) -> None:
-        self.assertEqual(_status_for_asset_count(4), RecordingStatus.READY)
-        self.assertEqual(_status_for_asset_count(3), RecordingStatus.PARTIAL)
-        self.assertEqual(_status_for_asset_count(0), RecordingStatus.UNAVAILABLE)
 
 
 class ObservationContractTests(unittest.TestCase):
@@ -150,8 +103,8 @@ class TurnResponseContractTests(unittest.TestCase):
         return {
             "raw": {"word_count": 12, "voiced_duration_ms": 3200},
             "processed": {"speech_rate_wpm": 142.0, "articulation_rate_wpm": None},
-            "base_labels": {"temporal": {"speech_rate_wpm": {"status": "ok", "value": "measured_pace"}}},
-            "integrated_labels": {"temporal": {"status": "ok", "value": "measured_pace", "reason": None}},
+            "base_labels": {"speech_timing": {"speech_rate_wpm": {"status": "ok", "value": "measured_pace"}}},
+            "integrated_labels": {"speech_timing": {"status": "ok", "value": "measured_pace", "reason": None}},
             "quality": {"validRatio": 0.94, "issues": []},
             "versions": {"processing": "1", "thresholds": "1", "label_rules": "1"},
             "config_hash": "abc123",
@@ -163,8 +116,8 @@ class TurnResponseContractTests(unittest.TestCase):
         return {
             "raw": {"sampled_frame_count": 20},
             "processed": {"visual_alignment_ratio": 0.7, "nod_count": 0, "median_visual_alignment_dwell_ms": None},
-            "base_labels": {"visual_orientation": {"visual_alignment_ratio": {"status": "ok", "value": "oriented"}}},
-            "integrated_labels": {"visual_orientation": {"status": status_value, "value": "oriented" if status_value == "ok" else None}},
+            "base_labels": {"gaze_orientation": {"visual_alignment_ratio": {"status": "ok", "value": "oriented"}}},
+            "integrated_labels": {"gaze_orientation": {"status": status_value, "value": "oriented" if status_value == "ok" else None}},
             "quality": {"sampledFrameCount": 20, "validFrameCount": 18, "issues": []},
             "versions": {"processing": "1", "thresholds": "1", "label_rules": "1"},
             "config_hash": "abc123",
@@ -190,7 +143,7 @@ class TurnResponseContractTests(unittest.TestCase):
         # The layered layers survive verbatim (minus null optional metrics).
         self.assertEqual(response.paraverbal["processed"]["speech_rate_wpm"], 142.0)
         self.assertNotIn("articulation_rate_wpm", response.paraverbal["processed"])  # None stripped
-        self.assertEqual(response.paraverbal["integrated_labels"]["temporal"]["value"], "measured_pace")
+        self.assertEqual(response.paraverbal["integrated_labels"]["speech_timing"]["value"], "measured_pace")
         self.assertEqual(response.paraverbal["versions"]["processing"], "1")
         self.assertEqual(response.paraverbal["config_hash"], "abc123")
         self.assertEqual(response.nonverbal_features["processed"]["visual_alignment_ratio"], 0.7)
@@ -218,7 +171,7 @@ class TurnResponseContractTests(unittest.TestCase):
 
         self.assertEqual(response.nonverbal_features["status"], "unavailable")
         self.assertEqual(response.nonverbal_features["reason"], "insufficient_signal")
-        self.assertEqual(response.nonverbal_features["integrated_labels"]["visual_orientation"]["status"], "unavailable")
+        self.assertEqual(response.nonverbal_features["integrated_labels"]["gaze_orientation"]["status"], "unavailable")
 
 
 if __name__ == "__main__":

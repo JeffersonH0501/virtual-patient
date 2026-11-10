@@ -1,0 +1,48 @@
+sustained_gaze_orientation: The doctor maintained visual orientation toward the calibrated interaction target for a high proportion of the turn, including sustained periods.
+interaction_gaze_inside: The estimated gaze was inside the interaction area for at least half of the evaluable time.
+interaction_gaze_outside: The estimated gaze was outside the interaction area for more than half of the evaluable time.
+fragmented_gaze_orientation: The doctor's visual orientation toward the interaction target occurred mainly in brief or interrupted periods.
+scarce_gaze_orientation: The doctor was oriented toward the interaction target for a relatively small proportion of the turn.
+typical_gaze_orientation: Visual orientation proportion and sustained periods were within the defined typical ranges.
+no_nodding: No head nods were detected during the turn.
+nodding_present: One or more head nods were detected during the turn.
+frequent_nodding: Head nods occurred relatively frequently compared with other comparable turns in the session.
+scarce_nodding: Head nods were detected, but at a relatively low frequency.
+absent_smile_activity: No smile activity was detected during the turn.
+scarce_smile_activity: Smile activity was detected during a small proportion of the turn.
+moderate_smile_activity: Smile activity was detected during a moderate proportion of the turn.
+frequent_smile_activity: Smile activity was detected during a relatively large proportion of the turn.
+marked_smile_activity: Smile activity was frequent and showed relatively marked activation.
+elevated_loudness: Loudness was above P75 of the eligible student turns in this interview.
+reduced_loudness: Loudness was below P25 of the eligible student turns in this interview.
+expressive_modulation: The turn showed relatively broad variation in both intonation and vocal intensity.
+high_f0_and_loudness_variability: F0 variation was high and loudness variation was above P75 of eligible turns in this interview.
+reduced_f0_and_loudness_variability: F0 variation was reduced and loudness variation was below P25 of eligible turns in this interview.
+high_f0_variability: F0 variation was high under the provisional bands.
+reduced_f0_variability: F0 variation was reduced under the provisional bands.
+reduced_modulation: The turn showed relatively little variation in both intonation and vocal intensity.
+expressive_intonation: The turn showed relatively broad variation in intonation.
+monotone_intonation: The turn showed relatively little variation in intonation.
+marked_loudness_variability: Vocal intensity varied considerably during the turn.
+reduced_loudness_variability: Vocal intensity remained relatively stable during the turn.
+typical_modulation: Variation in intonation and vocal intensity was within the defined typical ranges.
+fragmented_by_brief_pauses: The turn contained relatively frequent brief pauses.
+no_reportable_pauses: No internal pauses of at least 500 milliseconds were detected.
+fast_speech_few_pauses: Speech rate was high with a low proportion of reportable pauses.
+slow_speech_few_pauses: Speech rate was low with a low proportion of reportable pauses.
+intermittent_by_long_pauses: The turn contained relatively long pauses and a typical or high pause proportion.
+rapid_bursts_with_pauses: Speech rate and the proportion of time in pauses were relatively high.
+reduced_rate_by_pauses: Overall speech rate was relatively low and the pause proportion was relatively high.
+slow_continuous_rate: Articulation rate was relatively low with a low or typical pause proportion.
+fast_continuous_rate: Articulation rate was relatively high with a low or typical pause proportion.
+sparse_pauses: Pause frequency and the proportion of time in pauses were relatively low.
+high_pause_load: A relatively high proportion of the turn was classified as pauses.
+typical_speech_timing_pattern: Speech rate, articulation rate and pause proportion were within the defined typical ranges.
+unavailable: No valid evidence is available for this family in this turn. This is missing information, never negative performance and must not be penalized.
+mixed_speech_timing_pattern_unclassified: The observed temporal pattern did not match a defined integrated pattern. This unclassified pattern has no inherent negative meaning.
+mixed_prosodic_level_unclassified: The observed prosodic level pattern did not match a defined integrated pattern. This unclassified pattern has no inherent negative meaning.
+mixed_prosodic_variability_unclassified: The observed prosodic modulation pattern did not match a defined integrated pattern. This unclassified pattern has no inherent negative meaning.
+mixed_gaze_orientation_unclassified: The observed visual orientation pattern did not match a defined integrated pattern. This unclassified pattern has no inherent negative meaning.
+mixed_head_nods_unclassified: The observed head gestural feedback pattern did not match a defined integrated pattern. This unclassified pattern has no inherent negative meaning.
+mixed_smile_activity_unclassified: The observed smile activity pattern did not match a defined integrated pattern. This unclassified pattern has no inherent negative meaning.
+typical_loudness: Vocal intensity was within the middle range of eligible turns in the session.

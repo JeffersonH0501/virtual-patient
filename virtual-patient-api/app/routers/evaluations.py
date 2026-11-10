@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends
 from app.agents.prompts.evaluation_aspects import get_all_aspects
 from app.core.auth import get_current_active_user
 from app.models.user import UserDB
+from app.agents.prompts.multimodal_evaluation import get_multimodal_metadata
 
 router = APIRouter(prefix="/evaluations", tags=["evaluations"])
 
@@ -22,6 +23,6 @@ async def get_evaluation_aspects(current_user: UserDB = Depends(get_current_acti
     aspects = get_all_aspects(user_language)
     
     return {
-        "aspects": aspects
+        "aspects": aspects,
+        "multimodal_aspects": get_multimodal_metadata(user_language),
     }
-

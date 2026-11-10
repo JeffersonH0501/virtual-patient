@@ -2,8 +2,7 @@
 
 This module owns the paraverbal *derivation* stage of the multimodal pipeline
 (Requirement 7). It consumes :class:`~app.multimodal.schemas.ParaverbalRawFeatures`
-emitted by the OpenSMILE extractor, an optional
-:class:`~app.multimodal.schemas.PersonalBaseline`, and the methodology parameter
+emitted by the OpenSMILE extractor and the methodology parameter
 ``min_pause_ms``, and produces
 :class:`~app.multimodal.schemas.ParaverbalProcessedFeatures`.
 
@@ -43,8 +42,6 @@ Formulas (Requirement 7):
 * ``f0_median_semitones``     = median(``f0_samples_semitones``).
 * ``f0_p20_p80_range_semitones`` = P80 - P20 of ``f0_samples_semitones``.
 * ``loudness_p20_p80_range``     = P80 - P20 of ``loudness_samples``.
-* ``relative_pitch_shift_st`` = ``f0_median_semitones - baseline_f0_semitones``;
-  ``None`` when no baseline is supplied (feature_unavailable).
 
 Percentile method: linear interpolation between closest ranks on a sorted
 sample, matching the NumPy default ("linear"/type-7) definition. For a fraction
@@ -60,7 +57,6 @@ from typing import Sequence
 from app.multimodal.schemas import (
     ParaverbalProcessedFeatures,
     ParaverbalRawFeatures,
-    PersonalBaseline,
 )
 
 _MS_PER_MINUTE = 60_000.0
@@ -72,14 +68,13 @@ _ROUND_DIGITS = 3
 # duration counted as a pause. This tunes how pauses are segmented from the
 # acoustic signal, not a label band, so it lives here as a fixed engineering
 # default rather than in the methodology config.
-MIN_PAUSE_MS = 250.0
+MIN_PAUSE_MS = 500.0
 
 
 def preprocess_paraverbal(
     raw: ParaverbalRawFeatures,
     *,
     min_pause_ms: float = MIN_PAUSE_MS,
-    baseline: PersonalBaseline | None = None,
 ) -> ParaverbalProcessedFeatures:
     """Derive processed paraverbal features from raw signals.
 
@@ -88,14 +83,24 @@ def preprocess_paraverbal(
         min_pause_ms: Technical derivation constant (defaults to
             :data:`MIN_PAUSE_MS`). Only contiguous silence segments of at least
             this duration are counted as pauses.
-        baseline: Optional per-participant reference. Required only for
-            ``relative_pitch_shift_st``; when absent that feature is ``None``.
 
     Returns:
         A :class:`ParaverbalProcessedFeatures` with every non-derivable feature
         set to ``None`` (never a fabricated value).
     """
-    turn_duration_ms = raw.turn_duration_ms
+    intervals = raw.vad_speech_intervals_ms
+    if intervals:
+        if any(start < 0 or end <= start or end > raw.turn_duration_ms for start, end in intervals) or any(
+            left[1] > right[0] for left, right in zip(intervals, intervals[1:])
+        ):
+            raise ValueError('VAD intervals must be ordered and inside the turn')
+        turn_duration_ms = intervals[-1][1] - intervals[0][0]
+        voiced_duration_ms = sum(end - start for start, end in intervals)
+        pause_segments = [right[0] - left[1] for left, right in zip(intervals, intervals[1:])]
+    else:
+        turn_duration_ms = None
+        voiced_duration_ms = None
+        pause_segments = None
     turn_minutes = _to_minutes(turn_duration_ms)
 
     # Global speech rate: words over the full turn duration (includes pauses).
@@ -104,7 +109,7 @@ def preprocess_paraverbal(
     # Articulation rate: words over voiced/speaking time only (excludes pauses).
     # Denominator is voiced_duration_ms, preserving the pre-refactor semantics.
     articulation_rate_wpm = _rate_per_minute(
-        raw.word_count, _to_minutes(raw.voiced_duration_ms)
+        raw.word_count, _to_minutes(voiced_duration_ms)
     )
 
     # Pause statistics from valid pauses (>= min_pause_ms). When the methodology
@@ -113,7 +118,7 @@ def preprocess_paraverbal(
         pause_count,
         total_pause_duration_ms,
         median_pause_duration_ms,
-    ) = _pause_statistics(raw.pause_segments_ms, min_pause_ms)
+    ) = _pause_statistics(pause_segments, min_pause_ms)
 
     pause_frequency_per_min = (
         _rate_per_minute(pause_count, turn_minutes)
@@ -137,15 +142,11 @@ def preprocess_paraverbal(
         _percentile_range(raw.loudness_samples, _P20, _P80)
     )
 
-    relative_pitch_shift_st: float | None = None
-    if baseline is not None and f0_median_semitones is not None:
-        relative_pitch_shift_st = _round(
-            f0_median_semitones - baseline.baseline_f0_semitones
-        )
-
     return ParaverbalProcessedFeatures(
         speech_rate_wpm=speech_rate_wpm,
         articulation_rate_wpm=articulation_rate_wpm,
+        speech_window_duration_ms=turn_duration_ms,
+        speech_active_duration_ms=voiced_duration_ms,
         pause_count=pause_count,
         total_pause_duration_ms=total_pause_duration_ms,
         median_pause_duration_ms=median_pause_duration_ms,
@@ -155,7 +156,6 @@ def preprocess_paraverbal(
         f0_median_semitones=f0_median_semitones,
         f0_p20_p80_range_semitones=f0_p20_p80_range_semitones,
         loudness_p20_p80_range=loudness_p20_p80_range,
-        relative_pitch_shift_st=relative_pitch_shift_st,
     )
 
 
@@ -165,7 +165,7 @@ def preprocess_paraverbal(
 
 
 def _pause_statistics(
-    pause_segments_ms: Sequence[float],
+    pause_segments_ms: Sequence[float] | None,
     min_pause_ms: float | None,
 ) -> tuple[int | None, float | None, float | None]:
     """Return (pause_count, total_pause_duration_ms, median_pause_duration_ms).
@@ -175,7 +175,7 @@ def _pause_statistics(
     three statistics are ``None`` (feature_unavailable) rather than computed
     against an invented threshold.
     """
-    if min_pause_ms is None:
+    if min_pause_ms is None or pause_segments_ms is None:
         return None, None, None
 
     valid_pauses = [

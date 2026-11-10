@@ -60,12 +60,9 @@ export const useHandsFreeSpeech = ({
     bufferTimingRef.current = null;
     if (!text) return;
     queueRef.current = queueRef.current
-      .then(() => {
-        const result = onUtteranceRef.current(text, timing ?? undefined);
-        setIsSubmittingUtterance(false);
-        return result;
-      })
-      .catch(() => setErrorCode('send-failed'));
+      .then(() => onUtteranceRef.current(text, timing ?? undefined))
+      .catch(() => setErrorCode('send-failed'))
+      .finally(() => setIsSubmittingUtterance(false));
   }, []);
 
   useEffect(() => {
@@ -82,10 +79,13 @@ export const useHandsFreeSpeech = ({
           if (!acceptingInputRef.current) return;
           acceptingInputRef.current = false;
           awaitingCommittedTranscriptRef.current = true;
+          setErrorCode(null);
           setIsSubmittingUtterance(true);
           onUtteranceCommitted?.();
         },
-        onSpeechStart,
+        onSpeechStart: () => {
+          if (acceptingInputRef.current) onSpeechStart?.();
+        },
         onFinalTranscript: (text, timing) => {
           if (!acceptingInputRef.current && !awaitingCommittedTranscriptRef.current) return;
           acceptingInputRef.current = false;
@@ -107,8 +107,10 @@ export const useHandsFreeSpeech = ({
         onAudioLevel: setAudioLevel,
         onError: (nextErrorCode) => {
           setErrorCode(nextErrorCode);
-          if (nextErrorCode === 'transcription-failed') {
+          if (nextErrorCode === 'transcription-failed' || nextErrorCode === 'transcription-empty') {
             awaitingCommittedTranscriptRef.current = false;
+            setInterimTranscript('');
+            setAudioLevel(0);
             setHasPendingUtterance(false);
             setIsSubmittingUtterance(false);
             onUtteranceFailed?.();
@@ -131,7 +133,10 @@ export const useHandsFreeSpeech = ({
     providerRef.current = provider;
     setIsSupported(provider.isSupported);
     if (!provider.isSupported) setErrorCode('unsupported');
-    if (isEnabled && !disabled) provider.start(language);
+    if (isEnabled && !disabled) {
+      provider.start(language);
+      if (!acceptingInputRef.current) provider.pause();
+    }
 
     return () => {
       provider.dispose();
@@ -187,6 +192,9 @@ export const useHandsFreeSpeech = ({
   }, [disabled, hasPendingUtterance, paused]);
 
   const stop = useCallback(() => {
+    awaitingCommittedTranscriptRef.current = false;
+    bufferRef.current = '';
+    bufferTimingRef.current = null;
     providerRef.current?.stop();
     setIsEnabled(false);
     setInterimTranscript('');

@@ -1,6 +1,7 @@
 from pydantic import BaseModel, ConfigDict, EmailStr, StringConstraints, field_validator
 from typing import Annotated, Literal, Optional
-from sqlalchemy import Boolean, Column, String, Integer, Enum, ForeignKey, Index, func
+from datetime import datetime
+from sqlalchemy import Boolean, Column, String, Integer, Enum, ForeignKey, Index, DateTime, func
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 import enum
@@ -18,10 +19,11 @@ class UserDB(Base):
     id = Column(Integer, primary_key=True, index=True)
     email = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=True, server_default=func.now())
     __table_args__ = (Index("uq_users_email_normalized", func.lower(email), unique=True),)
     hashed_password = Column(String)
     disabled = Column(Boolean, default=False)
-    preferred_language = Column(String, default="en")
+    preferred_language = Column(String, default="es")
     role = Column(Enum(UserRole, name='user_role', values_callable=lambda obj: [e.value for e in obj]), nullable=False, default=UserRole.STUDENT)
     organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
 
@@ -46,7 +48,7 @@ class UserBase(EmailIdentity):
     email: EmailStr
     name: str
     disabled: Optional[bool] = None
-    preferred_language: Optional[str] = "en"
+    preferred_language: Optional[str] = "es"
     role: Optional[UserRole] = UserRole.STUDENT
     organization_id: Optional[int] = None
 
@@ -57,9 +59,47 @@ class UserCreate(EmailIdentity):
 
     email: EmailStr
     name: Name
-    preferred_language: Optional[str] = "en"
-    role: Literal[UserRole.TEACHER, UserRole.STUDENT] = UserRole.STUDENT
+    preferred_language: Optional[str] = "es"
+    role: Literal[UserRole.STUDENT, UserRole.TEACHER] = UserRole.STUDENT
     password: str
+
+    @field_validator("password")
+    @classmethod
+    def require_password(cls, value):
+        if not value.strip():
+            raise ValueError("Password cannot be empty")
+        return value
+
+
+class AdminUserCreate(UserCreate):
+    """Account creation restricted to authenticated superusers."""
+
+    role: Literal[UserRole.TEACHER, UserRole.STUDENT] = UserRole.STUDENT
+
+
+class AdminUserUpdate(EmailIdentity):
+    """Partial account changes available only to organization superusers."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: Optional[Name] = None
+    email: Optional[EmailStr] = None
+    role: Optional[Literal[UserRole.TEACHER, UserRole.STUDENT]] = None
+    password: Optional[str] = None
+
+    @field_validator("name", "email", "role", "password", mode="before")
+    @classmethod
+    def reject_null(cls, value):
+        if value is None:
+            raise ValueError("Account fields cannot be null")
+        return value
+
+    @field_validator("password")
+    @classmethod
+    def require_password(cls, value):
+        if not value.strip():
+            raise ValueError("Password cannot be empty")
+        return value
 
 class UserUpdate(EmailIdentity):
     """Non-privileged fields users may update on their own profile."""
@@ -80,6 +120,7 @@ class UserUpdate(EmailIdentity):
 
 class User(UserBase):
     id: int
+    created_at: Optional[datetime] = None
     
     class Config:
         from_attributes = True
@@ -89,7 +130,6 @@ class UserInDB(User):
 
 class Token(BaseModel):
     access_token: str
-    refresh_token: Optional[str] = None
     token_type: str
     expires_in: Optional[int] = None
 

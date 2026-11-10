@@ -2,9 +2,9 @@ import {API_URL} from '../../utils/request';
 import {getAuthHeaders} from '../auth/authHeaders';
 import {Personality} from '../../types';
 
-export const getPersonalities = async (): Promise<Personality[]> => {
+export const getPersonalities = async (skip = 0, limit = 100): Promise<Personality[]> => {
   const authHeaders = getAuthHeaders();
-  const response = await fetch(`${API_URL}/personalities`, {
+  const response = await fetch(`${API_URL}/personalities?skip=${skip}&limit=${limit}`, {
     method: 'GET',
     headers: {
       accept: 'application/json',

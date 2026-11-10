@@ -7,8 +7,9 @@ import logging
 import time
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from langgraph.store.postgres import PostgresStore
+from app.core.memory_store import PostgresStore
 from langgraph.checkpoint.postgres import PostgresSaver
+from langchain_core.messages import AIMessage
 from app.core.database import SQLALCHEMY_DATABASE_URL
 from app.core.azure_openai import EMBEDDING_DIMENSIONS, create_embeddings
 from app.models.clinical_case import ClinicalCaseDB
@@ -22,6 +23,7 @@ from app.utils.language import (
 )
 
 from app.core.config import settings
+from app.core.async_work import cancel_and_drain
 
 
 logger = logging.getLogger(__name__)
@@ -48,7 +50,8 @@ class VirtualPatientController:
         patient_response_language: str = "English",
         patient_gender: Optional[str] = None,
         patient_name: Optional[str] = None,
-        personality: Optional[str] = None
+        personality: Optional[str] = None,
+        client_request_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Process a message through the virtual patient workflow
@@ -95,12 +98,14 @@ class VirtualPatientController:
                 result = await workflow.process_interview_message(
                     question=messages[-1],
                     clinical_case=clinical_case,
-                    thread_id=thread_id
+                    thread_id=thread_id,
+                    client_request_id=client_request_id,
+                    history=[AIMessage(content=messages[0]["content"], id=f"opening-{interview_id}")]
+                    if len(messages) == 2 and messages[0]["role"] == "assistant" else [],
                 )
                 return result
                 
             except Exception as e:
-                print(f"Error processing message through workflow: {e}")
                 raise
     
     def format_messages_for_workflow(self, messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
@@ -169,11 +174,6 @@ class VirtualPatientController:
         """
         start_time = time.perf_counter()
         
-        print(f"\n{'='*60}")
-        print(f"🔄 Processing user message for interview {interview_id}")
-        print(f"👤 User: {current_user.id}")
-        print(f"💬 Message: {user_message_content[:100]}...")
-        print(f"{'='*60}\n")
         
         # Initialize controllers
         interview_controller = MedicalInterviewController(db)
@@ -184,13 +184,10 @@ class VirtualPatientController:
             interview_id, current_user
         )
         validation_elapsed = time.perf_counter() - start_time
-        print(f"✅ Interview validated: {interview.id}")
-        print(f"📋 Clinical case: {clinical_case.title}")
         
         # 2. Get all interview messages for context
         interview_messages = message_controller.get_interview_messages(interview_id)
         history_elapsed = time.perf_counter() - start_time
-        print(f"📨 Retrieved {len(interview_messages)} existing messages")
         
         # 3. Create user message object (not saved to database yet)
         user_message_object = interview_controller.create_message_object(
@@ -199,7 +196,6 @@ class VirtualPatientController:
             sender_type="user",
             message_metadata=message_metadata or {}
         )
-        print(f"📝 User message object created")
         
         # 4. Add user message to context for workflow
         interview_messages.append(user_message_object)
@@ -207,7 +203,6 @@ class VirtualPatientController:
         # 5. Format messages for the virtual patient workflow
         formatted_messages = self.format_messages_for_workflow(interview_messages)
         preparation_elapsed = time.perf_counter() - start_time
-        print(f"📋 Formatted {len(formatted_messages)} messages for workflow")
         
         # 6. Resolve the patient language stored with this interview.
         patient_language_code = resolve_patient_response_language(
@@ -215,14 +210,9 @@ class VirtualPatientController:
             current_user.preferred_language or "en",
         )
         patient_language_name = convert_language_code_to_name(patient_language_code)
-        print(
-            "Patient response language: "
-            f"{patient_language_name} ({patient_language_code})"
-        )
         
         # 7. Process through virtual patient workflow
         thread_id = f"interview-{interview_id}"
-        print(f"🧵 Thread ID: {thread_id}")
         
         workflow_start = time.perf_counter()
         workflow_result = await self.process_interview_message(
@@ -233,62 +223,61 @@ class VirtualPatientController:
             patient_response_language=patient_language_name,
             patient_gender=interview.patient_gender,
             patient_name=interview.patient_name,
-            personality=interview.personality.namespace_key if interview.personality else None
+            personality=interview.personality.namespace_key if interview.personality else None,
+            client_request_id=(message_metadata or {}).get("client_request_id"),
         )
         workflow_time = time.perf_counter() - workflow_start
-        print(f"⏱️  Workflow processing time: {workflow_time:.3f}s")
         
-        # 8. Extract the agent response
-        agent_response = interview_controller.extract_agent_response(workflow_result)
-        
-        if not agent_response:
-            # Fallback: create a default response
-            fallback_responses = {
-                "en": "I understand your question. Let me think about how to respond based on my medical history and our conversation.",
-                "es": "Entiendo su pregunta. Déjeme pensar cómo responder según mi historia clínica y nuestra conversación.",
-            }
-            agent_response = fallback_responses[patient_language_code]
-            print("⚠️  Warning: No agent response found, using fallback response")
-        else:
-            print(f"✅ Agent response extracted: {agent_response[:100]}...")
-        
-        # 9. Create agent message object for display
-        agent_message_object = interview_controller.create_agent_message_object(
-            interview_id, agent_response, thread_id
-        )
-        
-        # 10. Add agent response to messages for return
-        interview_messages.append(agent_message_object)
-        
-        total_time = time.perf_counter() - start_time
-        if settings.patient_response_timing_logging:
-            logger.info(
-                "patient_response_timing interview_id=%s stage=controller "
-                "validate_ms=%.1f history_ms=%.1f preparation_ms=%.1f "
-                "workflow_ms=%.1f postprocess_ms=%.1f total_ms=%.1f",
-                interview_id,
-                validation_elapsed * 1000,
-                (history_elapsed - validation_elapsed) * 1000,
-                (preparation_elapsed - history_elapsed) * 1000,
-                workflow_time * 1000,
-                (total_time - preparation_elapsed - workflow_time) * 1000,
-                total_time * 1000,
+        try:
+            # 8. Extract the agent response
+            agent_response = interview_controller.extract_agent_response(workflow_result)
+            
+            if not agent_response:
+                # Fallback: create a default response
+                fallback_responses = {
+                    "en": "I understand your question. Let me think about how to respond based on my medical history and our conversation.",
+                    "es": "Entiendo su pregunta. Déjeme pensar cómo responder según mi historia clínica y nuestra conversación.",
+                }
+                agent_response = fallback_responses[patient_language_code]
+            else:
+                pass
+            
+            # 9. Create agent message object for display
+            agent_message_object = interview_controller.create_agent_message_object(
+                interview_id, agent_response, thread_id
             )
-        print(f"\n{'='*60}")
-        print(f"✅ Message processing completed")
-        print(f"⏱️  Total processing time: {total_time:.3f}s")
-        print(f"{'='*60}\n")
-        
-        # Return comprehensive result
-        return {
-            "agent_response": agent_response,
-            "workflow_result": workflow_result,
-            "interview": interview,
-            "clinical_case": clinical_case,
-            "user_message_object": user_message_object,
-            "agent_message_object": agent_message_object,
-            "formatted_messages": interview_messages,
-            "thread_id": thread_id,
-            "processing_time": total_time,
-            "new_information": workflow_result.get("interview_result", {}).get("new_information", [])
-        }
+            
+            # 10. Add agent response to messages for return
+            interview_messages.append(agent_message_object)
+            
+            total_time = time.perf_counter() - start_time
+            if settings.patient_response_timing_logging:
+                logger.info(
+                    "patient_response_timing interview_id=%s stage=controller "
+                    "validate_ms=%.1f history_ms=%.1f preparation_ms=%.1f "
+                    "workflow_ms=%.1f postprocess_ms=%.1f total_ms=%.1f",
+                    interview_id,
+                    validation_elapsed * 1000,
+                    (history_elapsed - validation_elapsed) * 1000,
+                    (preparation_elapsed - history_elapsed) * 1000,
+                    workflow_time * 1000,
+                    (total_time - preparation_elapsed - workflow_time) * 1000,
+                    total_time * 1000,
+                )
+            
+            # Return comprehensive result
+            return {
+                "agent_response": agent_response,
+                "workflow_result": workflow_result,
+                "interview": interview,
+                "clinical_case": clinical_case,
+                "user_message_object": user_message_object,
+                "agent_message_object": agent_message_object,
+                "formatted_messages": interview_messages,
+                "thread_id": thread_id,
+                "processing_time": total_time,
+                "new_information": workflow_result.get("interview_result", {}).get("new_information", [])
+            }
+        except BaseException:
+            await cancel_and_drain(workflow_result.get("_background_task"))
+            raise

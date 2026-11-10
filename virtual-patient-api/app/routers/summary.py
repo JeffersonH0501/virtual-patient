@@ -1,3 +1,5 @@
+from app.core.review_access import require_assessments
+from app.models.medical_interview import MedicalInterviewDB
 """Language-aware progress summary endpoints."""
 
 import logging
@@ -13,8 +15,9 @@ from app.controllers.medical_interview_controller import MedicalInterviewControl
 from app.controllers.message_controller import MessageController
 from app.controllers.progress_summary_controller import ProgressSummaryController
 from app.controllers.summary_controller import SummaryController
+from app.controllers.interview_lifecycle import lock_row, require_capture_open
 from app.core.auth import get_current_active_user
-from app.core.database import get_db
+from app.core.database import admit_review_transaction, get_db
 from app.models.medical_interview.progress_summary import ProgressSummary
 from app.models.user import User
 from app.utils.language import convert_language_code_to_name, resolve_ui_language
@@ -64,7 +67,7 @@ async def _resolve_localized_summary(
     return translated_summary
 
 
-@router.post("/{interview_id}/summary", response_model=ProcessSummaryResponse)
+@router.post("/{interview_id}/summary", response_model=ProcessSummaryResponse, dependencies=[Depends(admit_review_transaction)])
 async def process_summary(
     interview_id: int,
     language: Optional[Literal["en", "es"]] = Query(default=None),
@@ -72,6 +75,7 @@ async def process_summary(
     current_user: User = Depends(get_current_active_user),
 ):
     """Generate or return the progress summary in the interface language."""
+    require_assessments(db, db.get(MedicalInterviewDB, interview_id), current_user)
     interview_controller = MedicalInterviewController(db)
     message_controller = MessageController(db)
     progress_summary_controller = ProgressSummaryController(db)
@@ -85,12 +89,14 @@ async def process_summary(
             interview_id,
             current_user,
         )
+        interview = lock_row(db, MedicalInterviewDB, interview_id)
+        require_capture_open(interview)
         existing_summary = progress_summary_controller.get_progress_summary(interview_id)
         interview_messages = message_controller.get_interview_messages(interview_id)
 
         summary_is_current = bool(existing_summary) and (
             not interview_messages
-            or existing_summary.updated_at >= interview_messages[-1].created_at
+            or existing_summary.last_updated_message_id == interview_messages[-1].id
         )
         if existing_summary and summary_is_current:
             localized_summary = await _resolve_localized_summary(
@@ -149,11 +155,11 @@ async def process_summary(
         logger.exception("Failed to process summary for interview %s", interview_id)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process interview summary: {error}",
+            detail="Failed to process interview summary",
         ) from error
 
 
-@router.get("/{interview_id}/summary", response_model=GetSummaryResponse)
+@router.get("/{interview_id}/summary", response_model=GetSummaryResponse, dependencies=[Depends(admit_review_transaction)])
 async def get_summary(
     interview_id: int,
     language: Optional[Literal["en", "es"]] = Query(default=None),
@@ -161,6 +167,7 @@ async def get_summary(
     current_user: User = Depends(get_current_active_user),
 ):
     """Read an existing progress summary in the interface language."""
+    require_assessments(db, db.get(MedicalInterviewDB, interview_id), current_user)
     interview_controller = MedicalInterviewController(db)
     if not interview_controller.validate_interview_access(interview_id, current_user.id):
         raise HTTPException(

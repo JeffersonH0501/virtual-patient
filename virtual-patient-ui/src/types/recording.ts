@@ -8,11 +8,16 @@ export type RecordingStatus =
   | 'unavailable'
   | 'failed';
 
-export type RecordingAssetKind =
-  | 'student_audio'
-  | 'student_video'
-  | 'patient_audio'
-  | 'patient_video';
+export type StudentCaptureTiming = {
+  block_id?: string;
+  block_scope?: string;
+  start_ms: number;
+  end_ms: number;
+  input_source: string;
+  timing_source: string;
+  timing_quality: 'provisional' | 'estimated';
+  patient_roi_snapshots: Record<string, number>[];
+};
 
 export type RecapTurn = {
   turnId: string;
@@ -74,9 +79,9 @@ export type ParaverbalProcessed = {
 
 // Exactly one integrated label per paraverbal family.
 export type ParaverbalIntegratedLabels = {
-  temporal?: FamilyLabel;
+  speechTiming?: FamilyLabel;
   prosodicLevel?: FamilyLabel;
-  prosodicModulation?: FamilyLabel;
+  prosodicVariability?: FamilyLabel;
 };
 
 // Per-feature base (initial) labels grouped by family. Each family maps a
@@ -85,9 +90,9 @@ export type ParaverbalIntegratedLabels = {
 // base features and the integrated label. Optional because a legacy payload
 // carries `baseLabels: null`.
 export type ParaverbalBaseLabels = {
-  temporal?: Record<string, FamilyLabel>;
+  speechTiming?: Record<string, FamilyLabel>;
   prosodicLevel?: Record<string, FamilyLabel>;
-  prosodicModulation?: Record<string, FamilyLabel>;
+  prosodicVariability?: Record<string, FamilyLabel>;
 };
 
 export type ParaverbalObservation = {
@@ -107,6 +112,8 @@ export type ParaverbalObservation = {
 
 // Derived nonverbal metrics (the `processed` layer).
 export type NonverbalProcessed = {
+  interactionGazeRatio?: number | null;
+  medianInteractionDwellMs?: number | null;
   visualAlignmentRatio?: number | null;
   medianVisualAlignmentDwellMs?: number | null;
   nodCount?: number | null;
@@ -118,16 +125,16 @@ export type NonverbalProcessed = {
 
 // Exactly one integrated label per nonverbal family.
 export type NonverbalIntegratedLabels = {
-  visualOrientation?: FamilyLabel;
-  headGesturalFeedback?: FamilyLabel;
-  facialExpressivity?: FamilyLabel;
+  gazeOrientation?: FamilyLabel;
+  headNods?: FamilyLabel;
+  smileActivity?: FamilyLabel;
 };
 
 // Per-feature base (initial) labels grouped by nonverbal family.
 export type NonverbalBaseLabels = {
-  visualOrientation?: Record<string, FamilyLabel>;
-  headGesturalFeedback?: Record<string, FamilyLabel>;
-  facialExpressivity?: Record<string, FamilyLabel>;
+  gazeOrientation?: Record<string, FamilyLabel>;
+  headNods?: Record<string, FamilyLabel>;
+  smileActivity?: Record<string, FamilyLabel>;
 };
 
 export type NonverbalObservation = {
@@ -145,27 +152,24 @@ export type NonverbalObservation = {
 };
 
 export type InterviewRecap = {
+  blocks?: {blockId: string; offsetMs: number; durationMs: number | null; studentVideoSource: string | null; patientAudioSource: string | null;
+    metadata: {studentMessageId?: number | null; patientMessageId: number; studentSpeech?: {startMs: number; endMs: number} | null;
+      patientPlayback?: {startMs: number; endMs: number} | null}}[] | null;
   interviewId: number;
   recordingStatus: RecordingStatus;
   durationMs?: number | null;
+  evaluationProcessing?: {
+    status?: 'queued' | 'processing' | 'complete' | 'failed' | 'unavailable' | 'stale';
+    policyVersion?: string;
+    evidenceAvailability?: Record<string, 'available' | 'unavailable_text_fallback'>;
+  };
   observationProcessing?: {
     status?: 'queued' | 'processing' | 'complete' | 'partial' | 'failed' | 'unavailable';
     stage?: string;
     expected?: number;
     available?: number;
   };
-  studentAudioSource?: string | null;
-  studentVideoSource?: string | null;
-  patientAudioSource?: string | null;
-  patientVideoSource?: string | null;
   turns: RecapTurn[];
-};
-
-export type CapturedMedia = {
-  durationMs: number;
-  files: Record<RecordingAssetKind, File>;
-  sourceDurations: Record<RecordingAssetKind, number>;
-  captureConfig: Record<string, unknown>;
 };
 
 export type SpeechTiming = {

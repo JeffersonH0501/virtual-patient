@@ -1,0 +1,46 @@
+{
+  "OBSERVATION_NOTE": {
+    "en": "Multimodal observations describe observable behavior and are used as complementary evidence. They are not direct measurements of psychological states or communication quality. Missing or unavailable evidence must not be penalized.",
+    "es": "Las observaciones multimodales describen conductas observables y se usan como evidencia complementaria. No son medidas directas de estados psicológicos ni de calidad comunicativa. La evidencia ausente o no disponible no debe penalizarse."
+  },
+  "INTEREST_ASPECTS": [
+    "Visual orientation while the patient is speaking may be considered as complementary evidence of the doctor's observable listening behavior.",
+    "Head nodding while the patient is speaking may be considered as complementary evidence of the doctor's observable listening behavior.",
+    "Smile-related behavior while the patient is speaking may be considered as complementary information about how the doctor behaved during the interaction."
+  ],
+  "EMPATHY_ASPECTS": [
+    "Visual orientation and head nodding while the patient is speaking may be considered as complementary evidence of observable listening behavior.",
+    "Smile-related behavior may be considered as complementary information about how friendliness and interpersonal warmth were behaviorally expressed.",
+    "Prosodic level and prosodic modulation while the doctor is responding may be considered as complementary information about how responses were delivered."
+  ],
+  "CLARITY_ASPECTS": [
+    "Temporal speech patterns, including speaking rate and pauses, may be considered as complementary evidence of how clearly information was delivered.",
+    "Pausing while providing information may be considered when assessing whether the delivery allowed sufficient space for the patient to assimilate information.",
+    "Prosodic modulation may be considered as complementary evidence of how explanations, opinions, and recommendations were delivered."
+  ],
+  "_NAMES": {
+    "gaze_orientation": "Visual orientation",
+    "head_nods": "Head gestural feedback",
+    "smile_activity": "Smile behavior",
+    "speech_timing": "Temporal speech pattern",
+    "prosodic_level": "Prosodic level",
+    "prosodic_variability": "Prosodic modulation"
+  },
+  "evidence_es": {
+    "INTEREST_ASPECTS": [
+      "Orientación visual mientras habla el paciente: evidencia complementaria de la conducta observable al escuchar.",
+      "Asentimientos mientras habla el paciente: evidencia complementaria de la conducta observable al escuchar.",
+      "Conducta de sonrisa mientras habla el paciente: información complementaria sobre la conducta durante la interacción; no demuestra interés por sí sola."
+    ],
+    "EMPATHY_ASPECTS": [
+      "Orientación visual y asentimientos mientras habla el paciente: evidencia complementaria de la conducta observable al escuchar.",
+      "Conducta de sonrisa al escuchar: información complementaria sobre la expresión conductual de amabilidad y calidez interpersonal.",
+      "Nivel y modulación prosódica mientras habla el estudiante: información complementaria sobre cómo entregó sus respuestas."
+    ],
+    "CLARITY_ASPECTS": [
+      "Patrones temporales del habla, incluida velocidad y pausas: evidencia complementaria de la entrega de información.",
+      "Pausas durante las explicaciones: información complementaria sobre el espacio para asimilar lo explicado.",
+      "Modulación prosódica mientras habla el estudiante: evidencia complementaria sobre cómo entregó explicaciones, opiniones y recomendaciones."
+    ]
+  }
+}

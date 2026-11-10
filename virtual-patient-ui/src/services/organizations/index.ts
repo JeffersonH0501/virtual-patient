@@ -42,7 +42,7 @@ export async function getOrganizations(skip = 0, limit = 100) {
         accept: 'application/json',
         ...authHeaders,
       },
-    }
+    },
   );
 
   if (!response.ok) {
@@ -73,7 +73,7 @@ export async function getOrganizationById(organizationId: string) {
 
 export async function updateOrganization(
   organizationId: string,
-  payload: UpdateOrganizationPayload
+  payload: UpdateOrganizationPayload,
 ) {
   const authHeaders = getAuthHeaders();
   const response = await fetch(`${API_URL}/organizations/${organizationId}`, {
@@ -110,4 +110,4 @@ export async function deleteOrganization(organizationId: string) {
   }
 
   return response.json();
-} 
+}

@@ -5,7 +5,7 @@ Handles summary workflow processing separately from the main interview workflow
 
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from langgraph.store.postgres import PostgresStore
+from app.core.memory_store import PostgresStore
 from langgraph.checkpoint.postgres import PostgresSaver
 from app.agents.summary_workflow import create_summary_workflow
 from app.core.azure_openai import EMBEDDING_DIMENSIONS, create_embeddings
@@ -43,7 +43,6 @@ class SummaryController:
         Returns:
             Dictionary containing the summary result
         """
-        print(f"🔍 DEBUG SummaryController: user_preferred_language = '{user_preferred_language}'")
         
         # Use context managers for proper resource management
         with (
@@ -65,7 +64,6 @@ class SummaryController:
                     current_language=user_preferred_language
                 )
                 
-                print(f"🔍 DEBUG SummaryController: Created workflow with language '{user_preferred_language}'")
                 
                 result = await workflow.process_summary(
                     messages=messages,
@@ -74,5 +72,4 @@ class SummaryController:
                 return result
                 
             except Exception as e:
-                print(f"Error processing summary through workflow: {e}")
                 raise

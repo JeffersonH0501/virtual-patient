@@ -11,6 +11,7 @@ x-api-environment: &api-environment
   SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:-superuser@example.com}
   SUPERUSER_NAME: ${SUPERUSER_NAME:-Super User}
   SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:-local-superuser-change-me}
+  RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
   ENV: development
   AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-local-not-configured}
   AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-https://example.invalid}
@@ -21,17 +22,6 @@ x-api-environment: &api-environment
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:-local-not-configured}
   VIDEO_PROCESSING_WORKER_URL: http://video-processing-worker:8010
-  VIDEO_PROCESSING_WORKER_TOKEN: ${VIDEO_PROCESSING_WORKER_TOKEN:-local-video-processing-worker-token}
-  VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS: ${VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS:-180}
-  # Keep native multimedia/scientific libraries from using every host core or
-  # creating large per-thread memory pools during gaze and audio analysis.
-  OMP_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
-  OPENBLAS_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
-  MKL_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
-  NUMEXPR_NUM_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
-  TF_NUM_INTRAOP_THREADS: ${MULTIMODAL_CPU_THREADS:-2}
-  TF_NUM_INTEROP_THREADS: ${MULTIMODAL_INTEROP_THREADS:-1}
-  MALLOC_ARENA_MAX: ${MULTIMODAL_MALLOC_ARENAS:-2}
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -42,7 +32,7 @@ x-api-image: &api-image virtual-patient-api:local
 
 services:
   db:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:a36250871de0833b8757561c72f2477ef1ddd1101afa4e617fb552e0de514c6b
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-virtual_patient}
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
@@ -58,10 +48,13 @@ services:
   setup:
     image: *api-image
     build: *api-build
+    env_file: ./virtual-patient-api/config/native-runtime.conf
     environment: *api-environment
     command: ["python", "scripts/setup_db.py"]
     volumes:
       - ./virtual-patient-api:/app
+      - ../:/workspace:ro
+      - ../graphify-out:/workspace/graphify-out
     depends_on:
       db:
         condition: service_healthy
@@ -70,6 +63,7 @@ services:
   api:
     image: *api-image
     build: *api-build
+    env_file: ./virtual-patient-api/config/native-runtime.conf
     environment: *api-environment
     cpus: 3.0
     mem_limit: 4g
@@ -92,6 +86,7 @@ services:
   video-processing-worker:
     image: *api-image
     build: *api-build
+    env_file: ./virtual-patient-api/config/native-runtime.conf
     environment: *api-environment
     cpus: 3.0
     mem_limit: 4g

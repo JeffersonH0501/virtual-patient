@@ -41,19 +41,7 @@ class HypothesisController:
         if any(order < 1 or order > 3 for order in orders):
             raise ValueError("Hypothesis orders must be between 1 and 3")
         
-        # Check if hypotheses already exist
-        existing_hypotheses = self.get_interview_hypotheses(interview_id)
-        
-        if existing_hypotheses:
-            # Update existing hypotheses
-            return self.update_hypotheses_batch(interview_id, hypotheses_data)
-        else:
-            # Create new hypotheses
-            hypotheses = []
-            for hypothesis_data in hypotheses_data:
-                hypothesis = self.create_hypothesis(interview_id, hypothesis_data)
-                hypotheses.append(hypothesis)
-            return hypotheses
+        return self.update_hypotheses_batch(interview_id, hypotheses_data)
     
     def update_hypotheses_batch(self, interview_id: int, hypotheses_data: List[UserHypothesisCreate]) -> List[UserHypothesis]:
         """Update existing hypotheses for an interview"""
@@ -71,15 +59,18 @@ class HypothesisController:
             if existing_hypothesis:
                 # Update existing hypothesis
                 existing_hypothesis.hypothesis_text = hypothesis_data.hypothesis_text
-                self.db.commit()
-                self.db.refresh(existing_hypothesis)
-                updated_hypotheses.append(UserHypothesis.from_orm(existing_hypothesis))
+                updated_hypotheses.append(existing_hypothesis)
             else:
                 # Create new hypothesis if it doesn't exist for this order
-                new_hypothesis = self.create_hypothesis(interview_id, hypothesis_data)
+                new_hypothesis = UserHypothesisDB(interview_id=interview_id,
+                    hypothesis_order=hypothesis_data.hypothesis_order,
+                    hypothesis_text=hypothesis_data.hypothesis_text)
+                self.db.add(new_hypothesis)
                 updated_hypotheses.append(new_hypothesis)
-        
-        return updated_hypotheses
+        self.db.commit()
+        for hypothesis in updated_hypotheses:
+            self.db.refresh(hypothesis)
+        return [UserHypothesis.model_validate(hypothesis) for hypothesis in updated_hypotheses]
     
     def get_interview_hypotheses(self, interview_id: int) -> List[UserHypothesis]:
         """Get all hypotheses for an interview"""

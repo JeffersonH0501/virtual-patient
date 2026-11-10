@@ -10,13 +10,13 @@ export const useAuthError = () => {
   const handleTokenExpired = () => {
     // Clear the token
     Cookies.remove('access_token');
-    
+
     // Set token expired state
     setIsTokenExpired(true);
-    
+
     // Redirect to login after showing the error
     setTimeout(() => {
-      navigate(ROUTES.signIn);
+      navigate(ROUTES.welcome);
       setIsTokenExpired(false);
     }, 2000);
   };
@@ -32,6 +32,6 @@ export const useAuthError = () => {
   return {
     isTokenExpired,
     checkAuthError,
-    handleTokenExpired
+    handleTokenExpired,
   };
 };

@@ -14,8 +14,9 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain_core.messages import HumanMessage, AIMessage
 
 from app.agents.virtual_patient_agent import VirtualPatientAgent
-from app.agents.translator_agent import TranslatorAgent
+from app.agents.translator_agent import TranslatorAgent, PatientResponseError
 from app.core.config import settings
+from app.core.async_work import run_sync_owned, cancel_and_drain
 
 from app.agents.schemas.progress_summary import ProgressSummarySchema
 
@@ -33,6 +34,7 @@ class State(TypedDict):
     interview_result: Annotated[Optional[Dict[str, Any]], "The result from the interview node"]
     translated_patient_response: Annotated[Optional[str], "The translated patient response with personality"]
     error_message: Annotated[Optional[str], "Error message if any step fails"]
+    client_request_id: Optional[str]
 
 class VirtualPatientWorkflow:
     """
@@ -41,7 +43,8 @@ class VirtualPatientWorkflow:
     """
     
     def __init__(self, store: BaseStore, checkpointer: BaseCheckpointSaver, interview_id: str, 
-                 current_language: str = "English", patient_gender: str = None, patient_name: str = None, personality: str = None):
+                 current_language: str = "English", patient_gender: str = None, patient_name: str = None,
+                 personality: str = None, *, persist_background_memory: bool = True):
         self.store = store
         self.checkpointer = checkpointer
         self.interview_id = interview_id
@@ -51,7 +54,10 @@ class VirtualPatientWorkflow:
         self.personality = personality
         
         # Create the existing VirtualPatientAgent
-        self.agent = VirtualPatientAgent(store=store, checkpointer=checkpointer, interview_id=interview_id)
+        self.agent = VirtualPatientAgent(
+            store=store, checkpointer=checkpointer, interview_id=interview_id,
+            persist_background_memory=persist_background_memory,
+        )
         
         # Create the translator agent
         self.translator_agent = TranslatorAgent()
@@ -59,10 +65,6 @@ class VirtualPatientWorkflow:
         # Create the workflow
         self.workflow = self._create_workflow()
         
-        print(f"Virtual Patient Workflow initialized for interview: {interview_id}")
-        print(f"Target language: {current_language}")
-        print(f"Patient personality: {personality}")
-        print(f"Reusing existing VirtualPatientAgent with enhanced memory")
     
     async def create_interview_node(self, state: State) -> State:
         """
@@ -92,7 +94,8 @@ class VirtualPatientWorkflow:
         result = await self.agent.process_medical_interview_message(
             messages=messages,
             clinical_case=clinical_case,
-            thread_id=state["thread_id"]
+            thread_id=state["thread_id"],
+            client_request_id=state.get("client_request_id"),
         )
         
         # Return only the fields we're updating
@@ -105,37 +108,31 @@ class VirtualPatientWorkflow:
                 (time.perf_counter() - agent_started_at) * 1000,
                 (end_time - start_time) * 1000,
             )
-        print(f"⏱️  CREATE_INTERVIEW_NODE: {end_time - start_time:.3f} seconds")
         return {"interview_result": result}
 
     async def translate_patient_response_node(self, state: State) -> State:
         """Node that translates patient responses with personality to target language"""
         start_time = time.time()
-        print(f"\n⏱️  TRANSLATE_PATIENT_RESPONSE_NODE: Starting...")
         
         # Check if there's an error from previous nodes
         if state.get("error_message"):
-            print(f"⚠️ Error state detected, skipping patient response translation: {state['error_message']}")
-            end_time = time.time()
-            print(f"⏱️  TRANSLATE_PATIENT_RESPONSE_NODE (SKIPPED): {end_time - start_time:.3f} seconds")
-            return state
+            raise PatientResponseError("Patient response generation failed")
         
         # Get the interview result to find the patient's response
         interview_result = state.get("interview_result", {})
         interview_messages = interview_result.get("messages", [])
         
         if not interview_messages:
-            print("No interview messages found for patient response translation")
             return state
         
         # Get the last AI message (patient's response)
         last_ai_message = interview_messages[-1] if interview_messages else None
         if not last_ai_message:
-            print("No patient response found for translation")
             return state
         
         patient_response = last_ai_message.content
-        print(f"🎭 Translating patient response with personality: {patient_response}")
+        if interview_result.get("_request_translation_finalized"):
+            return {"messages": [last_ai_message], "translated_patient_response": patient_response}
         
         # Build conversation history from previous PATIENT messages only (last 3)
         # This helps avoid repetition by showing what the patient already said
@@ -147,57 +144,21 @@ class VirtualPatientWorkflow:
         # Keep only the last 3 patient messages
         conversation_history = conversation_history[-3:] if len(conversation_history) > 3 else conversation_history
         
-        print(f"📚 Using last {len(conversation_history)} patient messages as context")
         
         translation_start = time.time()
         
         # Translate patient response with personality to target language
-        if self.current_language.lower() != "english":
-            print(f"⏱️  Translation mode: Non-English ({self.current_language})")
-            try:
-                translated_patient_response = await self.translator_agent.translate_patient_with_personality(
-                    patient_message=patient_response,
-                    target_language=self.current_language,
-                    personality_key=self.personality,
-                    patient_gender=self.patient_gender,
-                    patient_name=self.patient_name,
-                    conversation_history=conversation_history
-                )
-                translation_time = time.time() - translation_start
-                print(f"✅ Translated patient response ({translation_time:.3f}s): {translated_patient_response}")
-                state["translated_patient_response"] = translated_patient_response
-                
-            except Exception as e:
-                translation_time = time.time() - translation_start
-                print(f"❌ Error translating patient response ({translation_time:.3f}s): {e}")
-                # Keep original response if translation fails
-                state["translated_patient_response"] = patient_response
+        if self.current_language.lower() != "english" or self.personality:
+            state["translated_patient_response"] = await self.translator_agent.translate_patient_with_personality(
+                patient_message=patient_response,
+                target_language=self.current_language if self.current_language.lower() != "english" else "English",
+                personality_key=self.personality,
+                patient_gender=self.patient_gender,
+                patient_name=self.patient_name,
+                conversation_history=conversation_history,
+            )
         else:
-            # Already in target language, check if personality should be applied
-            if self.personality:
-                print(f"⏱️  Translation mode: English with personality")
-                try:
-                    # Apply personality to English response
-                    translated_patient_response = await self.translator_agent.translate_patient_with_personality(
-                        patient_message=patient_response,
-                        target_language="English",
-                        personality_key=self.personality,
-                        patient_gender=self.patient_gender,
-                        patient_name=self.patient_name,
-                        conversation_history=conversation_history
-                    )
-                    translation_time = time.time() - translation_start
-                    print(f"✅ Applied personality to English response ({translation_time:.3f}s): {translated_patient_response}")
-                    state["translated_patient_response"] = translated_patient_response
-                except Exception as e:
-                    translation_time = time.time() - translation_start
-                    print(f"❌ Error applying personality ({translation_time:.3f}s): {e}")
-                    state["translated_patient_response"] = patient_response
-            else:
-                # No personality and English
-                print(f"⏱️  Translation mode: English without personality (SKIPPED LLM)")
-                state["translated_patient_response"] = patient_response
-                translation_time = 0
+            state["translated_patient_response"] = patient_response
         
         # Add the translated AI response with personality to state["messages"]
         if state["translated_patient_response"]:
@@ -209,13 +170,9 @@ class VirtualPatientWorkflow:
                 interview_messages[-1].content = state["translated_patient_response"]
                 updated_interview_result = state["interview_result"].copy()
                 updated_interview_result["messages"] = interview_messages
-                print(f"🔄 Updated interview result with translated patient response")
             
             end_time = time.time()
             total_time = end_time - start_time
-            print(f"⏱️  TRANSLATE_PATIENT_RESPONSE_NODE: {total_time:.3f}s total")
-            print(f"     ├─ Context building: {translation_start - start_time:.3f}s")
-            print(f"     └─ LLM translation: {translation_time:.3f}s")
             
             # Return the AI message to be added to state["messages"]
             return {
@@ -226,9 +183,6 @@ class VirtualPatientWorkflow:
         
         end_time = time.time()
         total_time = end_time - start_time
-        print(f"⏱️  TRANSLATE_PATIENT_RESPONSE_NODE: {total_time:.3f}s total")
-        print(f"     ├─ Context building: {translation_start - start_time:.3f}s")
-        print(f"     └─ LLM translation: {translation_time:.3f}s")
         return {"translated_patient_response": state["translated_patient_response"]}
 
 
@@ -238,17 +192,10 @@ class VirtualPatientWorkflow:
         
         # Check if there's an error state and return it
         if state.get("error_message"):
-            print(f"🔚 Finalizing workflow with error: {state['error_message']}")
-            end_time = time.time()
-            print(f"⏱️  FINALIZE_NODE (ERROR): {end_time - start_time:.3f} seconds")
-            return {
-                "translated_patient_response": state["error_message"]
-            }
+            raise PatientResponseError("Patient response generation failed")
         
-        print("🔚 Finalizing workflow - all operations complete")
         
         end_time = time.time()
-        print(f"⏱️  FINALIZE_NODE: {end_time - start_time:.3f} seconds")
         return {}  # No state updates needed in finalize node
 
     def _create_workflow(self) -> StateGraph:
@@ -277,10 +224,27 @@ class VirtualPatientWorkflow:
         return workflow.compile()
     
     async def process_interview_message(
+        self, question, clinical_case, thread_id=None, client_request_id=None,
+        *, history=(),
+    ):
+        """Keep owned background work inside the failed request's lifetime."""
+        try:
+            result = await self._process_interview_message(
+                question, clinical_case, thread_id, client_request_id, history=history,
+            )
+            result["_background_task"] = getattr(self.agent, "background_task", None)
+            return result
+        except BaseException:
+            await cancel_and_drain(getattr(self.agent, "background_task", None))
+            raise
+
+    async def _process_interview_message(
         self, 
         question: Dict[str, str], 
         clinical_case: ClinicalCaseDB,
-        thread_id: Optional[str] = None
+        thread_id: Optional[str] = None,
+        client_request_id: Optional[str] = None,
+        *, history=(),
     ) -> Dict[str, Any]:
         """
         Process a medical interview message through the workflow.
@@ -317,25 +281,24 @@ class VirtualPatientWorkflow:
             "thread_id": thread_id,
             "interview_id": self.interview_id,
             "interview_result": None,
-            "translated_patient_response": None
+            "translated_patient_response": None,
+            "client_request_id": client_request_id,
         }
         
         # Add new message to state
-        if new_question:
-            initial_state["messages"] = [new_question]
-        else:
-            initial_state["messages"] = []
+        initial_state["messages"] = [*history, *([new_question] if new_question else [])]
         
         result = await self.workflow.ainvoke(initial_state, config=config)
         
         # Update the agent's checkpointer with the translated patient response
         # This ensures the checkpointer stores the final translated message, not the intermediate one
         translated_response = result.get("translated_patient_response")
-        if translated_response:
+        if translated_response and not (result.get("interview_result") or {}).get("_request_translation_finalized"):
             await self._update_checkpointer_with_translated_message(
                 thread_id=thread_id,
                 translated_response=translated_response,
-                config=config
+                config=config,
+                client_request_id=client_request_id,
             )
         
         return {
@@ -348,28 +311,27 @@ class VirtualPatientWorkflow:
         self,
         thread_id: str,
         translated_response: str,
-        config: Dict[str, Any]
+        config: Dict[str, Any],
+        client_request_id: Optional[str] = None,
     ) -> None:
         """
         Update the agent's checkpointer with the translated patient response.
         
-        Uses AsyncPostgresSaver which supports aget_tuple and aput for async operations.
-        See: https://langchain-ai.github.io/langgraph/how-tos/persistence_postgres/#use-async-connection
+        The qualified saver is synchronous; keep its calls off the event loop.
         """
         try:
-            print("🔄 Updating agent checkpointer with translated patient response...")
             
-            # Get current state from the agent's compiled graph
-            # AsyncPostgresSaver supports aget_state which uses aget_tuple internally
-            state = self.agent.hot_path_agent.get_state(config)
+            checkpoint_config = {**config, "configurable": {
+                key: value for key, value in config["configurable"].items()
+                if key != "clinical_case"
+            }}
+            state = await run_sync_owned(self.agent.hot_path_agent.get_state, checkpoint_config)
             if not state or not state.values:
-                print("⚠️  No state found to update")
                 return
             
             # Get messages from state
             messages = state.values.get("messages", [])
             if not messages:
-                print("⚠️  No messages found in state")
                 return
             
             # Update the last AI message with translated content
@@ -377,21 +339,20 @@ class VirtualPatientWorkflow:
             for i in range(len(messages) - 1, -1, -1):
                 if isinstance(messages[i], AIMessage):
                     messages[i].content = translated_response
-                    print(f"✅ Updated last AI message in checkpointer")
+                    if client_request_id:
+                        messages[i].additional_kwargs = {**messages[i].additional_kwargs,
+                            "finalized_client_request_id": client_request_id}
                     updated = True
                     break
             
             if not updated:
-                print("⚠️  No AI message found to update")
                 return
             
-            # Update state using compiled graph's update_state method
-            # AsyncPostgresSaver supports aupdate_state which uses aput internally
-            self.agent.hot_path_agent.update_state(config, {"messages": messages})
-            print("✅ Checkpointer updated with translated patient response")
+            await run_sync_owned(self.agent.hot_path_agent.update_state, checkpoint_config, {"messages": messages})
             
         except Exception as e:
-            print(f"⚠️  Error updating checkpointer: {e}")
+            if client_request_id:
+                raise
             import traceback
             traceback.print_exc()
     

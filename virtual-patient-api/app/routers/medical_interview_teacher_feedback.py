@@ -1,5 +1,5 @@
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.auth import get_current_active_user
@@ -8,8 +8,16 @@ from app.models.teacher_feedback import TeacherFeedback, TeacherFeedbackCreate, 
 from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.controllers.teacher_feedback_controller import TeacherFeedbackController
 
+def legacy_feedback_access(request: Request, actor: User = Depends(get_current_active_user)):
+    if request.method != "GET":
+        raise HTTPException(410, "Use assigned teacher ratings instead of free comments")
+    if actor.role != UserRole.SUPERUSER:
+        raise HTTPException(403, "Historical comments are restricted to administrators")
+
+
 router = APIRouter(
     prefix="/medical-interviews",
+    dependencies=[Depends(legacy_feedback_access)],
     tags=["medical-interview-teacher-feedback"],
     responses={404: {"description": "Interview or teacher feedback not found"}},
 )

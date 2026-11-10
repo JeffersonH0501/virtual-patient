@@ -2,7 +2,7 @@
 
 from psycopg import Connection
 from langgraph.checkpoint.postgres import PostgresSaver
-from langgraph.store.postgres import PostgresStore
+from app.core.memory_store import PostgresStore
 
 from app.core.azure_openai import EMBEDDING_DIMENSIONS
 from app.core.config import settings

@@ -1,6 +1,7 @@
 import {API_URL} from '../../utils/request';
 import {getAuthHeaders} from '../auth/authHeaders';
 import {Interview} from '../../types/interview';
+import {apiFetch} from '../../utils/apiFetch';
 
 type CreateInterviewPayload = {
   clinical_case_id: string;
@@ -9,6 +10,8 @@ type CreateInterviewPayload = {
   patient_photo?: string;
   patient_gender?: string;
   personality_id?: number;
+  draft_request_id?: string;
+  calibration_test?: boolean;
 };
 
 type Response = {
@@ -17,9 +20,10 @@ type Response = {
 
 export const createInterview = async (payload: CreateInterviewPayload) => {
   const authHeaders = getAuthHeaders();
-  const response = await fetch(`${API_URL}/medical-interviews`, {
+  const response = await apiFetch(`${API_URL}/medical-interviews`, {
     method: 'POST',
-    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(30_000),
+    body: JSON.stringify({...payload, interview_metadata: {recording_transport: 'reusable_blocks_v1'}}),
     headers: {
       'Content-Type': 'application/json',
       accept: 'application/json',

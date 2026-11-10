@@ -1,0 +1,1 @@
+Prioritize these observations during patient-speaking turns, where they describe the doctor while listening. Observations during doctor-speaking turns are supplementary and must be interpreted in the full conversational context. None of these behaviors is sufficient on its own to establish that the doctor showed interest.

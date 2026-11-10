@@ -1,9 +1,12 @@
 """Validation checks for the email-based account contract."""
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 from pydantic import ValidationError
-from app.models.user import UserCreate, UserUpdate
+from app.models.user import AdminUserCreate, UserCreate, UserUpdate
 from app.routers.auth import TokenRequest
+from app.routers.users import persist_user
 
 
 class UserIdentityTests(unittest.TestCase):
@@ -15,6 +18,20 @@ class UserIdentityTests(unittest.TestCase):
         self.assertEqual(request.email, "student@example.org")
         self.assertEqual(request.name, "Ana Maria De la Cruz")
         self.assertEqual(request.password, " secret ")
+
+    def test_new_accounts_default_to_spanish_and_keep_an_explicit_language(self):
+        for schema in (UserCreate, AdminUserCreate):
+            for supplied, expected in (({}, "es"), ({"preferred_language": None}, "es"),
+                                       ({"preferred_language": "en"}, "en")):
+                with self.subTest(schema=schema.__name__, supplied=supplied):
+                    db = MagicMock()
+                    account_query, organization_query = MagicMock(), MagicMock()
+                    db.query.side_effect = [account_query, organization_query]
+                    account_query.filter.return_value.first.return_value = None
+                    organization_query.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(id=1)
+                    with patch("app.routers.users.get_password_hash", return_value="test-hash"):
+                        account = persist_user(schema(**self.payload(), **supplied), db)
+                    self.assertEqual(account.preferred_language, expected)
 
     def test_registration_requires_name_and_email(self):
         # The registration form uses a single "Name" value; name and email stay

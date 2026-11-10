@@ -1,0 +1,3644 @@
+{
+  "virtual-patient/deploy-full.sh": {
+    "mtime": 1793918422.5559258,
+    "seen": 1794174925.482544,
+    "ast_hash": "0d2a9f7c435bbd6c30f6f0fda1da0f3a",
+    "semantic_hash": "0d2a9f7c435bbd6c30f6f0fda1da0f3a"
+  },
+  "virtual-patient/deploy-local.sh": {
+    "mtime": 1793736950.919346,
+    "seen": 1794174925.4825523,
+    "ast_hash": "a77f61002798b87149bc25af98766543",
+    "semantic_hash": "a77f61002798b87149bc25af98766543"
+  },
+  "virtual-patient/docker-compose.full.yml": {
+    "mtime": 1793918406.3300254,
+    "seen": 1794174925.4825559,
+    "ast_hash": "edf00800185b34f2974c91ca3d51aef9",
+    "semantic_hash": "edf00800185b34f2974c91ca3d51aef9"
+  },
+  "virtual-patient/docker-compose.local.yml": {
+    "mtime": 1794174000.440044,
+    "seen": 1794174925.482558,
+    "ast_hash": "a554c2eb00f50ab3022a4153c182234f",
+    "semantic_hash": "a554c2eb00f50ab3022a4153c182234f"
+  },
+  "virtual-patient/scripts/inspect_multimodal_performance.sh": {
+    "mtime": 1790115405.165372,
+    "seen": 1794174925.4825597,
+    "ast_hash": "0de54f280c46ae9e7c2087d33320f21b",
+    "semantic_hash": "0de54f280c46ae9e7c2087d33320f21b"
+  },
+  "virtual-patient/scripts/tests/test_deployment.sh": {
+    "mtime": 1793918422.1221929,
+    "seen": 1794174925.4825613,
+    "ast_hash": "9789dc53999e37d17456c3aa5f102567",
+    "semantic_hash": "9789dc53999e37d17456c3aa5f102567"
+  },
+  "virtual-patient/setup-tls.sh": {
+    "mtime": 1786503292.07622,
+    "seen": 1794174925.4825633,
+    "ast_hash": "1ddabd340d2995e4cd7b66de78dc68e8",
+    "semantic_hash": "1ddabd340d2995e4cd7b66de78dc68e8"
+  },
+  "virtual-patient/virtual-patient-api/alembic/env.py": {
+    "mtime": 1793728102.7280378,
+    "seen": 1794174925.482565,
+    "ast_hash": "af277a917b6e73fe7f9b680e2aec3a1b",
+    "semantic_hash": "af277a917b6e73fe7f9b680e2aec3a1b"
+  },
+  "virtual-patient/virtual-patient-api/alembic/versions/001_release_baseline.py": {
+    "mtime": 1793728102.0986483,
+    "seen": 1794174925.482566,
+    "ast_hash": "8e33b0bec0722296124e45a0891001e6",
+    "semantic_hash": "8e33b0bec0722296124e45a0891001e6"
+  },
+  "virtual-patient/virtual-patient-api/alembic/versions/002_canonical_feature_families.py": {
+    "mtime": 1793733159.2593758,
+    "seen": 1794174925.4825678,
+    "ast_hash": "36fc9cf5d0a5ef997255fe1c8051e69c",
+    "semantic_hash": "36fc9cf5d0a5ef997255fe1c8051e69c"
+  },
+  "virtual-patient/virtual-patient-api/alembic/versions/003_calibration_captures.py": {
+    "mtime": 1794152238.4514794,
+    "seen": 1794174925.4825695,
+    "ast_hash": "816508bac492c734746a96b4bdfc500d",
+    "semantic_hash": "816508bac492c734746a96b4bdfc500d"
+  },
+  "virtual-patient/virtual-patient-api/alembic/versions/004_self_ratings.py": {
+    "mtime": 1794162907.3139465,
+    "seen": 1794174925.4825714,
+    "ast_hash": "f5996b546dedccabc91f95edd59356e7",
+    "semantic_hash": "f5996b546dedccabc91f95edd59356e7"
+  },
+  "virtual-patient/virtual-patient-api/alembic/versions/005_case_description_age.py": {
+    "mtime": 1794171234.4359815,
+    "seen": 1794174925.4825726,
+    "ast_hash": "f69a205254e6dd8a71a2ef7758f99c01",
+    "semantic_hash": "f69a205254e6dd8a71a2ef7758f99c01"
+  },
+  "virtual-patient/virtual-patient-api/alembic/versions/006_case_description_wording.py": {
+    "mtime": 1794171491.021292,
+    "seen": 1794174925.482574,
+    "ast_hash": "79cd976baa614bb5803f99ca1a762512",
+    "semantic_hash": "79cd976baa614bb5803f99ca1a762512"
+  },
+  "virtual-patient/virtual-patient-api/app/__init__.py": {
+    "mtime": 1786484900.4312463,
+    "seen": 1794174925.4825754,
+    "ast_hash": "7215ee9c7d9dc229d2921a40e899ec5f",
+    "semantic_hash": "7215ee9c7d9dc229d2921a40e899ec5f"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/enhanced_memory_manager.py": {
+    "mtime": 1791920438.2317097,
+    "seen": 1794174925.4825766,
+    "ast_hash": "a6eaf16ed5f9a153d8490fffc53526cf",
+    "semantic_hash": "a6eaf16ed5f9a153d8490fffc53526cf"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/evaluation_agent.py": {
+    "mtime": 1793728117.561632,
+    "seen": 1794174925.4825776,
+    "ast_hash": "49f309484b84b853e94a3940f93ee08c",
+    "semantic_hash": "49f309484b84b853e94a3940f93ee08c"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/evaluation_provenance.py": {
+    "mtime": 1793728097.5886798,
+    "seen": 1794174925.4825792,
+    "ast_hash": "7965f7cb659218f2ffca6d3be13f37d3",
+    "semantic_hash": "7965f7cb659218f2ffca6d3be13f37d3"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/helpers/__init__.py": {
+    "mtime": 1786484900.5431528,
+    "seen": 1794174925.4825807,
+    "ast_hash": "650f1d02b926482634bc2a90752ead74",
+    "semantic_hash": "650f1d02b926482634bc2a90752ead74"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/helpers/data_normalization.py": {
+    "mtime": 1786484900.5537176,
+    "seen": 1794174925.482582,
+    "ast_hash": "66fc1177abb42699d884f6cb6a797217",
+    "semantic_hash": "66fc1177abb42699d884f6cb6a797217"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/helpers/formatting_helpers.py": {
+    "mtime": 1786484900.566283,
+    "seen": 1794174925.4825835,
+    "ast_hash": "6078c42ef76850130f0d2004a447c5c0",
+    "semantic_hash": "6078c42ef76850130f0d2004a447c5c0"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/__init__.py": {
+    "mtime": 1786484900.5854824,
+    "seen": 1794174925.4825854,
+    "ast_hash": "c390c382dcfa2ffa5efca7d54d31bcdb",
+    "semantic_hash": "c390c382dcfa2ffa5efca7d54d31bcdb"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/evaluation_aspects.py": {
+    "mtime": 1793728126.157163,
+    "seen": 1794174925.4825873,
+    "ast_hash": "7d3b6dc72e09b08d231d5c2ea4f10e6f",
+    "semantic_hash": "7d3b6dc72e09b08d231d5c2ea4f10e6f"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/evaluation_prompts.py": {
+    "mtime": 1793728333.5096312,
+    "seen": 1794174925.482589,
+    "ast_hash": "c5683c7b3371e17929ad72fc619db098",
+    "semantic_hash": "c5683c7b3371e17929ad72fc619db098"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/interview_prompt.py": {
+    "mtime": 1793728334.0173554,
+    "seen": 1794174925.4825904,
+    "ast_hash": "8d9fc7ce4b0511cd1bcd6a6b832e5128",
+    "semantic_hash": "8d9fc7ce4b0511cd1bcd6a6b832e5128"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/learning_moments.py": {
+    "mtime": 1793728019.9664938,
+    "seen": 1794174925.4825916,
+    "ast_hash": "5209f81929e62e5feec1c50670c95d37",
+    "semantic_hash": "5209f81929e62e5feec1c50670c95d37"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/memory_tool_instructions.py": {
+    "mtime": 1793728334.5266335,
+    "seen": 1794174925.4825935,
+    "ast_hash": "7408497e080626b9f99fc9bec48d23aa",
+    "semantic_hash": "7408497e080626b9f99fc9bec48d23aa"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/multimodal_evaluation.py": {
+    "mtime": 1793733156.2455606,
+    "seen": 1794174925.4825947,
+    "ast_hash": "eb3cc6048c5adbca28949ada758812b7",
+    "semantic_hash": "eb3cc6048c5adbca28949ada758812b7"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/personalities.py": {
+    "mtime": 1793863640.5696206,
+    "seen": 1794174925.4825962,
+    "ast_hash": "94b7d28bdf7ab132b56e025f45f430cc",
+    "semantic_hash": "94b7d28bdf7ab132b56e025f45f430cc"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/progress_summary.py": {
+    "mtime": 1793728020.545091,
+    "seen": 1794174925.4825974,
+    "ast_hash": "8fbfbb286322a0fdcc92f8dede05c110",
+    "semantic_hash": "8fbfbb286322a0fdcc92f8dede05c110"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/prompts/translator.py": {
+    "mtime": 1793728020.0252495,
+    "seen": 1794174925.482599,
+    "ast_hash": "a044b1bdd7a6ca418ccb86a9d2914769",
+    "semantic_hash": "a044b1bdd7a6ca418ccb86a9d2914769"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/schemas/__init__.py": {
+    "mtime": 1786484900.6793363,
+    "seen": 1794174925.4826002,
+    "ast_hash": "ce19b2b4054d48daddfc4eaea75eaab1",
+    "semantic_hash": "ce19b2b4054d48daddfc4eaea75eaab1"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/schemas/clinical_case.py": {
+    "mtime": 1786484900.6878915,
+    "seen": 1794174925.4826014,
+    "ast_hash": "a570973ddf38ac0a551d39c3c41f9955",
+    "semantic_hash": "a570973ddf38ac0a551d39c3c41f9955"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/schemas/evaluation.py": {
+    "mtime": 1788234300.8405123,
+    "seen": 1794174925.482603,
+    "ast_hash": "bf8b9bbf0ab8dcbb543dac34e8a6ee26",
+    "semantic_hash": "bf8b9bbf0ab8dcbb543dac34e8a6ee26"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/schemas/learning_moments.py": {
+    "mtime": 1793733156.2490795,
+    "seen": 1794174925.4826045,
+    "ast_hash": "34af9ec4e3fa0b72f4c16b98fb92a620",
+    "semantic_hash": "34af9ec4e3fa0b72f4c16b98fb92a620"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/schemas/multimodal_evaluation.py": {
+    "mtime": 1791315528.6077318,
+    "seen": 1794174925.4826548,
+    "ast_hash": "5f8373b57dcc8a2c0c7bcecef58a36ee",
+    "semantic_hash": "5f8373b57dcc8a2c0c7bcecef58a36ee"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/schemas/progress_summary.py": {
+    "mtime": 1787009557.749888,
+    "seen": 1794174925.4826593,
+    "ast_hash": "6ad3afedcaa8b657723a0244431813d6",
+    "semantic_hash": "6ad3afedcaa8b657723a0244431813d6"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/summary_workflow.py": {
+    "mtime": 1791919677.893301,
+    "seen": 1794174925.4826622,
+    "ast_hash": "54369860b49603748ced2f79591558ff",
+    "semantic_hash": "54369860b49603748ced2f79591558ff"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_complete_multimodal_evaluation.py": {
+    "mtime": 1793733156.2547774,
+    "seen": 1794174925.482665,
+    "ast_hash": "d879f092428ee7a039fc550c4c5ece11",
+    "semantic_hash": "d879f092428ee7a039fc550c4c5ece11"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_conversation_concurrency.py": {
+    "mtime": 1793864115.7930174,
+    "seen": 1794174925.4826674,
+    "ast_hash": "32a20a8eaca7e16dc811d6c1172f25f0",
+    "semantic_hash": "32a20a8eaca7e16dc811d6c1172f25f0"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_evaluation_provenance.py": {
+    "mtime": 1793728118.6787894,
+    "seen": 1794174925.4826698,
+    "ast_hash": "f74b35b5b3f3435f6fdf1fa24c40c71e",
+    "semantic_hash": "f74b35b5b3f3435f6fdf1fa24c40c71e"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_evaluation_scale.py": {
+    "mtime": 1788234482.8319955,
+    "seen": 1794174925.4826727,
+    "ast_hash": "bdbaebc8219e33f9a7010fe363a3b935",
+    "semantic_hash": "bdbaebc8219e33f9a7010fe363a3b935"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_learning_moments.py": {
+    "mtime": 1793733156.259333,
+    "seen": 1794174925.4826753,
+    "ast_hash": "3f3e6a35f602afc906ca69a128ff6546",
+    "semantic_hash": "3f3e6a35f602afc906ca69a128ff6546"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_multimodal_evaluation.py": {
+    "mtime": 1793733156.2527678,
+    "seen": 1794174925.482695,
+    "ast_hash": "dcd94a856a09b69ec611da700277bce3",
+    "semantic_hash": "dcd94a856a09b69ec611da700277bce3"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_patient_rewrite_failure.py": {
+    "mtime": 1793674328.8270638,
+    "seen": 1794174925.482697,
+    "ast_hash": "0fa76717e009829f3e81fb558cb6c78d",
+    "semantic_hash": "0fa76717e009829f3e81fb558cb6c78d"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_review_refresh.py": {
+    "mtime": 1793728060.858102,
+    "seen": 1794174925.4826984,
+    "ast_hash": "31d659c732c9dbdec44e4e663c7c26e9",
+    "semantic_hash": "31d659c732c9dbdec44e4e663c7c26e9"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/tests/test_stage6_provenance.py": {
+    "mtime": 1793728308.5923014,
+    "seen": 1794174925.4826999,
+    "ast_hash": "070e72830065be4190edbe25a20776b3",
+    "semantic_hash": "070e72830065be4190edbe25a20776b3"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/translator_agent.py": {
+    "mtime": 1793674410.4858336,
+    "seen": 1794174925.4827018,
+    "ast_hash": "98ba92d777d48060fa744c6ec62a0025",
+    "semantic_hash": "98ba92d777d48060fa744c6ec62a0025"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/virtual_patient_agent.py": {
+    "mtime": 1793863640.5141397,
+    "seen": 1794174925.4827044,
+    "ast_hash": "ca1d89c75a03ca1093208f42f085d1b0",
+    "semantic_hash": "ca1d89c75a03ca1093208f42f085d1b0"
+  },
+  "virtual-patient/virtual-patient-api/app/agents/virtual_patient_workflow.py": {
+    "mtime": 1793863640.5447998,
+    "seen": 1794174925.4827068,
+    "ast_hash": "a1673abd528aca8dab7b906f12489447",
+    "semantic_hash": "a1673abd528aca8dab7b906f12489447"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/__init__.py": {
+    "mtime": 1786484900.7488444,
+    "seen": 1794174925.482709,
+    "ast_hash": "60904f4af738830187736cb09a79dd3c",
+    "semantic_hash": "60904f4af738830187736cb09a79dd3c"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/administrative_deletion.py": {
+    "mtime": 1794156666.729936,
+    "seen": 1794174925.4827116,
+    "ast_hash": "e02140542f04b9f08fe6a88836035e24",
+    "semantic_hash": "e02140542f04b9f08fe6a88836035e24"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/clinical_case_controller.py": {
+    "mtime": 1793224445.2445545,
+    "seen": 1794174925.4827142,
+    "ast_hash": "329d4eaad3d044ec443595a840f4f124",
+    "semantic_hash": "329d4eaad3d044ec443595a840f4f124"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/hypothesis_controller.py": {
+    "mtime": 1793650885.2031555,
+    "seen": 1794174925.4827163,
+    "ast_hash": "3afaf53c9249a64fe7da4c785b252ff8",
+    "semantic_hash": "3afaf53c9249a64fe7da4c785b252ff8"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/interview_evaluation_controller.py": {
+    "mtime": 1791916902.6667495,
+    "seen": 1794174925.4827187,
+    "ast_hash": "e770ed225a2a473b9a178dafcfbd94ae",
+    "semantic_hash": "e770ed225a2a473b9a178dafcfbd94ae"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/interview_lifecycle.py": {
+    "mtime": 1793650385.5167315,
+    "seen": 1794174925.4827213,
+    "ast_hash": "f4a235d1f609cb2f065f81983eba671e",
+    "semantic_hash": "f4a235d1f609cb2f065f81983eba671e"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/medical_interview_controller.py": {
+    "mtime": 1794164853.400665,
+    "seen": 1794174925.4827235,
+    "ast_hash": "af0faa3bac0e878c5130845848bed413",
+    "semantic_hash": "af0faa3bac0e878c5130845848bed413"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/message_controller.py": {
+    "mtime": 1791920438.2317097,
+    "seen": 1794174925.4827263,
+    "ast_hash": "0d0e950352b30558f8efdef7df710b3c",
+    "semantic_hash": "0d0e950352b30558f8efdef7df710b3c"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/personality_controller.py": {
+    "mtime": 1786484900.8070328,
+    "seen": 1794174925.482729,
+    "ast_hash": "4512a6100e25bfc871b65c9e2f4cb129",
+    "semantic_hash": "4512a6100e25bfc871b65c9e2f4cb129"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/progress_summary_controller.py": {
+    "mtime": 1789488621.8903217,
+    "seen": 1794174925.4827313,
+    "ast_hash": "08bb0e82d75aa8a05611dba3d5e1f139",
+    "semantic_hash": "08bb0e82d75aa8a05611dba3d5e1f139"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/session_note_controller.py": {
+    "mtime": 1793680591.536316,
+    "seen": 1794174925.4827335,
+    "ast_hash": "a441d08d8346c4fb5e5987b6d8a1c507",
+    "semantic_hash": "a441d08d8346c4fb5e5987b6d8a1c507"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/summary_controller.py": {
+    "mtime": 1793668063.6280124,
+    "seen": 1794174925.4827359,
+    "ast_hash": "e3feb545b5142883020fe783be50cc1e",
+    "semantic_hash": "e3feb545b5142883020fe783be50cc1e"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/teacher_feedback_controller.py": {
+    "mtime": 1789575352.3361726,
+    "seen": 1794174925.4827385,
+    "ast_hash": "89dec9321dcd967794945c449796ba50",
+    "semantic_hash": "89dec9321dcd967794945c449796ba50"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/tests/__init__.py": {
+    "mtime": 1787007594.5701003,
+    "seen": 1794174925.4827404,
+    "ast_hash": "7057646c8b6421717135d98395c8144c",
+    "semantic_hash": "7057646c8b6421717135d98395c8144c"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/tests/test_progress_summary_controller.py": {
+    "mtime": 1787009560.1498754,
+    "seen": 1794174925.482742,
+    "ast_hash": "0d9e478f29b63e50373b5788342867d2",
+    "semantic_hash": "0d9e478f29b63e50373b5788342867d2"
+  },
+  "virtual-patient/virtual-patient-api/app/controllers/virtual_patient_controller.py": {
+    "mtime": 1794158734.0433187,
+    "seen": 1794174925.4827435,
+    "ast_hash": "4eb79c38cc0ddbd5c1a20bb3388a4226",
+    "semantic_hash": "4eb79c38cc0ddbd5c1a20bb3388a4226"
+  },
+  "virtual-patient/virtual-patient-api/app/core/async_work.py": {
+    "mtime": 1793674945.6666093,
+    "seen": 1794174925.482745,
+    "ast_hash": "034706226bb722376432855af835fc02",
+    "semantic_hash": "034706226bb722376432855af835fc02"
+  },
+  "virtual-patient/virtual-patient-api/app/core/auth.py": {
+    "mtime": 1793728142.710892,
+    "seen": 1794174925.4827466,
+    "ast_hash": "cb937dd3497a900c5f6f4aa0fdab340f",
+    "semantic_hash": "cb937dd3497a900c5f6f4aa0fdab340f"
+  },
+  "virtual-patient/virtual-patient-api/app/core/azure_openai.py": {
+    "mtime": 1787669066.0298002,
+    "seen": 1794174925.4827478,
+    "ast_hash": "90372dc10af149b654f7284156fc8eac",
+    "semantic_hash": "90372dc10af149b654f7284156fc8eac"
+  },
+  "virtual-patient/virtual-patient-api/app/core/captcha.py": {
+    "mtime": 1793727945.2284482,
+    "seen": 1794174925.4827497,
+    "ast_hash": "74bb1ecf6fca3cf17badcfbc84c527a0",
+    "semantic_hash": "74bb1ecf6fca3cf17badcfbc84c527a0"
+  },
+  "virtual-patient/virtual-patient-api/app/core/config.py": {
+    "mtime": 1793737606.8133838,
+    "seen": 1794174925.4827511,
+    "ast_hash": "7f633b21bcb89e7dbfecc38a9509763c",
+    "semantic_hash": "7f633b21bcb89e7dbfecc38a9509763c"
+  },
+  "virtual-patient/virtual-patient-api/app/core/database.py": {
+    "mtime": 1793864060.9046214,
+    "seen": 1794174925.482753,
+    "ast_hash": "9f0b44d949b40f5193812e7c7596d74a",
+    "semantic_hash": "9f0b44d949b40f5193812e7c7596d74a"
+  },
+  "virtual-patient/virtual-patient-api/app/core/functional_config.py": {
+    "mtime": 1793728048.4793773,
+    "seen": 1794174925.4827542,
+    "ast_hash": "3312b763eb8c2cf0639d86774418ef61",
+    "semantic_hash": "3312b763eb8c2cf0639d86774418ef61"
+  },
+  "virtual-patient/virtual-patient-api/app/core/langgraph_schema.py": {
+    "mtime": 1793668073.1030061,
+    "seen": 1794174925.482756,
+    "ast_hash": "e4261a6bd6d7e869838f465bba5045fe",
+    "semantic_hash": "e4261a6bd6d7e869838f465bba5045fe"
+  },
+  "virtual-patient/virtual-patient-api/app/core/media_cookie.py": {
+    "mtime": 1791918773.966508,
+    "seen": 1794174925.4827576,
+    "ast_hash": "deda29f92998f9e638e06e1d7eb51b44",
+    "semantic_hash": "deda29f92998f9e638e06e1d7eb51b44"
+  },
+  "virtual-patient/virtual-patient-api/app/core/memory_store.py": {
+    "mtime": 1793675006.9730384,
+    "seen": 1794174925.4827592,
+    "ast_hash": "1641a53265a1beca07f455c37dc23c04",
+    "semantic_hash": "1641a53265a1beca07f455c37dc23c04"
+  },
+  "virtual-patient/virtual-patient-api/app/core/review_access.py": {
+    "mtime": 1794163477.9870138,
+    "seen": 1794174925.4827604,
+    "ast_hash": "bed54127eda9ce9764a4c9ab33ed79d9",
+    "semantic_hash": "bed54127eda9ce9764a4c9ab33ed79d9"
+  },
+  "virtual-patient/virtual-patient-api/app/core/superuser.py": {
+    "mtime": 1789575416.1781697,
+    "seen": 1794174925.4827616,
+    "ast_hash": "02255118b5238421c37efcaf3fbf5294",
+    "semantic_hash": "02255118b5238421c37efcaf3fbf5294"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/__init__.py": {
+    "mtime": 1786987356.4052594,
+    "seen": 1794174925.4827638,
+    "ast_hash": "1c2db4cbfa77fd81989350059758cd5c",
+    "semantic_hash": "1c2db4cbfa77fd81989350059758cd5c"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_auth_identifier.py": {
+    "mtime": 1793728142.7921329,
+    "seen": 1794174925.482765,
+    "ast_hash": "c874ec676aa0a8cae897d203940efe53",
+    "semantic_hash": "c874ec676aa0a8cae897d203940efe53"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_azure_openai.py": {
+    "mtime": 1787669070.9371479,
+    "seen": 1794174925.4827666,
+    "ast_hash": "5d4971469d7a26617d4c1efb14b12867",
+    "semantic_hash": "5d4971469d7a26617d4c1efb14b12867"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_captcha.py": {
+    "mtime": 1793728091.426899,
+    "seen": 1794174925.482768,
+    "ast_hash": "f76c1318460f9ad2f47b9c971ca5fb3d",
+    "semantic_hash": "f76c1318460f9ad2f47b9c971ca5fb3d"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_case_description_age.py": {
+    "mtime": 1794171234.7551095,
+    "seen": 1794174925.4827697,
+    "ast_hash": "ba441acd8c9907a4c99d7fb9509f962c",
+    "semantic_hash": "ba441acd8c9907a4c99d7fb9509f962c"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_external_transaction_admission.py": {
+    "mtime": 1793864060.9395876,
+    "seen": 1794174925.482771,
+    "ast_hash": "d5cc87cc1b3b00c252c159410f6de93a",
+    "semantic_hash": "d5cc87cc1b3b00c252c159410f6de93a"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_langgraph_schema.py": {
+    "mtime": 1786994635.49058,
+    "seen": 1794174925.4827726,
+    "ast_hash": "5f0267708cbd7758f0f0d3fd9a923dcf",
+    "semantic_hash": "5f0267708cbd7758f0f0d3fd9a923dcf"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_memory_namespace_isolation.py": {
+    "mtime": 1793668438.7453868,
+    "seen": 1794174925.482774,
+    "ast_hash": "0a6f108e8a2e21a7317f6c2ff7b45d05",
+    "semantic_hash": "0a6f108e8a2e21a7317f6c2ff7b45d05"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_memory_route_authorization.py": {
+    "mtime": 1793668433.975512,
+    "seen": 1794174925.482777,
+    "ast_hash": "f9c74bdddaabab12676c7db79192145b",
+    "semantic_hash": "f9c74bdddaabab12676c7db79192145b"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_release_baseline.py": {
+    "mtime": 1793733224.583088,
+    "seen": 1794174925.4827785,
+    "ast_hash": "e402c00325d4c5c4aa8c07ea0957d76b",
+    "semantic_hash": "e402c00325d4c5c4aa8c07ea0957d76b"
+  },
+  "virtual-patient/virtual-patient-api/app/core/tests/test_user_identity.py": {
+    "mtime": 1789575567.6160252,
+    "seen": 1794174925.4827802,
+    "ast_hash": "7926ec1e51c608de3e2dd7b74f4c79e2",
+    "semantic_hash": "7926ec1e51c608de3e2dd7b74f4c79e2"
+  },
+  "virtual-patient/virtual-patient-api/app/models/__init__.py": {
+    "mtime": 1794162906.929294,
+    "seen": 1794174925.4827814,
+    "ast_hash": "a4ad48af018992a6a1796549182f2e98",
+    "semantic_hash": "a4ad48af018992a6a1796549182f2e98"
+  },
+  "virtual-patient/virtual-patient-api/app/models/calibration.py": {
+    "mtime": 1794152704.2725594,
+    "seen": 1794174925.482783,
+    "ast_hash": "05caf64f1a51f744d5b796613f415cf1",
+    "semantic_hash": "05caf64f1a51f744d5b796613f415cf1"
+  },
+  "virtual-patient/virtual-patient-api/app/models/calibration_capture.py": {
+    "mtime": 1794152237.998177,
+    "seen": 1794174925.4827843,
+    "ast_hash": "0c4372079479a4d80b9aa04beb22b4f7",
+    "semantic_hash": "0c4372079479a4d80b9aa04beb22b4f7"
+  },
+  "virtual-patient/virtual-patient-api/app/models/clinical_case.py": {
+    "mtime": 1793224445.2640228,
+    "seen": 1794174925.4827855,
+    "ast_hash": "fb6e0e9b7180d0aca3dc674e7ed7e07c",
+    "semantic_hash": "fb6e0e9b7180d0aca3dc674e7ed7e07c"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/__init__.py": {
+    "mtime": 1789761823.7563913,
+    "seen": 1794174925.4827871,
+    "ast_hash": "57b590db51da66135e6a6bc28a2fa065",
+    "semantic_hash": "57b590db51da66135e6a6bc28a2fa065"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/comprehensive_models.py": {
+    "mtime": 1792520904.6403549,
+    "seen": 1794174925.4827886,
+    "ast_hash": "f52c29931361be81708332c60288ce29",
+    "semantic_hash": "f52c29931361be81708332c60288ce29"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/enums.py": {
+    "mtime": 1789481120.705453,
+    "seen": 1794174925.4827902,
+    "ast_hash": "081d2320a6f810a14c008f047f39a467",
+    "semantic_hash": "081d2320a6f810a14c008f047f39a467"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/interview_evaluation.py": {
+    "mtime": 1791916896.3388638,
+    "seen": 1794174925.4827917,
+    "ast_hash": "cc1df3893804447136e0b7f7b71bd5f9",
+    "semantic_hash": "cc1df3893804447136e0b7f7b71bd5f9"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/interview_message.py": {
+    "mtime": 1786484901.0547335,
+    "seen": 1794174925.4827933,
+    "ast_hash": "a8f51e1938d324b4fff236009d4a3a2c",
+    "semantic_hash": "a8f51e1938d324b4fff236009d4a3a2c"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/interview_recording.py": {
+    "mtime": 1793737608.5579298,
+    "seen": 1794174925.4827945,
+    "ast_hash": "78a6f950dc33a1b650a7a7a531ae49c4",
+    "semantic_hash": "78a6f950dc33a1b650a7a7a531ae49c4"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/medical_interview.py": {
+    "mtime": 1794164853.016246,
+    "seen": 1794174925.4827957,
+    "ast_hash": "208ea2370540fd7256828ab7a4a9c312",
+    "semantic_hash": "208ea2370540fd7256828ab7a4a9c312"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/medical_session_note.py": {
+    "mtime": 1786484901.0830657,
+    "seen": 1794174925.4827971,
+    "ast_hash": "f0ee02e87e4bccc02792098ed9190c58",
+    "semantic_hash": "f0ee02e87e4bccc02792098ed9190c58"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/progress_summary.py": {
+    "mtime": 1787064354.2178874,
+    "seen": 1794174925.4827986,
+    "ast_hash": "3a86ce16214e3522e0bd4d7e456331d4",
+    "semantic_hash": "3a86ce16214e3522e0bd4d7e456331d4"
+  },
+  "virtual-patient/virtual-patient-api/app/models/medical_interview/user_hypothesis.py": {
+    "mtime": 1786484901.1074874,
+    "seen": 1794174925.4828005,
+    "ast_hash": "de728dad6e4fd79611ec035be73e1212",
+    "semantic_hash": "de728dad6e4fd79611ec035be73e1212"
+  },
+  "virtual-patient/virtual-patient-api/app/models/organization.py": {
+    "mtime": 1793642693.504769,
+    "seen": 1794174925.482802,
+    "ast_hash": "46fd68cd63dcf39e3b830d9a95fbb8fa",
+    "semantic_hash": "46fd68cd63dcf39e3b830d9a95fbb8fa"
+  },
+  "virtual-patient/virtual-patient-api/app/models/personality.py": {
+    "mtime": 1786484900.955561,
+    "seen": 1794174925.4828033,
+    "ast_hash": "ad03128050aa69c0f620bbdf666fb6dd",
+    "semantic_hash": "ad03128050aa69c0f620bbdf666fb6dd"
+  },
+  "virtual-patient/virtual-patient-api/app/models/processing_job.py": {
+    "mtime": 1791918401.9016676,
+    "seen": 1794174925.482805,
+    "ast_hash": "1a503e6b1ebd4a227668b2db34adc87c",
+    "semantic_hash": "1a503e6b1ebd4a227668b2db34adc87c"
+  },
+  "virtual-patient/virtual-patient-api/app/models/self_rating.py": {
+    "mtime": 1794162906.5307043,
+    "seen": 1794174925.4828067,
+    "ast_hash": "38deb7ca0d2ea190b694b2eafb19d561",
+    "semantic_hash": "38deb7ca0d2ea190b694b2eafb19d561"
+  },
+  "virtual-patient/virtual-patient-api/app/models/teacher_feedback.py": {
+    "mtime": 1789575344.789986,
+    "seen": 1794174925.482808,
+    "ast_hash": "bf0206a5c7206aaf4db60d76ff90fb13",
+    "semantic_hash": "bf0206a5c7206aaf4db60d76ff90fb13"
+  },
+  "virtual-patient/virtual-patient-api/app/models/teacher_grading.py": {
+    "mtime": 1793241628.9207942,
+    "seen": 1794174925.4828093,
+    "ast_hash": "49c57fe689faeaf7d0be495fe79d5d55",
+    "semantic_hash": "49c57fe689faeaf7d0be495fe79d5d55"
+  },
+  "virtual-patient/virtual-patient-api/app/models/user.py": {
+    "mtime": 1793858040.8392258,
+    "seen": 1794174925.482811,
+    "ast_hash": "e42dfa72171b337e49b5870f144ebf0a",
+    "semantic_hash": "e42dfa72171b337e49b5870f144ebf0a"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/__init__.py": {
+    "mtime": 1789493893.7621474,
+    "seen": 1794174925.482813,
+    "ast_hash": "ad4d5a4e8fe655a19b0f0ed68d364110",
+    "semantic_hash": "ad4d5a4e8fe655a19b0f0ed68d364110"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/calibration.py": {
+    "mtime": 1794108635.7728372,
+    "seen": 1794174925.4828143,
+    "ast_hash": "540da84728ac17d41e1c7f6fa253b18d",
+    "semantic_hash": "540da84728ac17d41e1c7f6fa253b18d"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/calibration_attestation.py": {
+    "mtime": 1794153977.5920134,
+    "seen": 1794174925.482816,
+    "ast_hash": "c5eb445a76526cc8b685aa53c9b04f5a",
+    "semantic_hash": "c5eb445a76526cc8b685aa53c9b04f5a"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/config_loader.py": {
+    "mtime": 1793728060.3851838,
+    "seen": 1794174925.4828176,
+    "ast_hash": "004ffc7df617d189cc27381162b98296",
+    "semantic_hash": "004ffc7df617d189cc27381162b98296"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/constants.py": {
+    "mtime": 1790117841.3662198,
+    "seen": 1794174925.4828188,
+    "ast_hash": "4cd9f26310a1d4549e76c9c9a60f9795",
+    "semantic_hash": "4cd9f26310a1d4549e76c9c9a60f9795"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/conversation_formatter.py": {
+    "mtime": 1793733156.1966848,
+    "seen": 1794174925.4828205,
+    "ast_hash": "36566df4dc5662abb5ae0f18252aef92",
+    "semantic_hash": "36566df4dc5662abb5ae0f18252aef92"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/evaluation_runs.py": {
+    "mtime": 1793728097.0351655,
+    "seen": 1794174925.482822,
+    "ast_hash": "bdab75ff86911ed34f76ebf0020b23ad",
+    "semantic_hash": "bdab75ff86911ed34f76ebf0020b23ad"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/evaluation_service.py": {
+    "mtime": 1793650890.1949413,
+    "seen": 1794174925.4828231,
+    "ast_hash": "56d1836321ecf638091cda1f8a5dcb48",
+    "semantic_hash": "56d1836321ecf638091cda1f8a5dcb48"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/extraction_provenance.py": {
+    "mtime": 1793661717.5025315,
+    "seen": 1794174925.4828246,
+    "ast_hash": "2f8d97fef6604540b6ef7499bff6155e",
+    "semantic_hash": "2f8d97fef6604540b6ef7499bff6155e"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/isolated_worker.py": {
+    "mtime": 1794110435.0504992,
+    "seen": 1794174925.4828258,
+    "ast_hash": "6f606d4ccd88cd2e1cf28f6f9dbdd10d",
+    "semantic_hash": "6f606d4ccd88cd2e1cf28f6f9dbdd10d"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/label_engine.py": {
+    "mtime": 1794108610.4936998,
+    "seen": 1794174925.4828272,
+    "ast_hash": "7a18ea053e696c22f79e5925be53a4ec",
+    "semantic_hash": "7a18ea053e696c22f79e5925be53a4ec"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/label_glossary.py": {
+    "mtime": 1793728146.8478403,
+    "seen": 1794174925.4828286,
+    "ast_hash": "f99e11165419a71eaf8a50b36ebdd906",
+    "semantic_hash": "f99e11165419a71eaf8a50b36ebdd906"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/learning_moments.py": {
+    "mtime": 1793728118.0991032,
+    "seen": 1794174925.48283,
+    "ast_hash": "37057bea4143908e7d8923e201e91116",
+    "semantic_hash": "37057bea4143908e7d8923e201e91116"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/matched_control.py": {
+    "mtime": 1793656919.9305549,
+    "seen": 1794174925.4828315,
+    "ast_hash": "e32fbdad8120754474d82f57bbe39c24",
+    "semantic_hash": "e32fbdad8120754474d82f57bbe39c24"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/pipeline.py": {
+    "mtime": 1794108610.48712,
+    "seen": 1794174925.4828327,
+    "ast_hash": "f18d74f315fe776269d15ff899c734ca",
+    "semantic_hash": "f18d74f315fe776269d15ff899c734ca"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/process_isolation.py": {
+    "mtime": 1793658671.7333052,
+    "seen": 1794174925.4828339,
+    "ast_hash": "48387785e847c77ac446a7f8d2f5e916",
+    "semantic_hash": "48387785e847c77ac446a7f8d2f5e916"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/processing_jobs.py": {
+    "mtime": 1794156067.5781212,
+    "seen": 1794174925.4828355,
+    "ast_hash": "d7047a8aefe3ac4bcc441d96acc336a6",
+    "semantic_hash": "d7047a8aefe3ac4bcc441d96acc336a6"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/quality_policy.py": {
+    "mtime": 1793733156.2363746,
+    "seen": 1794174925.4828367,
+    "ast_hash": "53cd9c3386a54265b3e8381734db83db",
+    "semantic_hash": "53cd9c3386a54265b3e8381734db83db"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/reprocess.py": {
+    "mtime": 1793719410.395722,
+    "seen": 1794174925.4828382,
+    "ast_hash": "98e26a187a8c92716abe58acbc257d45",
+    "semantic_hash": "98e26a187a8c92716abe58acbc257d45"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/schemas.py": {
+    "mtime": 1794108862.1798863,
+    "seen": 1794174925.4828396,
+    "ast_hash": "05d793a98b48172e56bb734c76e5af92",
+    "semantic_hash": "05d793a98b48172e56bb734c76e5af92"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/__init__.py": {
+    "mtime": 1789494555.4469619,
+    "seen": 1794174925.482841,
+    "ast_hash": "e1da2c189663806baf37a7332175f802",
+    "semantic_hash": "e1da2c189663806baf37a7332175f802"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_calibration.py": {
+    "mtime": 1794152911.9261613,
+    "seen": 1794174925.4828424,
+    "ast_hash": "73538b94ba74c4d3566965b84d5863b9",
+    "semantic_hash": "73538b94ba74c4d3566965b84d5863b9"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_calibration_attestation.py": {
+    "mtime": 1794152860.3674252,
+    "seen": 1794174925.482844,
+    "ast_hash": "b4d214dac494e03776c93cf2b670c8ea",
+    "semantic_hash": "b4d214dac494e03776c93cf2b670c8ea"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_config_loader.py": {
+    "mtime": 1794109148.2697916,
+    "seen": 1794174925.4828582,
+    "ast_hash": "69a4f50d5a3ffb37144e3b01b88f0c44",
+    "semantic_hash": "69a4f50d5a3ffb37144e3b01b88f0c44"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_global_pipeline_limit.py": {
+    "mtime": 1793659220.4296136,
+    "seen": 1794174925.4828606,
+    "ast_hash": "592ad279652c0ab7ac1c97ab9d90632c",
+    "semantic_hash": "592ad279652c0ab7ac1c97ab9d90632c"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_label_engine.py": {
+    "mtime": 1794108809.0182693,
+    "seen": 1794174925.482863,
+    "ast_hash": "51eb20ecf08e0c9ebe7b1ae5fcbb7ad9",
+    "semantic_hash": "51eb20ecf08e0c9ebe7b1ae5fcbb7ad9"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_pipeline.py": {
+    "mtime": 1794108719.784217,
+    "seen": 1794174925.482865,
+    "ast_hash": "133471b63c2f062f591db9c3f3361fc3",
+    "semantic_hash": "133471b63c2f062f591db9c3f3361fc3"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_processing_jobs.py": {
+    "mtime": 1793864060.9355962,
+    "seen": 1794174925.4828675,
+    "ast_hash": "4277508b95a8e4f98c7fc766303dc2b3",
+    "semantic_hash": "4277508b95a8e4f98c7fc766303dc2b3"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_quality_policy.py": {
+    "mtime": 1793733156.223524,
+    "seen": 1794174925.4828699,
+    "ast_hash": "e4a4b2def045058a9292ad87e8aa8e1f",
+    "semantic_hash": "e4a4b2def045058a9292ad87e8aa8e1f"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_reference_integrity.py": {
+    "mtime": 1793733156.206725,
+    "seen": 1794174925.482872,
+    "ast_hash": "3ce25c3b8c21cde11a954e05ebacd7a0",
+    "semantic_hash": "3ce25c3b8c21cde11a954e05ebacd7a0"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_relabel_integrity.py": {
+    "mtime": 1793733156.2281768,
+    "seen": 1794174925.4828744,
+    "ast_hash": "4796f00f667e8dafbe9e6ac506e7116c",
+    "semantic_hash": "4796f00f667e8dafbe9e6ac506e7116c"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_threshold_engine.py": {
+    "mtime": 1794108749.0830936,
+    "seen": 1794174925.4828768,
+    "ast_hash": "d15200654084f9458346769a82a1bac4",
+    "semantic_hash": "d15200654084f9458346769a82a1bac4"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_turn_results_boundary.py": {
+    "mtime": 1793662241.457912,
+    "seen": 1794174925.4828794,
+    "ast_hash": "0d1a5b547cb1990a6b4cf8787820580f",
+    "semantic_hash": "0d1a5b547cb1990a6b4cf8787820580f"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_turn_video_queue.py": {
+    "mtime": 1794107362.6701212,
+    "seen": 1794174925.4828823,
+    "ast_hash": "0a757ba93c9d221366a0c7fdfbdeea73",
+    "semantic_hash": "0a757ba93c9d221366a0c7fdfbdeea73"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/tests/test_video_processing_worker.py": {
+    "mtime": 1793864145.2472239,
+    "seen": 1794174925.482885,
+    "ast_hash": "1d30e870f33de811b436fbb3c48cc8fd",
+    "semantic_hash": "1d30e870f33de811b436fbb3c48cc8fd"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/threshold_engine.py": {
+    "mtime": 1794108930.559566,
+    "seen": 1794174925.4828875,
+    "ast_hash": "f4a03d6d62ba819b48da87b60e24e76a",
+    "semantic_hash": "f4a03d6d62ba819b48da87b60e24e76a"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/turn_results.py": {
+    "mtime": 1793662046.0246112,
+    "seen": 1794174925.48289,
+    "ast_hash": "1e3dccd6c23c6b9700df61d9f04d3c3d",
+    "semantic_hash": "1e3dccd6c23c6b9700df61d9f04d3c3d"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/turn_video_queue.py": {
+    "mtime": 1794107329.9061546,
+    "seen": 1794174925.482892,
+    "ast_hash": "ec05d4ca5b40d37d94d2b696a19ea2a2",
+    "semantic_hash": "ec05d4ca5b40d37d94d2b696a19ea2a2"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/video_processing_client.py": {
+    "mtime": 1794110435.0523393,
+    "seen": 1794174925.4828947,
+    "ast_hash": "3304c4fd789ed06e6b1722c6cc018dae",
+    "semantic_hash": "3304c4fd789ed06e6b1722c6cc018dae"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/video_processing_worker.py": {
+    "mtime": 1794110435.0488281,
+    "seen": 1794174925.4828968,
+    "ast_hash": "e66142dbacf28bc8307fdaf6257a2b85",
+    "semantic_hash": "e66142dbacf28bc8307fdaf6257a2b85"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/__init__.py": {
+    "mtime": 1789651892.929888,
+    "seen": 1794174925.4828994,
+    "ast_hash": "ae9d9cdbe5bfc4f4e9a8350b8294b522",
+    "semantic_hash": "ae9d9cdbe5bfc4f4e9a8350b8294b522"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/calibration_worker.py": {
+    "mtime": 1794153976.8207402,
+    "seen": 1794174925.4829018,
+    "ast_hash": "e2dbb329f79c19620e991688ce9d143a",
+    "semantic_hash": "e2dbb329f79c19620e991688ce9d143a"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/ccdbhg.py": {
+    "mtime": 1793654596.5768194,
+    "seen": 1794174925.482904,
+    "ast_hash": "00c6e15856abc3f52784cb8597416de1",
+    "semantic_hash": "00c6e15856abc3f52784cb8597416de1"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/gaze.py": {
+    "mtime": 1791920004.830694,
+    "seen": 1794174925.4829063,
+    "ast_hash": "10d9a2ebb8385815c0c54decdacd2a3e",
+    "semantic_hash": "10d9a2ebb8385815c0c54decdacd2a3e"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/gaze_calibration.py": {
+    "mtime": 1794115529.4284632,
+    "seen": 1794174925.4829087,
+    "ast_hash": "fa3fe4764e2ab9a73a2c896e565145b4",
+    "semantic_hash": "fa3fe4764e2ab9a73a2c896e565145b4"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/mediapipe_extractor.py": {
+    "mtime": 1793657033.8430717,
+    "seen": 1794174925.4829109,
+    "ast_hash": "f1710df21b0e7b9be8ac660a468ca6bc",
+    "semantic_hash": "f1710df21b0e7b9be8ac660a468ca6bc"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/models/ccdbhg_cnn_lmk_hp/config.yaml": {
+    "mtime": 1789623741.3314233,
+    "seen": 1794174925.4829135,
+    "ast_hash": "c26ca62c95cfa15a12c47eabd023c99e",
+    "semantic_hash": "c26ca62c95cfa15a12c47eabd023c99e"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/preprocessing.py": {
+    "mtime": 1793662049.8331912,
+    "seen": 1794174925.4829156,
+    "ast_hash": "f3ab16ded10117fb273233bd90eb7cb6",
+    "semantic_hash": "f3ab16ded10117fb273233bd90eb7cb6"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/shared_observations.py": {
+    "mtime": 1793654591.7225633,
+    "seen": 1794174925.4829175,
+    "ast_hash": "b03636330c25ef7f849c88d4723307aa",
+    "semantic_hash": "b03636330c25ef7f849c88d4723307aa"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/smile.py": {
+    "mtime": 1793655045.9084463,
+    "seen": 1794174925.4829197,
+    "ast_hash": "4763b7b35de54089dd65d99b462fca03",
+    "semantic_hash": "4763b7b35de54089dd65d99b462fca03"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/__init__.py": {
+    "mtime": 1788889502.460077,
+    "seen": 1794174925.4829218,
+    "ast_hash": "6901253883195583c1f6f032b17f975d",
+    "semantic_hash": "6901253883195583c1f6f032b17f975d"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_ccdbhg.py": {
+    "mtime": 1791916636.65174,
+    "seen": 1794174925.4829237,
+    "ast_hash": "86e63e57ef30eb583c832247d5753a06",
+    "semantic_hash": "86e63e57ef30eb583c832247d5753a06"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_extraction_integrity.py": {
+    "mtime": 1793655377.4375951,
+    "seen": 1794174925.4829257,
+    "ast_hash": "28c5ec44bcc52620e9bdfcb20173d1de",
+    "semantic_hash": "28c5ec44bcc52620e9bdfcb20173d1de"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_gaze.py": {
+    "mtime": 1790116639.3547547,
+    "seen": 1794174925.4829276,
+    "ast_hash": "2cb4bc400125ec1db2d8fa432f2b58a2",
+    "semantic_hash": "2cb4bc400125ec1db2d8fa432f2b58a2"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_gaze_calibration.py": {
+    "mtime": 1794153977.2127576,
+    "seen": 1794174925.4829302,
+    "ast_hash": "d0ed0bc24639b60d762650865303ea57",
+    "semantic_hash": "d0ed0bc24639b60d762650865303ea57"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_mediapipe_extractor.py": {
+    "mtime": 1790118616.7743347,
+    "seen": 1794174925.4829328,
+    "ast_hash": "d1ed63bc751e4b7bb14cb35e871982aa",
+    "semantic_hash": "d1ed63bc751e4b7bb14cb35e871982aa"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_preprocessing.py": {
+    "mtime": 1791916639.0914009,
+    "seen": 1794174925.482935,
+    "ast_hash": "58304fd16be5b38a66b1b1579951ea92",
+    "semantic_hash": "58304fd16be5b38a66b1b1579951ea92"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_real_video_integration.py": {
+    "mtime": 1793733156.2037277,
+    "seen": 1794174925.4829376,
+    "ast_hash": "9d11e3281949f0de16aa88d44d18fe9e",
+    "semantic_hash": "9d11e3281949f0de16aa88d44d18fe9e"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_smile.py": {
+    "mtime": 1789624759.1218095,
+    "seen": 1794174925.4829404,
+    "ast_hash": "87d76bea87fc65bbf46914fc25e57f57",
+    "semantic_hash": "87d76bea87fc65bbf46914fc25e57f57"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_video_observations.py": {
+    "mtime": 1793728267.0474682,
+    "seen": 1794174925.4829426,
+    "ast_hash": "162e3dbf4d94aaba0e2dd51c0946ce09",
+    "semantic_hash": "162e3dbf4d94aaba0e2dd51c0946ce09"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/test_webeyetrack_optimization.py": {
+    "mtime": 1789692571.599699,
+    "seen": 1794174925.482945,
+    "ast_hash": "019ac23161d3ebb7c92e4633c2f7fa88",
+    "semantic_hash": "019ac23161d3ebb7c92e4633c2f7fa88"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/video_observations.py": {
+    "mtime": 1793728266.6053147,
+    "seen": 1794174925.4829504,
+    "ast_hash": "236cbd1a47619b6b8d7e09400d88520d",
+    "semantic_hash": "236cbd1a47619b6b8d7e09400d88520d"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/webeyetrack_profiling.py": {
+    "mtime": 1789693025.8054,
+    "seen": 1794174925.482953,
+    "ast_hash": "d4fce96c35b8658f97a063a59558a78b",
+    "semantic_hash": "d4fce96c35b8658f97a063a59558a78b"
+  },
+  "virtual-patient/virtual-patient-api/app/paraverbal/__init__.py": {
+    "mtime": 1787033095.119478,
+    "seen": 1794174925.482955,
+    "ast_hash": "c9391f8a8ca61d5a185ab6ddcb250cfd",
+    "semantic_hash": "c9391f8a8ca61d5a185ab6ddcb250cfd"
+  },
+  "virtual-patient/virtual-patient-api/app/paraverbal/opensmile_extractor.py": {
+    "mtime": 1793643578.847051,
+    "seen": 1794174925.4829566,
+    "ast_hash": "4c71c6d9eef91772d5585e68115668ba",
+    "semantic_hash": "4c71c6d9eef91772d5585e68115668ba"
+  },
+  "virtual-patient/virtual-patient-api/app/paraverbal/preprocessing.py": {
+    "mtime": 1794108678.8251042,
+    "seen": 1794174925.4829583,
+    "ast_hash": "90a3fba5be337e933e1a2f63649377e5",
+    "semantic_hash": "90a3fba5be337e933e1a2f63649377e5"
+  },
+  "virtual-patient/virtual-patient-api/app/paraverbal/tests/__init__.py": {
+    "mtime": 1789495104.5928347,
+    "seen": 1794174925.4829595,
+    "ast_hash": "ae2e14ad091a511d01d79bd3b0db2f79",
+    "semantic_hash": "ae2e14ad091a511d01d79bd3b0db2f79"
+  },
+  "virtual-patient/virtual-patient-api/app/paraverbal/tests/test_preprocessing.py": {
+    "mtime": 1794108749.0935268,
+    "seen": 1794174925.4829612,
+    "ast_hash": "faee3fa785920a3057512ed1b181b81e",
+    "semantic_hash": "faee3fa785920a3057512ed1b181b81e"
+  },
+  "virtual-patient/virtual-patient-api/app/paraverbal/tests/test_runtime.py": {
+    "mtime": 1793645143.3964097,
+    "seen": 1794174925.4829626,
+    "ast_hash": "06f2e4a6fb69687427f54a201f2161c9",
+    "semantic_hash": "06f2e4a6fb69687427f54a201f2161c9"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/__init__.py": {
+    "mtime": 1786484901.1310663,
+    "seen": 1794174925.482964,
+    "ast_hash": "0f3805877d531869818358bdf0663eb2",
+    "semantic_hash": "0f3805877d531869818358bdf0663eb2"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/auth.py": {
+    "mtime": 1793728142.7375367,
+    "seen": 1794174925.482966,
+    "ast_hash": "4168d61bc55dca371e0f199d8b89bff9",
+    "semantic_hash": "4168d61bc55dca371e0f199d8b89bff9"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/calibration.py": {
+    "mtime": 1794157011.8055668,
+    "seen": 1794174925.482968,
+    "ast_hash": "dfeb084da6e854b1bce64c6decbe847b",
+    "semantic_hash": "dfeb084da6e854b1bce64c6decbe847b"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/clinical_cases.py": {
+    "mtime": 1794158629.6743896,
+    "seen": 1794174925.4829707,
+    "ast_hash": "d3a599fecf89deb773e7ec1bbf57e8b2",
+    "semantic_hash": "d3a599fecf89deb773e7ec1bbf57e8b2"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/evaluations.py": {
+    "mtime": 1791315011.885192,
+    "seen": 1794174925.4829726,
+    "ast_hash": "33f9ddadd968c1e580bdd2792f3bc006",
+    "semantic_hash": "33f9ddadd968c1e580bdd2792f3bc006"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/interview_hypotheses.py": {
+    "mtime": 1793728120.5295641,
+    "seen": 1794174925.4829752,
+    "ast_hash": "e4bb29e0be9e4660124e3239aad4bc9d",
+    "semantic_hash": "e4bb29e0be9e4660124e3239aad4bc9d"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/interview_messages.py": {
+    "mtime": 1793861406.7263615,
+    "seen": 1794174925.4829779,
+    "ast_hash": "454ea173e6f606989a0668f656350566",
+    "semantic_hash": "454ea173e6f606989a0668f656350566"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/interview_recordings.py": {
+    "mtime": 1794172959.8233128,
+    "seen": 1794174925.4829803,
+    "ast_hash": "e223194e685848915a92b885145931b0",
+    "semantic_hash": "e223194e685848915a92b885145931b0"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/medical_interview_session_notes.py": {
+    "mtime": 1793680587.9212735,
+    "seen": 1794174925.4829826,
+    "ast_hash": "72eecabe3893258f1408ccc18a008d8d",
+    "semantic_hash": "72eecabe3893258f1408ccc18a008d8d"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/medical_interview_teacher_feedback.py": {
+    "mtime": 1792520904.651803,
+    "seen": 1794174925.4829855,
+    "ast_hash": "8f194baa22a827a902e16fed3a97eb8a",
+    "semantic_hash": "8f194baa22a827a902e16fed3a97eb8a"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/medical_interviews.py": {
+    "mtime": 1794170170.735983,
+    "seen": 1794174925.482988,
+    "ast_hash": "b2f06da7e64170c1d1a186335d88770d",
+    "semantic_hash": "b2f06da7e64170c1d1a186335d88770d"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/organizations.py": {
+    "mtime": 1793642695.956282,
+    "seen": 1794174925.4829905,
+    "ast_hash": "1587a88cfa6f1e13a4ed4946a95d0d64",
+    "semantic_hash": "1587a88cfa6f1e13a4ed4946a95d0d64"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/personalities.py": {
+    "mtime": 1793642093.0706785,
+    "seen": 1794174925.482993,
+    "ast_hash": "31c30ce5df8e0e3c8b7770ce7768580e",
+    "semantic_hash": "31c30ce5df8e0e3c8b7770ce7768580e"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/speech.py": {
+    "mtime": 1793862640.1411726,
+    "seen": 1794174925.4829955,
+    "ast_hash": "22db65a60d2d3768e14b44f3f840269e",
+    "semantic_hash": "22db65a60d2d3768e14b44f3f840269e"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/summary.py": {
+    "mtime": 1793863997.4183202,
+    "seen": 1794174925.4829977,
+    "ast_hash": "4e7092292d18be677895afa40daa9925",
+    "semantic_hash": "4e7092292d18be677895afa40daa9925"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/teacher_grading.py": {
+    "mtime": 1794163023.2302191,
+    "seen": 1794174925.4830003,
+    "ast_hash": "3c983c62c43ae886eab8cd96daf4a529",
+    "semantic_hash": "3c983c62c43ae886eab8cd96daf4a529"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/__init__.py": {
+    "mtime": 1787009106.9382794,
+    "seen": 1794174925.483003,
+    "ast_hash": "07a5c288b6ad9a2aa53393109ff5781b",
+    "semantic_hash": "07a5c288b6ad9a2aa53393109ff5781b"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_administrative_deletion.py": {
+    "mtime": 1794156775.302244,
+    "seen": 1794174925.4830053,
+    "ast_hash": "202958912c9bde80009f41e5d0812537",
+    "semantic_hash": "202958912c9bde80009f41e5d0812537"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_analysis_permissions.py": {
+    "mtime": 1793125709.5345433,
+    "seen": 1794174925.483008,
+    "ast_hash": "a931c5485f2afdc4351c3d4a8691ad62",
+    "semantic_hash": "a931c5485f2afdc4351c3d4a8691ad62"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_calibration_reference.py": {
+    "mtime": 1794156938.9980464,
+    "seen": 1794174925.4830105,
+    "ast_hash": "38c284b092ccf1a51162317fd52561c4",
+    "semantic_hash": "38c284b092ccf1a51162317fd52561c4"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_catalog_security.py": {
+    "mtime": 1793641992.4506857,
+    "seen": 1794174925.4830132,
+    "ast_hash": "82cba0de4a0c1fd72ddefbdc00d26d0c",
+    "semantic_hash": "82cba0de4a0c1fd72ddefbdc00d26d0c"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_checkpoint_recovery.py": {
+    "mtime": 1794159083.7841644,
+    "seen": 1794174925.4830155,
+    "ast_hash": "dcdf368f997ba61de4baaf8e3c2c3db4",
+    "semantic_hash": "dcdf368f997ba61de4baaf8e3c2c3db4"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_clinical_case_disclosure.py": {
+    "mtime": 1793641994.4972525,
+    "seen": 1794174925.483018,
+    "ast_hash": "1378a5be5e00ae2fbeb731b738ff8297",
+    "semantic_hash": "1378a5be5e00ae2fbeb731b738ff8297"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_interview_calibration.py": {
+    "mtime": 1794158964.355981,
+    "seen": 1794174925.4830205,
+    "ast_hash": "f96f53b1e816dca20d2607ef050c20b2",
+    "semantic_hash": "f96f53b1e816dca20d2607ef050c20b2"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_interview_completion_gate.py": {
+    "mtime": 1790113626.7568903,
+    "seen": 1794174925.483023,
+    "ast_hash": "9c4ab5d450cd35f8afa9f6d78cef85ab",
+    "semantic_hash": "9c4ab5d450cd35f8afa9f6d78cef85ab"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_interview_recordings.py": {
+    "mtime": 1793733156.1921813,
+    "seen": 1794174925.483025,
+    "ast_hash": "f6075d70d835d770b40385baae6cffb5",
+    "semantic_hash": "f6075d70d835d770b40385baae6cffb5"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_lifecycle_integrity.py": {
+    "mtime": 1794158796.8834393,
+    "seen": 1794174925.4830277,
+    "ast_hash": "a61b253f6c6b3ca09b6bb91e19160cb5",
+    "semantic_hash": "a61b253f6c6b3ca09b6bb91e19160cb5"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_managed_users.py": {
+    "mtime": 1793858069.8576455,
+    "seen": 1794174925.4830303,
+    "ast_hash": "c135d5ecfb738711f18f75d26669afd7",
+    "semantic_hash": "c135d5ecfb738711f18f75d26669afd7"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_organization_interview_history.py": {
+    "mtime": 1794163478.3293614,
+    "seen": 1794174925.4830325,
+    "ast_hash": "ef89819a58138973af83bf56cff0cf39",
+    "semantic_hash": "ef89819a58138973af83bf56cff0cf39"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_patient_preview.py": {
+    "mtime": 1794158736.0674088,
+    "seen": 1794174925.4830348,
+    "ast_hash": "90b8cc60e799beae275bca720b1d635e",
+    "semantic_hash": "90b8cc60e799beae275bca720b1d635e"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_read_only_clinical_cases.py": {
+    "mtime": 1793979837.8497858,
+    "seen": 1794174925.4830372,
+    "ast_hash": "42aa62b4f27b9d21e6bb213f251437d4",
+    "semantic_hash": "42aa62b4f27b9d21e6bb213f251437d4"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_recording_posters.py": {
+    "mtime": 1794173164.992149,
+    "seen": 1794174925.4830394,
+    "ast_hash": "20b079588871c9d073b400e15fedb172",
+    "semantic_hash": "20b079588871c9d073b400e15fedb172"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_review_clinical_case.py": {
+    "mtime": 1794170283.1696417,
+    "seen": 1794174925.483042,
+    "ast_hash": "cba2c8de59b98d2436d0576735e73cf9",
+    "semantic_hash": "cba2c8de59b98d2436d0576735e73cf9"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_self_rating.py": {
+    "mtime": 1794164854.672704,
+    "seen": 1794174925.4830444,
+    "ast_hash": "6fb3d7e661a6767cd0dfaedc32a1c9ca",
+    "semantic_hash": "6fb3d7e661a6767cd0dfaedc32a1c9ca"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_speech.py": {
+    "mtime": 1789511733.2526088,
+    "seen": 1794174925.4830468,
+    "ast_hash": "7987dfe15090a551b032cf6ba3258449",
+    "semantic_hash": "7987dfe15090a551b032cf6ba3258449"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_speech_concurrency.py": {
+    "mtime": 1793678591.369307,
+    "seen": 1794174925.4830492,
+    "ast_hash": "a552a671c5813f25cdec1c874f2e2ac0",
+    "semantic_hash": "a552a671c5813f25cdec1c874f2e2ac0"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_summary_localization.py": {
+    "mtime": 1787009111.5608878,
+    "seen": 1794174925.4830515,
+    "ast_hash": "784a9d83711b6a32e5a7605243acbb47",
+    "semantic_hash": "784a9d83711b6a32e5a7605243acbb47"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_teacher_grading.py": {
+    "mtime": 1794164854.6764572,
+    "seen": 1794174925.483054,
+    "ast_hash": "090da3713290549f82c4bd1437bc2b51",
+    "semantic_hash": "090da3713290549f82c4bd1437bc2b51"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/tests/test_user_role_security.py": {
+    "mtime": 1793858106.1390078,
+    "seen": 1794174925.4830563,
+    "ast_hash": "3df6a1ff4b888a78422e7a4bea759892",
+    "semantic_hash": "3df6a1ff4b888a78422e7a4bea759892"
+  },
+  "virtual-patient/virtual-patient-api/app/routers/users.py": {
+    "mtime": 1793728142.7437632,
+    "seen": 1794174925.4830587,
+    "ast_hash": "4517c5ae3785a422f9b9c5b185941d71",
+    "semantic_hash": "4517c5ae3785a422f9b9c5b185941d71"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/__init__.py": {
+    "mtime": 1787021086.171852,
+    "seen": 1794174925.483061,
+    "ast_hash": "3eee5a27649194dca1b3889778eaccfc",
+    "semantic_hash": "3eee5a27649194dca1b3889778eaccfc"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/azure_openai.py": {
+    "mtime": 1793678496.795081,
+    "seen": 1794174925.4830632,
+    "ast_hash": "03e068d978bb1b2c3eaab0f718ad6234",
+    "semantic_hash": "03e068d978bb1b2c3eaab0f718ad6234"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/contracts.py": {
+    "mtime": 1787021073.816081,
+    "seen": 1794174925.4830656,
+    "ast_hash": "49123076405a154ee445c613a70bd5e3",
+    "semantic_hash": "49123076405a154ee445c613a70bd5e3"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/factory.py": {
+    "mtime": 1789511583.218179,
+    "seen": 1794174925.4830682,
+    "ast_hash": "063e1abafd188f216d031ac0e44a4a24",
+    "semantic_hash": "063e1abafd188f216d031ac0e44a4a24"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/service.py": {
+    "mtime": 1789512081.9182477,
+    "seen": 1794174925.4830704,
+    "ast_hash": "8abf4567e6112ab11db64cd614136ac6",
+    "semantic_hash": "8abf4567e6112ab11db64cd614136ac6"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/storage.py": {
+    "mtime": 1789511791.6582248,
+    "seen": 1794174925.4830728,
+    "ast_hash": "5384eaf80666b8c9bd71087c76f152da",
+    "semantic_hash": "5384eaf80666b8c9bd71087c76f152da"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/tests/__init__.py": {
+    "mtime": 1787007568.848353,
+    "seen": 1794174925.4830751,
+    "ast_hash": "e57c610b98932a7ba33c06062a3fabd3",
+    "semantic_hash": "e57c610b98932a7ba33c06062a3fabd3"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/tests/test_speech_connections.py": {
+    "mtime": 1793676910.5316744,
+    "seen": 1794174925.4830773,
+    "ast_hash": "4bfe147cb2ab6933b611c4be77a07512",
+    "semantic_hash": "4bfe147cb2ab6933b611c4be77a07512"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/tests/test_speech_providers.py": {
+    "mtime": 1789511662.5145476,
+    "seen": 1794174925.48308,
+    "ast_hash": "0189eba8223324af5ba92d1881a3319a",
+    "semantic_hash": "0189eba8223324af5ba92d1881a3319a"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/vocal_style_policy.py": {
+    "mtime": 1787034210.4111865,
+    "seen": 1794174925.4830825,
+    "ast_hash": "138cf13f34d81fc804562ea88c894796",
+    "semantic_hash": "138cf13f34d81fc804562ea88c894796"
+  },
+  "virtual-patient/virtual-patient-api/app/speech/voice_policy.py": {
+    "mtime": 1787007210.459249,
+    "seen": 1794174925.4830852,
+    "ast_hash": "a1f80971e3e216ab203ea214f5b3dffe",
+    "semantic_hash": "a1f80971e3e216ab203ea214f5b3dffe"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/__init__.py": {
+    "mtime": 1786484901.3056138,
+    "seen": 1794174925.4830875,
+    "ast_hash": "09cd6059dcf2528bde1abca862e0da4c",
+    "semantic_hash": "09cd6059dcf2528bde1abca862e0da4c"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/clinical_case.py": {
+    "mtime": 1786484901.3184237,
+    "seen": 1794174925.4830902,
+    "ast_hash": "c5242fa1dcf5a6c82674455f78ef7690",
+    "semantic_hash": "c5242fa1dcf5a6c82674455f78ef7690"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/clinical_case_language.py": {
+    "mtime": 1786484901.3310213,
+    "seen": 1794174925.4830928,
+    "ast_hash": "7e92e71a6e5fbed372cf2d1a58931d49",
+    "semantic_hash": "7e92e71a6e5fbed372cf2d1a58931d49"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/language.py": {
+    "mtime": 1787006980.4531076,
+    "seen": 1794174925.4830954,
+    "ast_hash": "de1b71ee9d612d838812e337bc2dac1f",
+    "semantic_hash": "de1b71ee9d612d838812e337bc2dac1f"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/runtime_metrics.py": {
+    "mtime": 1790112178.7997398,
+    "seen": 1794174925.483098,
+    "ast_hash": "172e535ecd8c11fd60a799c457f598fa",
+    "semantic_hash": "172e535ecd8c11fd60a799c457f598fa"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/tests/__init__.py": {
+    "mtime": 1786995825.2468884,
+    "seen": 1794174925.4831007,
+    "ast_hash": "b70963074bb7534984c1b8a31bfb7954",
+    "semantic_hash": "b70963074bb7534984c1b8a31bfb7954"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/tests/test_language.py": {
+    "mtime": 1787007574.5099247,
+    "seen": 1794174925.483103,
+    "ast_hash": "7df4e17a58dc0b937b09bc9a93ed406d",
+    "semantic_hash": "7df4e17a58dc0b937b09bc9a93ed406d"
+  },
+  "virtual-patient/virtual-patient-api/app/utils/tts_service.py": {
+    "mtime": 1787007541.097869,
+    "seen": 1794174925.4831054,
+    "ast_hash": "0f5224a09abb12c18f73bdb70fa8a1f1",
+    "semantic_hash": "0f5224a09abb12c18f73bdb70fa8a1f1"
+  },
+  "virtual-patient/virtual-patient-api/config/clinical_cases/copd.json": {
+    "mtime": 1793734939.9311886,
+    "seen": 1794174925.4831083,
+    "ast_hash": "636d576b95f161f030719272b9eef4ce",
+    "semantic_hash": "636d576b95f161f030719272b9eef4ce"
+  },
+  "virtual-patient/virtual-patient-api/config/clinical_cases/diabetes.json": {
+    "mtime": 1793728019.770661,
+    "seen": 1794174925.483111,
+    "ast_hash": "78dcd88980d7b5afd0a1d7d25dfdd97d",
+    "semantic_hash": "78dcd88980d7b5afd0a1d7d25dfdd97d"
+  },
+  "virtual-patient/virtual-patient-api/config/clinical_cases/dyslipidemia.json": {
+    "mtime": 1793728019.778609,
+    "seen": 1794174925.4831133,
+    "ast_hash": "576668967114053cbdc874748021cebe",
+    "semantic_hash": "576668967114053cbdc874748021cebe"
+  },
+  "virtual-patient/virtual-patient-api/config/clinical_cases/hypothyroidism.json": {
+    "mtime": 1794171429.9651382,
+    "seen": 1794174925.4831157,
+    "ast_hash": "a9dbc2093d70fe4f92f5f719d6c99d58",
+    "semantic_hash": "a9dbc2093d70fe4f92f5f719d6c99d58"
+  },
+  "virtual-patient/virtual-patient-api/config/clinical_cases/joint_pain.json": {
+    "mtime": 1794171080.2629292,
+    "seen": 1794174925.4831188,
+    "ast_hash": "b9a09b3349ad86711f80843f4a896c7e",
+    "semantic_hash": "b9a09b3349ad86711f80843f4a896c7e"
+  },
+  "virtual-patient/virtual-patient-api/config/deployment.json": {
+    "mtime": 1793737607.449867,
+    "seen": 1794174925.4831212,
+    "ast_hash": "c194a30361e2164dffe3b78db3bd43a3",
+    "semantic_hash": "c194a30361e2164dffe3b78db3bd43a3"
+  },
+  "virtual-patient/virtual-patient-api/config/labels/glossary.yaml": {
+    "mtime": 1794108862.155921,
+    "seen": 1794174925.4831235,
+    "ast_hash": "f63da324513059dda8445f4aaffcc50b",
+    "semantic_hash": "f63da324513059dda8445f4aaffcc50b"
+  },
+  "virtual-patient/virtual-patient-api/config/labels/label_rules.yaml": {
+    "mtime": 1794108678.82162,
+    "seen": 1794174925.483126,
+    "ast_hash": "c2c69a163bc8f2a7c9644b6f8f1b9733",
+    "semantic_hash": "c2c69a163bc8f2a7c9644b6f8f1b9733"
+  },
+  "virtual-patient/virtual-patient-api/config/personalities/profiles.json": {
+    "mtime": 1793728019.8482308,
+    "seen": 1794174925.4831285,
+    "ast_hash": "db9287cf22a7eeea475022a9a557647a",
+    "semantic_hash": "db9287cf22a7eeea475022a9a557647a"
+  },
+  "virtual-patient/virtual-patient-api/config/personalities/seed.json": {
+    "mtime": 1793728019.8786368,
+    "seen": 1794174925.4831312,
+    "ast_hash": "fb24827416e01e5880852d6d660bab5a",
+    "semantic_hash": "fb24827416e01e5880852d6d660bab5a"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/multimodal_evaluation/evidence.json": {
+    "mtime": 1793733156.1886635,
+    "seen": 1794174925.4831338,
+    "ast_hash": "dff61051931c4bb377b32891a14a3d42",
+    "semantic_hash": "dff61051931c4bb377b32891a14a3d42"
+  },
+  "virtual-patient/virtual-patient-api/config/rubrics/evaluation.json": {
+    "mtime": 1793728019.813825,
+    "seen": 1794174925.4831364,
+    "ast_hash": "e4a4e400e482f49a8e23480eff0f3894",
+    "semantic_hash": "e4a4e400e482f49a8e23480eff0f3894"
+  },
+  "virtual-patient/virtual-patient-api/config/scoring/completeness.json": {
+    "mtime": 1793728117.0625906,
+    "seen": 1794174925.4831383,
+    "ast_hash": "0e2685cb65edef6c65d101e9427384d7",
+    "semantic_hash": "0e2685cb65edef6c65d101e9427384d7"
+  },
+  "virtual-patient/virtual-patient-api/config/thresholds/thresholds.yaml": {
+    "mtime": 1794108930.5609381,
+    "seen": 1794174925.4831395,
+    "ast_hash": "4af7272517774a4b24939d948cd28390",
+    "semantic_hash": "4af7272517774a4b24939d948cd28390"
+  },
+  "virtual-patient/virtual-patient-api/main.py": {
+    "mtime": 1793676908.0318642,
+    "seen": 1794174925.4831417,
+    "ast_hash": "5afab886ecd4efd068aafa82b7e212ba",
+    "semantic_hash": "5afab886ecd4efd068aafa82b7e212ba"
+  },
+  "virtual-patient/virtual-patient-api/scripts/adopt_release_baseline.py": {
+    "mtime": 1793728368.6662104,
+    "seen": 1794174925.483143,
+    "ast_hash": "a4585c59b0581edafda2a6222cb1151a",
+    "semantic_hash": "a4585c59b0581edafda2a6222cb1151a"
+  },
+  "virtual-patient/virtual-patient-api/scripts/backfill_observations.py": {
+    "mtime": 1789651902.4572475,
+    "seen": 1794174925.4831455,
+    "ast_hash": "844139decd864cc43ce210cf3570a70c",
+    "semantic_hash": "844139decd864cc43ce210cf3570a70c"
+  },
+  "virtual-patient/virtual-patient-api/scripts/check_azure.py": {
+    "mtime": 1786987526.2304018,
+    "seen": 1794174925.4831483,
+    "ast_hash": "e9d21a7c4b81257f912ff3086e04f711",
+    "semantic_hash": "e9d21a7c4b81257f912ff3086e04f711"
+  },
+  "virtual-patient/virtual-patient-api/scripts/initialize_procedural_memory.py": {
+    "mtime": 1793668077.4266176,
+    "seen": 1794174925.4831505,
+    "ast_hash": "0e674c28835eb65039fc5a8158dd2382",
+    "semantic_hash": "0e674c28835eb65039fc5a8158dd2382"
+  },
+  "virtual-patient/virtual-patient-api/scripts/inspect_interview_flow.py": {
+    "mtime": 1790115400.9629676,
+    "seen": 1794174925.4831529,
+    "ast_hash": "0e23fee551dfd346aeaaa38492df583b",
+    "semantic_hash": "0e23fee551dfd346aeaaa38492df583b"
+  },
+  "virtual-patient/virtual-patient-api/scripts/profile_latest_multimodal.py": {
+    "mtime": 1794109019.5620935,
+    "seen": 1794174925.4831553,
+    "ast_hash": "0333243d8928348c8d7aea210f8ccd13",
+    "semantic_hash": "0333243d8928348c8d7aea210f8ccd13"
+  },
+  "virtual-patient/virtual-patient-api/scripts/project_graph.sh": {
+    "mtime": 1794174633.5370147,
+    "seen": 1794174925.4831574,
+    "ast_hash": "7c8d807dae0f3cbc655026b53cf34bcd",
+    "semantic_hash": "7c8d807dae0f3cbc655026b53cf34bcd"
+  },
+  "virtual-patient/virtual-patient-api/scripts/relabel_multimodal.py": {
+    "mtime": 1793661715.045234,
+    "seen": 1794174925.4831598,
+    "ast_hash": "e125c093333ded74358dd69233b2f06e",
+    "semantic_hash": "e125c093333ded74358dd69233b2f06e"
+  },
+  "virtual-patient/virtual-patient-api/scripts/relabel_multimodal.sh": {
+    "mtime": 1789496958.5239007,
+    "seen": 1794174925.4831626,
+    "ast_hash": "5c2d9306ba943d769a738acb3d5b55e5",
+    "semantic_hash": "5c2d9306ba943d769a738acb3d5b55e5"
+  },
+  "virtual-patient/virtual-patient-api/scripts/seed_clinical_cases.py": {
+    "mtime": 1793728084.6607244,
+    "seen": 1794174925.4831653,
+    "ast_hash": "3c60c0fe55ca79c29cd8606912a4cb22",
+    "semantic_hash": "3c60c0fe55ca79c29cd8606912a4cb22"
+  },
+  "virtual-patient/virtual-patient-api/scripts/seed_personalities.py": {
+    "mtime": 1793728084.6664279,
+    "seen": 1794174925.4831674,
+    "ast_hash": "8a1c62a487988ce835bfdc8656660fa2",
+    "semantic_hash": "8a1c62a487988ce835bfdc8656660fa2"
+  },
+  "virtual-patient/virtual-patient-api/scripts/setup_db.py": {
+    "mtime": 1793728119.205571,
+    "seen": 1794174925.48317,
+    "ast_hash": "2e5c77ef8ebf68830ba370644c24fb1e",
+    "semantic_hash": "2e5c77ef8ebf68830ba370644c24fb1e"
+  },
+  "virtual-patient/virtual-patient-api/scripts/verify_blazegaze.py": {
+    "mtime": 1789624104.8658414,
+    "seen": 1794174925.4831724,
+    "ast_hash": "bc707bd064e62fabd34a2322a4cc276f",
+    "semantic_hash": "bc707bd064e62fabd34a2322a4cc276f"
+  },
+  "virtual-patient/virtual-patient-api/scripts/verify_deployment.py": {
+    "mtime": 1793643583.2887495,
+    "seen": 1794174925.4831753,
+    "ast_hash": "2c035dadd087eb7f6f4e75fe43955a46",
+    "semantic_hash": "2c035dadd087eb7f6f4e75fe43955a46"
+  },
+  "virtual-patient/virtual-patient-api/scripts/verify_observations.py": {
+    "mtime": 1793733156.1634464,
+    "seen": 1794174925.4831777,
+    "ast_hash": "b475d35169fb812b489c12af26437093",
+    "semantic_hash": "b475d35169fb812b489c12af26437093"
+  },
+  "virtual-patient/virtual-patient-ui/.yarnrc.yml": {
+    "mtime": 1786484901.6562507,
+    "seen": 1794174925.4831803,
+    "ast_hash": "d38b30cf29247f010a2f54cfd3bde6c9",
+    "semantic_hash": "d38b30cf29247f010a2f54cfd3bde6c9"
+  },
+  "virtual-patient/virtual-patient-ui/eslint.config.js": {
+    "mtime": 1791917757.3042455,
+    "seen": 1794174925.483183,
+    "ast_hash": "01cc0d5be6f0af7cef822bbd26888f73",
+    "semantic_hash": "01cc0d5be6f0af7cef822bbd26888f73"
+  },
+  "virtual-patient/virtual-patient-ui/package.json": {
+    "mtime": 1793728482.4127834,
+    "seen": 1794174925.4831858,
+    "ast_hash": "50891286de3222e20a53b36c589e9c55",
+    "semantic_hash": "50891286de3222e20a53b36c589e9c55"
+  },
+  "virtual-patient/virtual-patient-ui/postcss.config.js": {
+    "mtime": 1786484901.7566264,
+    "seen": 1794174925.4831882,
+    "ast_hash": "71e921fd9cbd611c2ce01eb9ddca3f2b",
+    "semantic_hash": "71e921fd9cbd611c2ce01eb9ddca3f2b"
+  },
+  "virtual-patient/virtual-patient-ui/src/App.tsx": {
+    "mtime": 1794172221.6627035,
+    "seen": 1794174925.4831908,
+    "ast_hash": "8c36e3f659d1d6cb72d001701c716b35",
+    "semantic_hash": "8c36e3f659d1d6cb72d001701c716b35"
+  },
+  "virtual-patient/virtual-patient-ui/src/AppRouter.test.tsx": {
+    "mtime": 1793978369.7273743,
+    "seen": 1794174925.4831934,
+    "ast_hash": "f8b02c9e27ee55b0e414761b26031df2",
+    "semantic_hash": "f8b02c9e27ee55b0e414761b26031df2"
+  },
+  "virtual-patient/virtual-patient-ui/src/AppRouter.tsx": {
+    "mtime": 1793978325.509825,
+    "seen": 1794174925.483196,
+    "ast_hash": "b862654c2edd0fce22fe5edf9491a24b",
+    "semantic_hash": "b862654c2edd0fce22fe5edf9491a24b"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Auth/AuthField.tsx": {
+    "mtime": 1792509799.9614363,
+    "seen": 1794174925.4831982,
+    "ast_hash": "6f153fdd5a6288eeb3b2eaa20039c3fa",
+    "semantic_hash": "6f153fdd5a6288eeb3b2eaa20039c3fa"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Auth/AuthForm.test.tsx": {
+    "mtime": 1793858106.1516407,
+    "seen": 1794174925.4832008,
+    "ast_hash": "5de4fba4ebc858022119374242e521c7",
+    "semantic_hash": "5de4fba4ebc858022119374242e521c7"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Auth/AuthForm.tsx": {
+    "mtime": 1793858206.2751856,
+    "seen": 1794174925.4832034,
+    "ast_hash": "1d5de09d5a34839ac6dd1e423fabb92c",
+    "semantic_hash": "1d5de09d5a34839ac6dd1e423fabb92c"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Auth/AuthLayout.tsx": {
+    "mtime": 1793847789.9557507,
+    "seen": 1794174925.4832058,
+    "ast_hash": "23530af6407e38a74bedfa710a6a4ea5",
+    "semantic_hash": "23530af6407e38a74bedfa710a6a4ea5"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/Chats.test.tsx": {
+    "mtime": 1794164816.1621294,
+    "seen": 1794174925.4832087,
+    "ast_hash": "4424cc6b2594cb2d5efeb55b33a77faf",
+    "semantic_hash": "4424cc6b2594cb2d5efeb55b33a77faf"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/ConversationTable.test.tsx": {
+    "mtime": 1794164987.9084847,
+    "seen": 1794174925.4832113,
+    "ast_hash": "e89d8975329be8d14af7a21b3a38d9c8",
+    "semantic_hash": "e89d8975329be8d14af7a21b3a38d9c8"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/ConversationTable.tsx": {
+    "mtime": 1794164714.0458655,
+    "seen": 1794174925.483214,
+    "ast_hash": "9b796ebf124ef1cdfc6326442d264bc8",
+    "semantic_hash": "9b796ebf124ef1cdfc6326442d264bc8"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/ConversationTableRow.test.tsx": {
+    "mtime": 1794169211.3515718,
+    "seen": 1794174925.4832163,
+    "ast_hash": "a4da88f2598fcb69c1517e2555769e84",
+    "semantic_hash": "a4da88f2598fcb69c1517e2555769e84"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/ConversationTableRow.tsx": {
+    "mtime": 1794169198.538271,
+    "seen": 1794174925.4832187,
+    "ast_hash": "a18448e5087cf1d5327d6330541c70f2",
+    "semantic_hash": "a18448e5087cf1d5327d6330541c70f2"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/InterviewDeleteDialog.tsx": {
+    "mtime": 1793830945.1365433,
+    "seen": 1794174925.483221,
+    "ast_hash": "9ba5d07f9c16409a429df16c551e7e04",
+    "semantic_hash": "9ba5d07f9c16409a429df16c551e7e04"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/StatCard.tsx": {
+    "mtime": 1793831633.6031132,
+    "seen": 1794174925.4832232,
+    "ast_hash": "c4af68d18551779bd01e145fcedf0075",
+    "semantic_hash": "c4af68d18551779bd01e145fcedf0075"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Chats/index.tsx": {
+    "mtime": 1794164713.6617696,
+    "seen": 1794174925.4832258,
+    "ast_hash": "aa4d85bae3d7dd5d1c507600076a07cc",
+    "semantic_hash": "aa4d85bae3d7dd5d1c507600076a07cc"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/CaseCard.test.tsx": {
+    "mtime": 1793679599.847787,
+    "seen": 1794174925.4832282,
+    "ast_hash": "1fcbc223895b36895dd54c9667ca37c7",
+    "semantic_hash": "1fcbc223895b36895dd54c9667ca37c7"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/CaseCard.tsx": {
+    "mtime": 1794158189.003298,
+    "seen": 1794174925.4832304,
+    "ast_hash": "52170aa4c75f60887ab528bbf537e14c",
+    "semantic_hash": "52170aa4c75f60887ab528bbf537e14c"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/CaseDetailsDialog.tsx": {
+    "mtime": 1794170217.1555693,
+    "seen": 1794174925.4832327,
+    "ast_hash": "ea00dbe25e0cfca7e10ee852d9bcacac",
+    "semantic_hash": "ea00dbe25e0cfca7e10ee852d9bcacac"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/CaseRecord.tsx": {
+    "mtime": 1793903557.0920613,
+    "seen": 1794174925.4832351,
+    "ast_hash": "186ce21feb3c387c273bdb7a2e6da7f3",
+    "semantic_hash": "186ce21feb3c387c273bdb7a2e6da7f3"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/ClinicalCases.test.tsx": {
+    "mtime": 1793679596.3712895,
+    "seen": 1794174925.4832373,
+    "ast_hash": "6364992758a445a48914ddfa18cbc0f7",
+    "semantic_hash": "6364992758a445a48914ddfa18cbc0f7"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/ClinicalCasesSkeleton.tsx": {
+    "mtime": 1794157981.9957275,
+    "seen": 1794174925.48324,
+    "ast_hash": "370c4b2b30112e3b8b2d4258eaa92ca9",
+    "semantic_hash": "370c4b2b30112e3b8b2d4258eaa92ca9"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/PatientPreview.test.tsx": {
+    "mtime": 1794164816.2347722,
+    "seen": 1794174925.4832425,
+    "ast_hash": "5c5e8c7f799f908f8616f22507a0c1d3",
+    "semantic_hash": "5c5e8c7f799f908f8616f22507a0c1d3"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/PatientPreview.tsx": {
+    "mtime": 1794159330.1900232,
+    "seen": 1794174925.4832451,
+    "ast_hash": "0e59755b118c03fcc4e14faf2e54f3e6",
+    "semantic_hash": "0e59755b118c03fcc4e14faf2e54f3e6"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/caseSections.ts": {
+    "mtime": 1793903177.8458042,
+    "seen": 1794174925.4832473,
+    "ast_hash": "cfe1196badff4a632e86ca52bad26209",
+    "semantic_hash": "cfe1196badff4a632e86ca52bad26209"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalCases/index.tsx": {
+    "mtime": 1793856522.2238643,
+    "seen": 1794174925.4832501,
+    "ast_hash": "c6d21bccd91515190d972f5df0c75d25",
+    "semantic_hash": "c6d21bccd91515190d972f5df0c75d25"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/AddTeacherFeedbackModal.test.tsx": {
+    "mtime": 1792514148.0976021,
+    "seen": 1794174925.4832525,
+    "ast_hash": "f5951b6967e4efb135ec910bebba1484",
+    "semantic_hash": "f5951b6967e4efb135ec910bebba1484"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/AddTeacherFeedbackModal.tsx": {
+    "mtime": 1794172226.073446,
+    "seen": 1794174925.4832547,
+    "ast_hash": "275d417691b06196a698c4981491c0e2",
+    "semantic_hash": "275d417691b06196a698c4981491c0e2"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/CalibrationReferenceDialog.test.tsx": {
+    "mtime": 1794152859.3621154,
+    "seen": 1794174925.483257,
+    "ast_hash": "fe191b6677ee034ce9cf06f94646f12f",
+    "semantic_hash": "fe191b6677ee034ce9cf06f94646f12f"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/CalibrationReferenceDialog.tsx": {
+    "mtime": 1794162212.2331252,
+    "seen": 1794174925.4832597,
+    "ast_hash": "10ee817ad22eab3f3baba1a391220cc0",
+    "semantic_hash": "10ee817ad22eab3f3baba1a391220cc0"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/CallStage.tsx": {
+    "mtime": 1793686341.946349,
+    "seen": 1794174925.4832623,
+    "ast_hash": "fed76a2ac4b11dcdcdcad4c2f6424add",
+    "semantic_hash": "fed76a2ac4b11dcdcdcad4c2f6424add"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/CallToolbar.tsx": {
+    "mtime": 1794157982.0000317,
+    "seen": 1794174925.4832644,
+    "ast_hash": "a307b5492aaf6980d869121e7dc090e5",
+    "semantic_hash": "a307b5492aaf6980d869121e7dc090e5"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/ClinicalChat.lifecycle.test.tsx": {
+    "mtime": 1794164175.3309045,
+    "seen": 1794174925.483267,
+    "ast_hash": "c24f45e16f8c249978231ba4f1e8656c",
+    "semantic_hash": "c24f45e16f8c249978231ba4f1e8656c"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/ClinicalHypotheses.test.tsx": {
+    "mtime": 1793718840.1535099,
+    "seen": 1794174925.4832695,
+    "ast_hash": "2a095512a3006dcd08660fd9ba5be4cd",
+    "semantic_hash": "2a095512a3006dcd08660fd9ba5be4cd"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/ClinicalHypotheses.tsx": {
+    "mtime": 1793723830.770497,
+    "seen": 1794174925.4832718,
+    "ast_hash": "86a711f1390498782973a0edf9e15b2c",
+    "semantic_hash": "86a711f1390498782973a0edf9e15b2c"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/ConversationTranscript.test.tsx": {
+    "mtime": 1794164989.3107822,
+    "seen": 1794174925.4832745,
+    "ast_hash": "bcf4da2d471f5cfdafdbcfcb64e552af",
+    "semantic_hash": "bcf4da2d471f5cfdafdbcfcb64e552af"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/ConversationTranscript.tsx": {
+    "mtime": 1794165110.314002,
+    "seen": 1794174925.483277,
+    "ast_hash": "2d9a6088526ef477b7e4585d91e656b6",
+    "semantic_hash": "2d9a6088526ef477b7e4585d91e656b6"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/InterviewLayouts.tsx": {
+    "mtime": 1794173245.937257,
+    "seen": 1794174925.4832795,
+    "ast_hash": "d30f661491ed70626af58a22790f5ba9",
+    "semantic_hash": "d30f661491ed70626af58a22790f5ba9"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/InterviewRecap.test.tsx": {
+    "mtime": 1794173045.5333219,
+    "seen": 1794174925.4832819,
+    "ast_hash": "0f32d7f6dee7a962d94b0604c51999c4",
+    "semantic_hash": "0f32d7f6dee7a962d94b0604c51999c4"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/InterviewRecap.tsx": {
+    "mtime": 1794172958.593578,
+    "seen": 1794174925.4832845,
+    "ast_hash": "ffd6a1c7f08621f3cd31158739190288",
+    "semantic_hash": "ffd6a1c7f08621f3cd31158739190288"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/PatientProfile.test.tsx": {
+    "mtime": 1794160579.650573,
+    "seen": 1794174925.483287,
+    "ast_hash": "2f50294a47f105cb223628ec45385332",
+    "semantic_hash": "2f50294a47f105cb223628ec45385332"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/PatientProfile.tsx": {
+    "mtime": 1794173125.0189788,
+    "seen": 1794174925.4832897,
+    "ast_hash": "f65720947881b3625670a3fa389de765",
+    "semantic_hash": "f65720947881b3625670a3fa389de765"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/TagGroup.tsx": {
+    "mtime": 1793206526.1396682,
+    "seen": 1794174925.4832919,
+    "ast_hash": "19ef69c2936e2a86b378e01d5d206305",
+    "semantic_hash": "19ef69c2936e2a86b378e01d5d206305"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/TurnEvidenceDetails.tsx": {
+    "mtime": 1794109019.5608263,
+    "seen": 1794174925.4832942,
+    "ast_hash": "087d7cb7ac9d1e8c32095b85842d8545",
+    "semantic_hash": "087d7cb7ac9d1e8c32095b85842d8545"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/WelcomeModal.tsx": {
+    "mtime": 1794159295.082826,
+    "seen": 1794174925.4832964,
+    "ast_hash": "4f71388f85ba2b8a0fc17f94cd4f3d05",
+    "semantic_hash": "4f71388f85ba2b8a0fc17f94cd4f3d05"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/helpers/index.ts": {
+    "mtime": 1786484902.4788966,
+    "seen": 1794174925.483299,
+    "ast_hash": "881eea8c63e474b6cc68795037525a7e",
+    "semantic_hash": "881eea8c63e474b6cc68795037525a7e"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/helpers/patientUtils.ts": {
+    "mtime": 1793692637.1536214,
+    "seen": 1794174925.4833014,
+    "ast_hash": "78c54e930067ae59baa26bfeea425a4b",
+    "semantic_hash": "78c54e930067ae59baa26bfeea425a4b"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/index.tsx": {
+    "mtime": 1794172957.8094976,
+    "seen": 1794174925.483304,
+    "ast_hash": "56bc271f7fa1b27fc307e9b06d3b2ca7",
+    "semantic_hash": "56bc271f7fa1b27fc307e9b06d3b2ca7"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalChat/useReviewRefresh.ts": {
+    "mtime": 1794159541.8261118,
+    "seen": 1794174925.4833064,
+    "ast_hash": "4fc99f18ff563d966827c1ec9754ecdf",
+    "semantic_hash": "4fc99f18ff563d966827c1ec9754ecdf"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalSession/ActionButtons.tsx": {
+    "mtime": 1793722046.08137,
+    "seen": 1794174925.4833088,
+    "ast_hash": "ba1194cc6ac391ee801462b231327c3e",
+    "semantic_hash": "ba1194cc6ac391ee801462b231327c3e"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/ClinicalSession/index.tsx": {
+    "mtime": 1794171079.370984,
+    "seen": 1794174925.4833112,
+    "ast_hash": "c1a1bfe8e4ca03488aa80bfe427759f1",
+    "semantic_hash": "c1a1bfe8e4ca03488aa80bfe427759f1"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/AssessmentSelector.test.tsx": {
+    "mtime": 1794163508.841064,
+    "seen": 1794174925.4833136,
+    "ast_hash": "990bbdcc0a1d5c5d879258f6649485eb",
+    "semantic_hash": "990bbdcc0a1d5c5d879258f6649485eb"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/AssessmentSelector.tsx": {
+    "mtime": 1794163649.6930888,
+    "seen": 1794174925.4833164,
+    "ast_hash": "1ba666e421c94767ce83d2108b89dcff",
+    "semantic_hash": "1ba666e421c94767ce83d2108b89dcff"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/ClinicalCaseComparison.tsx": {
+    "mtime": 1793903557.6165287,
+    "seen": 1794174925.4833193,
+    "ast_hash": "b605864513ece72f2fd83dfbf467e69a",
+    "semantic_hash": "b605864513ece72f2fd83dfbf467e69a"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/EvaluationCriteriaTooltip.tsx": {
+    "mtime": 1793903569.8217497,
+    "seen": 1794174925.4833217,
+    "ast_hash": "508305622634027fa27bb1a966e7595f",
+    "semantic_hash": "508305622634027fa27bb1a966e7595f"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/EvaluationResultsPanel.test.tsx": {
+    "mtime": 1793855624.9094257,
+    "seen": 1794174925.4833245,
+    "ast_hash": "d4f52fa2a2b35127d2ad21beea152695",
+    "semantic_hash": "d4f52fa2a2b35127d2ad21beea152695"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/EvaluationResultsPanel.tsx": {
+    "mtime": 1793903749.443142,
+    "seen": 1794174925.4833267,
+    "ast_hash": "9a3404918da49f6d464909acf33087d9",
+    "semantic_hash": "9a3404918da49f6d464909acf33087d9"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/HumanRatingPanel.test.tsx": {
+    "mtime": 1794170370.0910876,
+    "seen": 1794174925.4833293,
+    "ast_hash": "aceab4cc85dea85754ba54eca704da0b",
+    "semantic_hash": "aceab4cc85dea85754ba54eca704da0b"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/HumanRatingPanel.tsx": {
+    "mtime": 1794172225.0704083,
+    "seen": 1794174925.483332,
+    "ast_hash": "186a77e8717fb3048de161c1ba6316ed",
+    "semantic_hash": "186a77e8717fb3048de161c1ba6316ed"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/helpers/datetime.ts": {
+    "mtime": 1793846764.1541438,
+    "seen": 1794174925.4833345,
+    "ast_hash": "b3e0929d35d1ef0c40bff251b7059add",
+    "semantic_hash": "b3e0929d35d1ef0c40bff251b7059add"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/helpers/evaluation.ts": {
+    "mtime": 1793831696.0317383,
+    "seen": 1794174925.483337,
+    "ast_hash": "58a4f102e3c8289ea23ff9c37cc3c683",
+    "semantic_hash": "58a4f102e3c8289ea23ff9c37cc3c683"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/helpers/index.ts": {
+    "mtime": 1786484902.652071,
+    "seen": 1794174925.4833393,
+    "ast_hash": "abaca38a42e1c28ca71958eb476164d2",
+    "semantic_hash": "abaca38a42e1c28ca71958eb476164d2"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Evaluation/index.ts": {
+    "mtime": 1789759067.3486066,
+    "seen": 1794174925.4833415,
+    "ast_hash": "ae4bfbe81663e4c2228bf8fcbc9bfe26",
+    "semantic_hash": "ae4bfbe81663e4c2228bf8fcbc9bfe26"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/InterviewCalibration/CalibrationTarget.test.ts": {
+    "mtime": 1794174209.1963437,
+    "seen": 1794174925.4833443,
+    "ast_hash": "146276559ef2c6e65e7501afa95746b4",
+    "semantic_hash": "146276559ef2c6e65e7501afa95746b4"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/InterviewCalibration/CalibrationWizard.test.tsx": {
+    "mtime": 1794151582.6433978,
+    "seen": 1794174925.483347,
+    "ast_hash": "202962fa633e00a77b6e615bafb21b8e",
+    "semantic_hash": "202962fa633e00a77b6e615bafb21b8e"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/InterviewCalibration/CalibrationWizard.tsx": {
+    "mtime": 1794156069.6661217,
+    "seen": 1794174925.4833496,
+    "ast_hash": "fa0f32d865a42d871f96adaa5aa966e5",
+    "semantic_hash": "fa0f32d865a42d871f96adaa5aa966e5"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/InterviewCalibration/InterviewCalibration.test.tsx": {
+    "mtime": 1794159440.2093513,
+    "seen": 1794174925.4833517,
+    "ast_hash": "73796ad27a4320c42bcf59b7afda6026",
+    "semantic_hash": "73796ad27a4320c42bcf59b7afda6026"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/InterviewCalibration/index.tsx": {
+    "mtime": 1794159294.614859,
+    "seen": 1794174925.483354,
+    "ast_hash": "b90c373bc0c628622e8d8f4dce204e61",
+    "semantic_hash": "b90c373bc0c628622e8d8f4dce204e61"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Login/WelcomeSection.tsx": {
+    "mtime": 1793831535.5243,
+    "seen": 1794174925.4833565,
+    "ast_hash": "9842627d6a6d6f92cab19be3ed913b69",
+    "semantic_hash": "9842627d6a6d6f92cab19be3ed913b69"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Students/AssignmentDialog.test.tsx": {
+    "mtime": 1793308380.625677,
+    "seen": 1794174925.4833586,
+    "ast_hash": "ad5e4c739f717935437a4e1656ac395a",
+    "semantic_hash": "ad5e4c739f717935437a4e1656ac395a"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Students/AssignmentDialog.tsx": {
+    "mtime": 1793308378.1283915,
+    "seen": 1794174925.483361,
+    "ast_hash": "552ea03eea7881380e44a6a6fdf07b01",
+    "semantic_hash": "552ea03eea7881380e44a6a6fdf07b01"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Students/Students.test.tsx": {
+    "mtime": 1794169182.7949743,
+    "seen": 1794174925.4833677,
+    "ast_hash": "4b9eaaa59129429061f71413e1b0a13a",
+    "semantic_hash": "4b9eaaa59129429061f71413e1b0a13a"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Students/StudentsTable.tsx": {
+    "mtime": 1794169160.8214736,
+    "seen": 1794174925.4833703,
+    "ast_hash": "0542c2c21316cec0211009c9dae4e1bc",
+    "semantic_hash": "0542c2c21316cec0211009c9dae4e1bc"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Students/StudentsTableRow.tsx": {
+    "mtime": 1794169160.4141667,
+    "seen": 1794174925.4833727,
+    "ast_hash": "5ed819add996fa17dbd986658d2c8ba7",
+    "semantic_hash": "5ed819add996fa17dbd986658d2c8ba7"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Students/index.tsx": {
+    "mtime": 1794164744.0462449,
+    "seen": 1794174925.483375,
+    "ast_hash": "4b75ab5cadc586e5559bc6516112ed4e",
+    "semantic_hash": "4b75ab5cadc586e5559bc6516112ed4e"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/TokenExpiredScreen/index.tsx": {
+    "mtime": 1793832953.0529883,
+    "seen": 1794174925.483378,
+    "ast_hash": "c3e116b27f0f89ce9c72c5aa8fae106c",
+    "semantic_hash": "c3e116b27f0f89ce9c72c5aa8fae106c"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Users/UserEditor.tsx": {
+    "mtime": 1793857340.7858188,
+    "seen": 1794174925.4833803,
+    "ast_hash": "f28b639b54a00b2423886002b87c5fbc",
+    "semantic_hash": "f28b639b54a00b2423886002b87c5fbc"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Users/Users.test.tsx": {
+    "mtime": 1794164904.9300532,
+    "seen": 1794174925.4833825,
+    "ast_hash": "0ea5e6b720ec89643d152a9954eaf8bf",
+    "semantic_hash": "0ea5e6b720ec89643d152a9954eaf8bf"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Users/index.tsx": {
+    "mtime": 1794165109.115447,
+    "seen": 1794174925.4833848,
+    "ast_hash": "28db0267e636f0288f7a20cd97a2e6a9",
+    "semantic_hash": "28db0267e636f0288f7a20cd97a2e6a9"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Users/useManagedUsers.test.tsx": {
+    "mtime": 1793856460.5166354,
+    "seen": 1794174925.4833875,
+    "ast_hash": "cf1d6a09782a114b56ab9d0047f8d4d1",
+    "semantic_hash": "cf1d6a09782a114b56ab9d0047f8d4d1"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/Users/useManagedUsers.ts": {
+    "mtime": 1793856396.4067273,
+    "seen": 1794174925.4833896,
+    "ast_hash": "570a50ad6ef75c20ec80c39b31172175",
+    "semantic_hash": "570a50ad6ef75c20ec80c39b31172175"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/AdministrativeDeleteDialog.tsx": {
+    "mtime": 1793305917.0816524,
+    "seen": 1794174925.483392,
+    "ast_hash": "c328be1f6222758e922956426493f204",
+    "semantic_hash": "c328be1f6222758e922956426493f204"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/AppContainer/AppContainer.test.tsx": {
+    "mtime": 1794157407.3872156,
+    "seen": 1794174925.4833944,
+    "ast_hash": "821f9547741ebfd740b608bfe5050767",
+    "semantic_hash": "821f9547741ebfd740b608bfe5050767"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/AppContainer/index.tsx": {
+    "mtime": 1794172957.4222198,
+    "seen": 1794174925.483397,
+    "ast_hash": "9c8a0bc9ae11c6af293f225d7291a34d",
+    "semantic_hash": "9c8a0bc9ae11c6af293f225d7291a34d"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Badge/index.tsx": {
+    "mtime": 1793206049.6822298,
+    "seen": 1794174925.4833994,
+    "ast_hash": "edf5df497599749099e08b474201d65b",
+    "semantic_hash": "edf5df497599749099e08b474201d65b"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Button/index.tsx": {
+    "mtime": 1793305696.8228068,
+    "seen": 1794174925.483402,
+    "ast_hash": "75c03722b898defd53ff2af66626a20e",
+    "semantic_hash": "75c03722b898defd53ff2af66626a20e"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/ChatMessage/index.tsx": {
+    "mtime": 1793208983.8442721,
+    "seen": 1794174925.4834046,
+    "ast_hash": "4cb36076b2abb7ab22d6837d71b4db38",
+    "semantic_hash": "4cb36076b2abb7ab22d6837d71b4db38"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/ClinicalCaseCell/index.tsx": {
+    "mtime": 1793223257.5114233,
+    "seen": 1794174925.483407,
+    "ast_hash": "7ee57333ce0637deb9031601ed82b01f",
+    "semantic_hash": "7ee57333ce0637deb9031601ed82b01f"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/ConfirmationModal/index.tsx": {
+    "mtime": 1793305917.1791024,
+    "seen": 1794174925.4834094,
+    "ast_hash": "66924b4857e0144707b5c4fa1a517220",
+    "semantic_hash": "66924b4857e0144707b5c4fa1a517220"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/CustomSelect/index.tsx": {
+    "mtime": 1793858040.812513,
+    "seen": 1794174925.483412,
+    "ast_hash": "be8d79193d5144ffe3625c46f97e9450",
+    "semantic_hash": "be8d79193d5144ffe3625c46f97e9450"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/DateTime.test.tsx": {
+    "mtime": 1794164816.2265482,
+    "seen": 1794174925.4834144,
+    "ast_hash": "8567979c77992f2dfffa91f885f4c97a",
+    "semantic_hash": "8567979c77992f2dfffa91f885f4c97a"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/DateTime.tsx": {
+    "mtime": 1794164715.242885,
+    "seen": 1794174925.483417,
+    "ast_hash": "75e8e73f10f43be8c205ac213c73c301",
+    "semantic_hash": "75e8e73f10f43be8c205ac213c73c301"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Dialog/Dialog.test.tsx": {
+    "mtime": 1793733440.9667273,
+    "seen": 1794174925.4834194,
+    "ast_hash": "633df74e2dc9bf465ae08eee84b6c138",
+    "semantic_hash": "633df74e2dc9bf465ae08eee84b6c138"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Dialog/index.tsx": {
+    "mtime": 1793305906.0132363,
+    "seen": 1794174925.4834218,
+    "ast_hash": "af0fde4f4b4b5f58c954faf429ae3b2f",
+    "semantic_hash": "af0fde4f4b4b5f58c954faf429ae3b2f"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/EvaluationScore/index.tsx": {
+    "mtime": 1793733234.4430428,
+    "seen": 1794174925.483424,
+    "ast_hash": "699c00268d7d235ab3de858d9dadedc3",
+    "semantic_hash": "699c00268d7d235ab3de858d9dadedc3"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Field/index.tsx": {
+    "mtime": 1794172225.6654174,
+    "seen": 1794174925.4834266,
+    "ast_hash": "b42b0611a9bab5230a87ec571d51c047",
+    "semantic_hash": "b42b0611a9bab5230a87ec571d51c047"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Footer/index.tsx": {
+    "mtime": 1794170726.4724438,
+    "seen": 1794174925.483429,
+    "ast_hash": "2deb7e46465093a3af6e3359cfc2e4b3",
+    "semantic_hash": "2deb7e46465093a3af6e3359cfc2e4b3"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/FormInput/index.tsx": {
+    "mtime": 1793222492.1261353,
+    "seen": 1794174925.4834313,
+    "ast_hash": "17ef239b401c22df3dcb47690de8aeb1",
+    "semantic_hash": "17ef239b401c22df3dcb47690de8aeb1"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Header/Header.test.tsx": {
+    "mtime": 1794164989.3691268,
+    "seen": 1794174925.483434,
+    "ast_hash": "e1ffb44890f911763196cbd5b3cc37bd",
+    "semantic_hash": "e1ffb44890f911763196cbd5b3cc37bd"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Header/index.tsx": {
+    "mtime": 1794164744.0412445,
+    "seen": 1794174925.4834363,
+    "ast_hash": "63e26602ae04f61f2d3ba12108be31d2",
+    "semantic_hash": "63e26602ae04f61f2d3ba12108be31d2"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/HelpModal/HelpModal.test.tsx": {
+    "mtime": 1793304978.3325813,
+    "seen": 1794174925.4834387,
+    "ast_hash": "8bcaaafdf55409dbea20075eebc139da",
+    "semantic_hash": "8bcaaafdf55409dbea20075eebc139da"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/HelpModal/index.tsx": {
+    "mtime": 1793304893.877533,
+    "seen": 1794174925.4834414,
+    "ast_hash": "0b91f104942f7b987ed12f88465fda7f",
+    "semantic_hash": "0b91f104942f7b987ed12f88465fda7f"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/LanguageSwitcher/index.tsx": {
+    "mtime": 1793209920.4889102,
+    "seen": 1794174925.483444,
+    "ast_hash": "ba5f0291cdac8f116bbaa09ac997e6a1",
+    "semantic_hash": "ba5f0291cdac8f116bbaa09ac997e6a1"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/ListPanel/index.tsx": {
+    "mtime": 1793857062.033145,
+    "seen": 1794174925.4834466,
+    "ast_hash": "445a1e73bf56146a6affdbbf35cc9746",
+    "semantic_hash": "445a1e73bf56146a6affdbbf35cc9746"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Menu/index.tsx": {
+    "mtime": 1794173467.8232932,
+    "seen": 1794174925.483449,
+    "ast_hash": "416b2a40de81305e5e8c2650dd9378ed",
+    "semantic_hash": "416b2a40de81305e5e8c2650dd9378ed"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Modal/Modal.test.tsx": {
+    "mtime": 1793724082.707957,
+    "seen": 1794174925.4834516,
+    "ast_hash": "4e24540fd492b1aeb7b6566773f8fbc2",
+    "semantic_hash": "4e24540fd492b1aeb7b6566773f8fbc2"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Modal/index.tsx": {
+    "mtime": 1794172386.1622787,
+    "seen": 1794174925.4834542,
+    "ast_hash": "e480659717706a3c3265f829b310af2e",
+    "semantic_hash": "e480659717706a3c3265f829b310af2e"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Motion/Motion.test.tsx": {
+    "mtime": 1793733441.3881562,
+    "seen": 1794174925.4834566,
+    "ast_hash": "1c4151af45ffd4a00cbca950c86fca88",
+    "semantic_hash": "1c4151af45ffd4a00cbca950c86fca88"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Motion/hooks.ts": {
+    "mtime": 1793307190.3550806,
+    "seen": 1794174925.483459,
+    "ast_hash": "9b69d71d3807db5d392f333793c92a2e",
+    "semantic_hash": "9b69d71d3807db5d392f333793c92a2e"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Motion/index.tsx": {
+    "mtime": 1793857062.0506988,
+    "seen": 1794174925.4834616,
+    "ast_hash": "3ad38667e3bf388d0c1510348f3fee3f",
+    "semantic_hash": "3ad38667e3bf388d0c1510348f3fee3f"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/NonIdealState/index.tsx": {
+    "mtime": 1793215830.702722,
+    "seen": 1794174925.483464,
+    "ast_hash": "c53e5e01256621a31f83c18b4bd49118",
+    "semantic_hash": "c53e5e01256621a31f83c18b4bd49118"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/PageHeader/index.tsx": {
+    "mtime": 1793239092.9208407,
+    "seen": 1794174925.4834664,
+    "ast_hash": "2ece36a42057791f60864b3e3d4d53fb",
+    "semantic_hash": "2ece36a42057791f60864b3e3d4d53fb"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Pagination/Pagination.test.tsx": {
+    "mtime": 1793207467.5086308,
+    "seen": 1794174925.4834688,
+    "ast_hash": "f3068b2d86a1cf5a3e60df093c2e3869",
+    "semantic_hash": "f3068b2d86a1cf5a3e60df093c2e3869"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Pagination/index.tsx": {
+    "mtime": 1793214833.2369993,
+    "seen": 1794174925.4834714,
+    "ast_hash": "f4b7d2c1644b4ece273e7b41c992012b",
+    "semantic_hash": "f4b7d2c1644b4ece273e7b41c992012b"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Portal/index.tsx": {
+    "mtime": 1792510296.01494,
+    "seen": 1794174925.4834738,
+    "ast_hash": "ff890ed7b77cd0ebc756922c07818851",
+    "semantic_hash": "ff890ed7b77cd0ebc756922c07818851"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Portal/utils.ts": {
+    "mtime": 1786484903.1776922,
+    "seen": 1794174925.4834762,
+    "ast_hash": "78cc660983f83658797ed589cfb43e27",
+    "semantic_hash": "78cc660983f83658797ed589cfb43e27"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Select/Select.test.tsx": {
+    "mtime": 1793858069.798777,
+    "seen": 1794174925.483479,
+    "ast_hash": "d4ccb06a56039d84b8a1d922e66d3313",
+    "semantic_hash": "d4ccb06a56039d84b8a1d922e66d3313"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Select/SelectMotion.test.tsx": {
+    "mtime": 1793307513.6478467,
+    "seen": 1794174925.4834814,
+    "ast_hash": "9571195983251638761ee6fa7f3241b0",
+    "semantic_hash": "9571195983251638761ee6fa7f3241b0"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Select/index.tsx": {
+    "mtime": 1793307513.8548028,
+    "seen": 1794174925.4834843,
+    "ast_hash": "c6dd684478aeb2488c591c4182439294",
+    "semantic_hash": "c6dd684478aeb2488c591c4182439294"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/ShowMore/index.tsx": {
+    "mtime": 1793307191.2302732,
+    "seen": 1794174925.483487,
+    "ast_hash": "16a236dd81a40eed58fba92733064d4a",
+    "semantic_hash": "16a236dd81a40eed58fba92733064d4a"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Skeleton/index.tsx": {
+    "mtime": 1793831525.3552403,
+    "seen": 1794174925.4834893,
+    "ast_hash": "67024ef53df31927ba8e7904c586759d",
+    "semantic_hash": "67024ef53df31927ba8e7904c586759d"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/StatusIndicator/index.tsx": {
+    "mtime": 1792510250.3216374,
+    "seen": 1794174925.483492,
+    "ast_hash": "ea1ca6960426259b559dd5db8caa94c5",
+    "semantic_hash": "ea1ca6960426259b559dd5db8caa94c5"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Table/TableHeader.tsx": {
+    "mtime": 1793220946.262893,
+    "seen": 1794174925.4834943,
+    "ast_hash": "4ca8f8872b377f5b4c3ae51be7fc7280",
+    "semantic_hash": "4ca8f8872b377f5b4c3ae51be7fc7280"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Table/TableLoadingState.tsx": {
+    "mtime": 1793857738.7518587,
+    "seen": 1794174925.483497,
+    "ast_hash": "c493a4e945365eeed7bb0758f4d6c2c4",
+    "semantic_hash": "c493a4e945365eeed7bb0758f4d6c2c4"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/Tooltip/index.tsx": {
+    "mtime": 1793226991.6471353,
+    "seen": 1794174925.4834995,
+    "ast_hash": "34a676165b32fecf40a2df7aa30ff8b3",
+    "semantic_hash": "34a676165b32fecf40a2df7aa30ff8b3"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/VoiceWave.test.tsx": {
+    "mtime": 1793983478.128625,
+    "seen": 1794174925.4835021,
+    "ast_hash": "8e208ca834b47612b4b2c72eeae3cd28",
+    "semantic_hash": "8e208ca834b47612b4b2c72eeae3cd28"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/VoiceWave.tsx": {
+    "mtime": 1793983467.9619274,
+    "seen": 1794174925.483505,
+    "ast_hash": "6727c69649f7a05affd874885b32a42a",
+    "semantic_hash": "6727c69649f7a05affd874885b32a42a"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/common/index.ts": {
+    "mtime": 1793723896.4172306,
+    "seen": 1794174925.4835074,
+    "ast_hash": "531be1d68c2465f3c4d480f4bea999d8",
+    "semantic_hash": "531be1d68c2465f3c4d480f4bea999d8"
+  },
+  "virtual-patient/virtual-patient-ui/src/components/constants/duration.ts": {
+    "mtime": 1788883338.2641284,
+    "seen": 1794174925.4835103,
+    "ast_hash": "55ed925d78f66981098ab32634113f64",
+    "semantic_hash": "55ed925d78f66981098ab32634113f64"
+  },
+  "virtual-patient/virtual-patient-ui/src/contexts/EvaluationAspectsContext.tsx": {
+    "mtime": 1791315107.509489,
+    "seen": 1794174925.4835126,
+    "ast_hash": "1ba8a235b3421ec1bf65f40db54db488",
+    "semantic_hash": "1ba8a235b3421ec1bf65f40db54db488"
+  },
+  "virtual-patient/virtual-patient-ui/src/contexts/InterviewMediaContext.test.tsx": {
+    "mtime": 1793980111.4737177,
+    "seen": 1794174925.483515,
+    "ast_hash": "5f051806f21237d47d4faf87a52ea5f9",
+    "semantic_hash": "5f051806f21237d47d4faf87a52ea5f9"
+  },
+  "virtual-patient/virtual-patient-ui/src/contexts/InterviewMediaContext.tsx": {
+    "mtime": 1793980082.3298633,
+    "seen": 1794174925.4835176,
+    "ast_hash": "9d27dbb8ad4db7ec2ba8e32dfb27de57",
+    "semantic_hash": "9d27dbb8ad4db7ec2ba8e32dfb27de57"
+  },
+  "virtual-patient/virtual-patient-ui/src/contexts/SessionLists.tsx": {
+    "mtime": 1794165109.532078,
+    "seen": 1794174925.4835205,
+    "ast_hash": "cf04fbaf7991d5348bea32759a6d97e5",
+    "semantic_hash": "cf04fbaf7991d5348bea32759a6d97e5"
+  },
+  "virtual-patient/virtual-patient-ui/src/contexts/UserContext.tsx": {
+    "mtime": 1793832951.8620963,
+    "seen": 1794174925.483523,
+    "ast_hash": "53cf2a6f6f3eb8145a5ae53d63eecead",
+    "semantic_hash": "53cf2a6f6f3eb8145a5ae53d63eecead"
+  },
+  "virtual-patient/virtual-patient-ui/src/contexts/index.ts": {
+    "mtime": 1786484903.3548417,
+    "seen": 1794174925.4835253,
+    "ast_hash": "e64b6c9d10e5ef7e60d1b488d97431ee",
+    "semantic_hash": "e64b6c9d10e5ef7e60d1b488d97431ee"
+  },
+  "virtual-patient/virtual-patient-ui/src/contexts/interviewMedia.ts": {
+    "mtime": 1793980082.7728486,
+    "seen": 1794174925.4835277,
+    "ast_hash": "7a28800c57b1ae3561d3069b38fe18a6",
+    "semantic_hash": "7a28800c57b1ae3561d3069b38fe18a6"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/index.ts": {
+    "mtime": 1786484903.3800943,
+    "seen": 1794174925.48353,
+    "ast_hash": "910e53dce94d3c4e5bc58b6c0d152134",
+    "semantic_hash": "910e53dce94d3c4e5bc58b6c0d152134"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useAuthError.ts": {
+    "mtime": 1793832952.675427,
+    "seen": 1794174925.4835324,
+    "ast_hash": "5bd51a952d1734566f05a4e175633748",
+    "semantic_hash": "5bd51a952d1734566f05a4e175633748"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useDebounce.tsx": {
+    "mtime": 1786484903.403537,
+    "seen": 1794174925.4835348,
+    "ast_hash": "7848467886a6db1c61be9022b1177eab",
+    "semantic_hash": "7848467886a6db1c61be9022b1177eab"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useHandsFreeSpeech.test.tsx": {
+    "mtime": 1794160113.1080668,
+    "seen": 1794174925.4835372,
+    "ast_hash": "96448f1980b4ef28256195ffa23b05ca",
+    "semantic_hash": "96448f1980b4ef28256195ffa23b05ca"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useHandsFreeSpeech.ts": {
+    "mtime": 1794160079.9856703,
+    "seen": 1794174925.4835393,
+    "ast_hash": "ef121b870a2ae6026081451a6156fd8c",
+    "semantic_hash": "ef121b870a2ae6026081451a6156fd8c"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useInputViewport.test.tsx": {
+    "mtime": 1794172360.3770366,
+    "seen": 1794174925.483542,
+    "ast_hash": "8093f81e964b2d2a088f224c6d5ed545",
+    "semantic_hash": "8093f81e964b2d2a088f224c6d5ed545"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useInputViewport.ts": {
+    "mtime": 1794172221.2426424,
+    "seen": 1794174925.4835446,
+    "ast_hash": "3dceef1a5c7835c9c02dc01fd52a8f82",
+    "semantic_hash": "3dceef1a5c7835c9c02dc01fd52a8f82"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useInterviewRecording.test.tsx": {
+    "mtime": 1794107284.293956,
+    "seen": 1794174925.483547,
+    "ast_hash": "363795c80d9ed4b918342d50804cef9e",
+    "semantic_hash": "363795c80d9ed4b918342d50804cef9e"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useInterviewRecording.ts": {
+    "mtime": 1794107305.1092298,
+    "seen": 1794174925.483549,
+    "ast_hash": "f4b8832a1cc5233f39ed5ebd165904e6",
+    "semantic_hash": "f4b8832a1cc5233f39ed5ebd165904e6"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useOnKeyDown.ts": {
+    "mtime": 1786484903.4161272,
+    "seen": 1794174925.4835515,
+    "ast_hash": "677b4326cf5afc7d256d5a1d4e7f9397",
+    "semantic_hash": "677b4326cf5afc7d256d5a1d4e7f9397"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useOnOutsideClick.ts": {
+    "mtime": 1793222624.087608,
+    "seen": 1794174925.483554,
+    "ast_hash": "2f28a51be1e82e2e360799880bc464b2",
+    "semantic_hash": "2f28a51be1e82e2e360799880bc464b2"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useSpeechRecognition.ts": {
+    "mtime": 1787007787.6775737,
+    "seen": 1794174925.4835563,
+    "ast_hash": "df94058a818afbc45704d7a25244a172",
+    "semantic_hash": "df94058a818afbc45704d7a25244a172"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useTechnicalCalibration.test.tsx": {
+    "mtime": 1794115588.8799179,
+    "seen": 1794174925.4835587,
+    "ast_hash": "d72bf13c7af07831f1e93ffad9747e35",
+    "semantic_hash": "d72bf13c7af07831f1e93ffad9747e35"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useTechnicalCalibration.ts": {
+    "mtime": 1794115941.7705262,
+    "seen": 1794174925.483561,
+    "ast_hash": "ef99f7eaf77b0c33c6b42e49d980ef90",
+    "semantic_hash": "ef99f7eaf77b0c33c6b42e49d980ef90"
+  },
+  "virtual-patient/virtual-patient-ui/src/hooks/useUser.ts": {
+    "mtime": 1786484903.4712267,
+    "seen": 1794174925.4835634,
+    "ast_hash": "5b8981da18a98b5b6c79ed803ed9cec3",
+    "semantic_hash": "5b8981da18a98b5b6c79ed803ed9cec3"
+  },
+  "virtual-patient/virtual-patient-ui/src/i18n/index.ts": {
+    "mtime": 1793720553.8550384,
+    "seen": 1794174925.483566,
+    "ast_hash": "927b0c4d808e83549ee781ea292d6288",
+    "semantic_hash": "927b0c4d808e83549ee781ea292d6288"
+  },
+  "virtual-patient/virtual-patient-ui/src/i18n/locales/en.json": {
+    "mtime": 1794173469.1037793,
+    "seen": 1794174925.483569,
+    "ast_hash": "c4c8743966e6855ba785d068ddf899f3",
+    "semantic_hash": "c4c8743966e6855ba785d068ddf899f3"
+  },
+  "virtual-patient/virtual-patient-ui/src/i18n/locales/es.json": {
+    "mtime": 1794173468.611485,
+    "seen": 1794174925.4835713,
+    "ast_hash": "45d9eb9253d792660e550adb33188831",
+    "semantic_hash": "45d9eb9253d792660e550adb33188831"
+  },
+  "virtual-patient/virtual-patient-ui/src/main.tsx": {
+    "mtime": 1786484902.0277395,
+    "seen": 1794174925.4835737,
+    "ast_hash": "970460eb77a11b324ba4340d57c41573",
+    "semantic_hash": "970460eb77a11b324ba4340d57c41573"
+  },
+  "virtual-patient/virtual-patient-ui/src/recording/RecordingBuffer.test.ts": {
+    "mtime": 1793647914.9867432,
+    "seen": 1794174925.483576,
+    "ast_hash": "0b506ba9c92c8b83fccaddf68bfd41ca",
+    "semantic_hash": "0b506ba9c92c8b83fccaddf68bfd41ca"
+  },
+  "virtual-patient/virtual-patient-ui/src/recording/RecordingBuffer.ts": {
+    "mtime": 1793647029.7288866,
+    "seen": 1794174925.4835784,
+    "ast_hash": "b923c2d09bf48e5f4d382ec23556e2b3",
+    "semantic_hash": "b923c2d09bf48e5f4d382ec23556e2b3"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/auth/authCookie.ts": {
+    "mtime": 1791919120.5443356,
+    "seen": 1794174925.4835808,
+    "ast_hash": "58196b6252f50afe0c85343edf32e094",
+    "semantic_hash": "58196b6252f50afe0c85343edf32e094"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/auth/authHeaders.ts": {
+    "mtime": 1786484903.7665882,
+    "seen": 1794174925.4835832,
+    "ast_hash": "323e5cf4535d9d66dbb133a8bf55835d",
+    "semantic_hash": "323e5cf4535d9d66dbb133a8bf55835d"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/auth/cookieIntegrity.test.ts": {
+    "mtime": 1793657439.0199728,
+    "seen": 1794174925.483586,
+    "ast_hash": "bfb5d3583272b14da5890b7a9d1a5db3",
+    "semantic_hash": "bfb5d3583272b14da5890b7a9d1a5db3"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/auth/signIn.ts": {
+    "mtime": 1793733281.4949136,
+    "seen": 1794174925.4835887,
+    "ast_hash": "0c488cba6e213f85187cdf1a48b579b2",
+    "semantic_hash": "0c488cba6e213f85187cdf1a48b579b2"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/clinicalCases/index.ts": {
+    "mtime": 1793856601.4532268,
+    "seen": 1794174925.4835913,
+    "ast_hash": "47aced3d9b854bd67d893d2359be1cf3",
+    "semantic_hash": "47aced3d9b854bd67d893d2359be1cf3"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/evaluations/getEvaluationAspects.ts": {
+    "mtime": 1791315105.6305704,
+    "seen": 1794174925.483594,
+    "ast_hash": "b05fae9f496218ba31542bec9ff4015c",
+    "semantic_hash": "b05fae9f496218ba31542bec9ff4015c"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/evaluations/index.ts": {
+    "mtime": 1786484903.8344333,
+    "seen": 1794174925.4835968,
+    "ast_hash": "ab99a085e6966185fb8842b3cdf7df7d",
+    "semantic_hash": "ab99a085e6966185fb8842b3cdf7df7d"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/evaluations/learningMoments.ts": {
+    "mtime": 1791921079.292855,
+    "seen": 1794174925.4835992,
+    "ast_hash": "ce1d6af9448f8e6ce8e0ac108da59277",
+    "semantic_hash": "ce1d6af9448f8e6ce8e0ac108da59277"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/hypotheses/createHypothesis.ts": {
+    "mtime": 1791917552.4449012,
+    "seen": 1794174925.4836016,
+    "ast_hash": "58a69aad3cef2e60f246aab5c8ce33d8",
+    "semantic_hash": "58a69aad3cef2e60f246aab5c8ce33d8"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/hypotheses/index.ts": {
+    "mtime": 1786484903.8658104,
+    "seen": 1794174925.483604,
+    "ast_hash": "23951ade8a7758b6dc3eca67d859068c",
+    "semantic_hash": "23951ade8a7758b6dc3eca67d859068c"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/calibration.ts": {
+    "mtime": 1794156068.0945628,
+    "seen": 1794174925.4836066,
+    "ast_hash": "653aa7a44712de1118dfec4979cb37b5",
+    "semantic_hash": "653aa7a44712de1118dfec4979cb37b5"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/calibrationReference.ts": {
+    "mtime": 1794152410.24736,
+    "seen": 1794174925.4836087,
+    "ast_hash": "4d13e250a9a3b52f625dd94b178b3f30",
+    "semantic_hash": "4d13e250a9a3b52f625dd94b178b3f30"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/completeInterview.ts": {
+    "mtime": 1789484827.8431156,
+    "seen": 1794174925.4836113,
+    "ast_hash": "2c664597464f0cd4f400d269a82c41c5",
+    "semantic_hash": "2c664597464f0cd4f400d269a82c41c5"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/createInterview.ts": {
+    "mtime": 1793979664.230219,
+    "seen": 1794174925.483614,
+    "ast_hash": "c34ab6a3286610a9420c3bcaed357a70",
+    "semantic_hash": "c34ab6a3286610a9420c3bcaed357a70"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/createSummary.ts": {
+    "mtime": 1787007662.3395798,
+    "seen": 1794174925.4836166,
+    "ast_hash": "b7bb3d561c27a3b8d883f4d09341ccc1",
+    "semantic_hash": "b7bb3d561c27a3b8d883f4d09341ccc1"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/deleteInterview.ts": {
+    "mtime": 1787063264.498298,
+    "seen": 1794174925.483619,
+    "ast_hash": "326bcbedce2aa4360f9bff82f14f3e57",
+    "semantic_hash": "326bcbedce2aa4360f9bff82f14f3e57"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/getActiveInterview.ts": {
+    "mtime": 1789485698.8771515,
+    "seen": 1794174925.4836216,
+    "ast_hash": "12a213d7f5f78d985a25fcc07626a04c",
+    "semantic_hash": "12a213d7f5f78d985a25fcc07626a04c"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/getInterview.ts": {
+    "mtime": 1793979711.1691122,
+    "seen": 1794174925.483624,
+    "ast_hash": "e63bb7da0bb6f2debe2aced083cc3889",
+    "semantic_hash": "e63bb7da0bb6f2debe2aced083cc3889"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/getInterviews.ts": {
+    "mtime": 1786484903.9331532,
+    "seen": 1794174925.4836261,
+    "ast_hash": "832e23c8a89a15a5d899ddd62e683f75",
+    "semantic_hash": "832e23c8a89a15a5d899ddd62e683f75"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/getOrganizationInterviews.ts": {
+    "mtime": 1792514525.6911557,
+    "seen": 1794174925.4836285,
+    "ast_hash": "03759155f6c3b4f9284d6e2a3ae4da7a",
+    "semantic_hash": "03759155f6c3b4f9284d6e2a3ae4da7a"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/index.ts": {
+    "mtime": 1794156068.654808,
+    "seen": 1794174925.4836311,
+    "ast_hash": "9b142efaafda217c80d14892d76f584e",
+    "semantic_hash": "9b142efaafda217c80d14892d76f584e"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/interruptInterview.ts": {
+    "mtime": 1789485706.2194023,
+    "seen": 1794174925.4836335,
+    "ast_hash": "798a5278f03247beec5b5e721673d1f1",
+    "semantic_hash": "798a5278f03247beec5b5e721673d1f1"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/interviews/sendMessage.ts": {
+    "mtime": 1793651038.654363,
+    "seen": 1794174925.4836357,
+    "ast_hash": "2d2a112cc5af515e9bee6d7dc6ff3acb",
+    "semantic_hash": "2d2a112cc5af515e9bee6d7dc6ff3acb"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/organizations/index.ts": {
+    "mtime": 1791917552.4449012,
+    "seen": 1794174925.4836385,
+    "ast_hash": "6eb3e2d029aa1fb06516ad9639dc99de",
+    "semantic_hash": "6eb3e2d029aa1fb06516ad9639dc99de"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/personalities/index.ts": {
+    "mtime": 1786484904.017693,
+    "seen": 1794174925.483641,
+    "ast_hash": "584b498b1915c11c9ae40ce2b3b19ed1",
+    "semantic_hash": "584b498b1915c11c9ae40ce2b3b19ed1"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/recordings/index.ts": {
+    "mtime": 1794107126.5927932,
+    "seen": 1794174925.4836433,
+    "ast_hash": "1731fdc5c7979cdd10b1ba062f300da7",
+    "semantic_hash": "1731fdc5c7979cdd10b1ba062f300da7"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/speech/index.ts": {
+    "mtime": 1793678530.7150052,
+    "seen": 1794174925.483646,
+    "ast_hash": "e42027d7c4d05a161426982267cc0637",
+    "semantic_hash": "e42027d7c4d05a161426982267cc0637"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/speech/patientSpeechUrl.ts": {
+    "mtime": 1793678524.8934622,
+    "seen": 1794174925.4836485,
+    "ast_hash": "8b933d61393752e4dec42b14e4438137",
+    "semantic_hash": "8b933d61393752e4dec42b14e4438137"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/speech/previewAudioUrl.ts": {
+    "mtime": 1793862561.0569644,
+    "seen": 1794174925.483651,
+    "ast_hash": "70e3c6460114002071fcf09bf0346056",
+    "semantic_hash": "70e3c6460114002071fcf09bf0346056"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/speech/transcribeStudentAudio.ts": {
+    "mtime": 1787677017.86948,
+    "seen": 1794174925.4836533,
+    "ast_hash": "117e01cb31a2d9bb80c78360ab173f86",
+    "semantic_hash": "117e01cb31a2d9bb80c78360ab173f86"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/statistics/getPersonalStatistics.ts": {
+    "mtime": 1786484904.082695,
+    "seen": 1794174925.483656,
+    "ast_hash": "bf838843da364e7403723cbbeee27ddc",
+    "semantic_hash": "bf838843da364e7403723cbbeee27ddc"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/students/getStudentsMetrics.ts": {
+    "mtime": 1792514599.4395416,
+    "seen": 1794174925.4836583,
+    "ast_hash": "025411bd2e01ed5813b87a3394f5e087",
+    "semantic_hash": "025411bd2e01ed5813b87a3394f5e087"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/teacherFeedback/createTeacherFeedback.ts": {
+    "mtime": 1791917552.4469008,
+    "seen": 1794174925.4836605,
+    "ast_hash": "e90003e42436bdd3a91ebbbc4623ee5b",
+    "semantic_hash": "e90003e42436bdd3a91ebbbc4623ee5b"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/teacherFeedback/getTeacherFeedbacks.ts": {
+    "mtime": 1786484904.1419492,
+    "seen": 1794174925.483663,
+    "ast_hash": "35ad819f98e73fcf14b3a9001412d948",
+    "semantic_hash": "35ad819f98e73fcf14b3a9001412d948"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/teacherFeedback/index.ts": {
+    "mtime": 1786484904.155782,
+    "seen": 1794174925.4836655,
+    "ast_hash": "f408389a407d51d38c227bd3fb8ab8a3",
+    "semantic_hash": "f408389a407d51d38c227bd3fb8ab8a3"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/teacherFeedback/updateTeacherFeedback.ts": {
+    "mtime": 1791917552.4459004,
+    "seen": 1794174925.4836679,
+    "ast_hash": "6c0e932ae53448561ccab2ace030ac85",
+    "semantic_hash": "6c0e932ae53448561ccab2ace030ac85"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/teacherGrading.ts": {
+    "mtime": 1794164744.060984,
+    "seen": 1794174925.4836702,
+    "ast_hash": "8045cc5ed878ddbd03feb4baaa18adaf",
+    "semantic_hash": "8045cc5ed878ddbd03feb4baaa18adaf"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/users/createUser.ts": {
+    "mtime": 1793858040.6867762,
+    "seen": 1794174925.4836729,
+    "ast_hash": "9d9286a8f40285b24cf287ce7c95d184",
+    "semantic_hash": "9d9286a8f40285b24cf287ce7c95d184"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/users/getUser.ts": {
+    "mtime": 1786484904.2045248,
+    "seen": 1794174925.4836755,
+    "ast_hash": "a0af8c3f267cc0103e670cc4c8e7f7f0",
+    "semantic_hash": "a0af8c3f267cc0103e670cc4c8e7f7f0"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/users/index.ts": {
+    "mtime": 1786484904.2182014,
+    "seen": 1794174925.4836776,
+    "ast_hash": "0070964ed6b52e14669c1d150bb1ee8d",
+    "semantic_hash": "0070964ed6b52e14669c1d150bb1ee8d"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/users/manageUsers.test.ts": {
+    "mtime": 1793243183.3778112,
+    "seen": 1794174925.4836807,
+    "ast_hash": "4b32c2e1f5a583edf1cbae475d65d21e",
+    "semantic_hash": "4b32c2e1f5a583edf1cbae475d65d21e"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/users/manageUsers.ts": {
+    "mtime": 1793856264.3127298,
+    "seen": 1794174925.4836826,
+    "ast_hash": "4367a1b1f5246e3997c11808b9f79222",
+    "semantic_hash": "4367a1b1f5246e3997c11808b9f79222"
+  },
+  "virtual-patient/virtual-patient-ui/src/services/users/updateUser.ts": {
+    "mtime": 1789575461.4698536,
+    "seen": 1794174925.483684,
+    "ast_hash": "fb30ec9c9b1a229507c637795096340d",
+    "semantic_hash": "fb30ec9c9b1a229507c637795096340d"
+  },
+  "virtual-patient/virtual-patient-ui/src/speech/BrowserSpeechRecognitionProvider.ts": {
+    "mtime": 1789746489.708957,
+    "seen": 1794174925.4836857,
+    "ast_hash": "386a91cb9ad52ad380e6119feb6aa634",
+    "semantic_hash": "386a91cb9ad52ad380e6119feb6aa634"
+  },
+  "virtual-patient/virtual-patient-ui/src/speech/ServerSpeechTranscriptionProvider.test.ts": {
+    "mtime": 1793859162.5808084,
+    "seen": 1794174925.4836872,
+    "ast_hash": "963b0876d8f117d1c4bc43992a0a7eb4",
+    "semantic_hash": "963b0876d8f117d1c4bc43992a0a7eb4"
+  },
+  "virtual-patient/virtual-patient-ui/src/speech/ServerSpeechTranscriptionProvider.ts": {
+    "mtime": 1793859126.6158025,
+    "seen": 1794174925.4836884,
+    "ast_hash": "b158f2ae726c13b9d4b6a4d9b1ac86ec",
+    "semantic_hash": "b158f2ae726c13b9d4b6a4d9b1ac86ec"
+  },
+  "virtual-patient/virtual-patient-ui/src/speech/SpeechInputProvider.ts": {
+    "mtime": 1789746486.9608452,
+    "seen": 1794174925.48369,
+    "ast_hash": "d685e4540dd690b3043c06408bffde25",
+    "semantic_hash": "d685e4540dd690b3043c06408bffde25"
+  },
+  "virtual-patient/virtual-patient-ui/src/speech/factory.ts": {
+    "mtime": 1788895930.6568425,
+    "seen": 1794174925.4836915,
+    "ast_hash": "7373dd98b3ae40bad4d2f6d4435c46c3",
+    "semantic_hash": "7373dd98b3ae40bad4d2f6d4435c46c3"
+  },
+  "virtual-patient/virtual-patient-ui/src/speech/index.ts": {
+    "mtime": 1787670861.9761727,
+    "seen": 1794174925.483693,
+    "ast_hash": "4e15e70c4484c8be7ebe65126ab6d6d5",
+    "semantic_hash": "4e15e70c4484c8be7ebe65126ab6d6d5"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/clinicalCase.ts": {
+    "mtime": 1791917552.4469008,
+    "seen": 1794174925.4836943,
+    "ast_hash": "a72b4e67612bc8e99fd060240522c390",
+    "semantic_hash": "a72b4e67612bc8e99fd060240522c390"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/duration.ts": {
+    "mtime": 1786484904.267666,
+    "seen": 1794174925.483696,
+    "ast_hash": "8c4cab766a3107d71ae597e4ee0b38d7",
+    "semantic_hash": "8c4cab766a3107d71ae597e4ee0b38d7"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/evaluation.ts": {
+    "mtime": 1791921115.4312832,
+    "seen": 1794174925.4836974,
+    "ast_hash": "077c32317feb9fb5a231636c93d89c7a",
+    "semantic_hash": "077c32317feb9fb5a231636c93d89c7a"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/hypothesis.ts": {
+    "mtime": 1786484904.2945938,
+    "seen": 1794174925.4836988,
+    "ast_hash": "4b099f0f11ec45eb42be1e3d289e7120",
+    "semantic_hash": "4b099f0f11ec45eb42be1e3d289e7120"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/index.ts": {
+    "mtime": 1787026129.811225,
+    "seen": 1794174925.4837003,
+    "ast_hash": "e729b2c0e74924d5833a59d47d29e902",
+    "semantic_hash": "e729b2c0e74924d5833a59d47d29e902"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/interview.ts": {
+    "mtime": 1794164714.831457,
+    "seen": 1794174925.4837017,
+    "ast_hash": "0b0a0c5e38766b1e7242fc75546a3028",
+    "semantic_hash": "0b0a0c5e38766b1e7242fc75546a3028"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/learningMoments.ts": {
+    "mtime": 1791921074.8520694,
+    "seen": 1794174925.4837034,
+    "ast_hash": "4363c0283a48d3f16bbb19ce430d37d3",
+    "semantic_hash": "4363c0283a48d3f16bbb19ce430d37d3"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/message.ts": {
+    "mtime": 1787021134.6987567,
+    "seen": 1794174925.4837046,
+    "ast_hash": "fe6e25d9c88c9f9a2a23fec6b70a28f2",
+    "semantic_hash": "fe6e25d9c88c9f9a2a23fec6b70a28f2"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/patient.ts": {
+    "mtime": 1786484904.341242,
+    "seen": 1794174925.4837058,
+    "ast_hash": "70cb3339de2331fa0eac245f9e7ae70b",
+    "semantic_hash": "70cb3339de2331fa0eac245f9e7ae70b"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/personality.ts": {
+    "mtime": 1786484904.354978,
+    "seen": 1794174925.4837072,
+    "ast_hash": "54235ea158d860259aaa807dfc6121a0",
+    "semantic_hash": "54235ea158d860259aaa807dfc6121a0"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/progress.ts": {
+    "mtime": 1786484904.3672485,
+    "seen": 1794174925.4837084,
+    "ast_hash": "ebaca66afbce5d3986af9c3cac914c3e",
+    "semantic_hash": "ebaca66afbce5d3986af9c3cac914c3e"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/recording.ts": {
+    "mtime": 1793733162.1489007,
+    "seen": 1794174925.4837098,
+    "ast_hash": "37d328bd64a7cd1f0fb5e89920083761",
+    "semantic_hash": "37d328bd64a7cd1f0fb5e89920083761"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/sessionNote.ts": {
+    "mtime": 1786484904.3818312,
+    "seen": 1794174925.4837112,
+    "ast_hash": "a1c4aa9d090b0b77971800fdca08c38c",
+    "semantic_hash": "a1c4aa9d090b0b77971800fdca08c38c"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/teacherFeedback.ts": {
+    "mtime": 1789575444.9116013,
+    "seen": 1794174925.4837124,
+    "ast_hash": "8ce236c0a3d1e4403c9ae5c1ece3f1cf",
+    "semantic_hash": "8ce236c0a3d1e4403c9ae5c1ece3f1cf"
+  },
+  "virtual-patient/virtual-patient-ui/src/types/user.ts": {
+    "mtime": 1792514412.2010567,
+    "seen": 1794174925.4837143,
+    "ast_hash": "a3bc84277e0e03b216ee627583cc07dd",
+    "semantic_hash": "a3bc84277e0e03b216ee627583cc07dd"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/apiFetch.ts": {
+    "mtime": 1793832952.2861364,
+    "seen": 1794174925.4837158,
+    "ast_hash": "06f7e01db80810ca56dbf8acb7fd7172",
+    "semantic_hash": "06f7e01db80810ca56dbf8acb7fd7172"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/apiTransform.ts": {
+    "mtime": 1791917552.4469008,
+    "seen": 1794174925.4837172,
+    "ast_hash": "d6c96e84fcdf88ff1fc2805289b86f4d",
+    "semantic_hash": "d6c96e84fcdf88ff1fc2805289b86f4d"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/dateTime.ts": {
+    "mtime": 1794164715.5803366,
+    "seen": 1794174925.4837184,
+    "ast_hash": "23373e40be558e25ad11c3fc640693c0",
+    "semantic_hash": "23373e40be558e25ad11c3fc640693c0"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/designTokens.ts": {
+    "mtime": 1788883224.742515,
+    "seen": 1794174925.4837196,
+    "ast_hash": "f94559b6b7fe899e722a09c910b30a59",
+    "semantic_hash": "f94559b6b7fe899e722a09c910b30a59"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/deviceDetection.ts": {
+    "mtime": 1791917552.4489007,
+    "seen": 1794174925.4837213,
+    "ast_hash": "3cb7c8e0717dee00d0519817e9957a6f",
+    "semantic_hash": "3cb7c8e0717dee00d0519817e9957a6f"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/duration.ts": {
+    "mtime": 1793848335.7128122,
+    "seen": 1794174925.4837224,
+    "ast_hash": "a6ce3db83f41934487edcdd9379dafe8",
+    "semantic_hash": "a6ce3db83f41934487edcdd9379dafe8"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/evaluationScore.ts": {
+    "mtime": 1793733233.9989889,
+    "seen": 1794174925.4837239,
+    "ast_hash": "318835d73c08a38e95ebd00bbac14541",
+    "semantic_hash": "318835d73c08a38e95ebd00bbac14541"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/languageStorage.ts": {
+    "mtime": 1793720561.1159575,
+    "seen": 1794174925.4837253,
+    "ast_hash": "dc145212086f2e6de84e8721d41ff142",
+    "semantic_hash": "dc145212086f2e6de84e8721d41ff142"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/mediaRecorder.ts": {
+    "mtime": 1788896201.4958532,
+    "seen": 1794174925.4837267,
+    "ast_hash": "35c514b548551d1d812135a71c666642",
+    "semantic_hash": "35c514b548551d1d812135a71c666642"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/pagination.ts": {
+    "mtime": 1793243162.8963122,
+    "seen": 1794174925.4837284,
+    "ast_hash": "217956216ea658accec5928af4b75575",
+    "semantic_hash": "217956216ea658accec5928af4b75575"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/request.ts": {
+    "mtime": 1793737806.7154834,
+    "seen": 1794174925.4837298,
+    "ast_hash": "da898d4d5c2ed620bf09791cd5773ca3",
+    "semantic_hash": "da898d4d5c2ed620bf09791cd5773ca3"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/routes.ts": {
+    "mtime": 1794164744.0654895,
+    "seen": 1794174925.4837315,
+    "ast_hash": "ea32fdb44df0d1b6c438350527c70a40",
+    "semantic_hash": "ea32fdb44df0d1b6c438350527c70a40"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/sessionClock.test.ts": {
+    "mtime": 1791916398.6992497,
+    "seen": 1794174925.4837327,
+    "ast_hash": "bb5677c4a202df3ee880e2ca796ac178",
+    "semantic_hash": "bb5677c4a202df3ee880e2ca796ac178"
+  },
+  "virtual-patient/virtual-patient-ui/src/utils/sessionClock.ts": {
+    "mtime": 1791916329.0688846,
+    "seen": 1794174925.4837341,
+    "ast_hash": "e1c3aede04eb84e38b3b9c24859aa253",
+    "semantic_hash": "e1c3aede04eb84e38b3b9c24859aa253"
+  },
+  "virtual-patient/virtual-patient-ui/src/vite-env.d.ts": {
+    "mtime": 1791917552.4544058,
+    "seen": 1794174925.4837353,
+    "ast_hash": "8e8d6bb2d871f08dcaa3fa9dea13e9da",
+    "semantic_hash": "8e8d6bb2d871f08dcaa3fa9dea13e9da"
+  },
+  "virtual-patient/virtual-patient-ui/tailwind.config.js": {
+    "mtime": 1786484901.7773674,
+    "seen": 1794174925.4837365,
+    "ast_hash": "3346df3fd0a1ea3f84440703bf8fd2cb",
+    "semantic_hash": "3346df3fd0a1ea3f84440703bf8fd2cb"
+  },
+  "virtual-patient/virtual-patient-ui/tsconfig.app.json": {
+    "mtime": 1791315419.6407008,
+    "seen": 1794174925.483738,
+    "ast_hash": "d1316c741caf3faced5d86297992f155",
+    "semantic_hash": "d1316c741caf3faced5d86297992f155"
+  },
+  "virtual-patient/virtual-patient-ui/tsconfig.json": {
+    "mtime": 1786484901.7940373,
+    "seen": 1794174925.4837391,
+    "ast_hash": "a3d39fa780ebff65444de257f291ce6c",
+    "semantic_hash": "a3d39fa780ebff65444de257f291ce6c"
+  },
+  "virtual-patient/virtual-patient-ui/tsconfig.node.json": {
+    "mtime": 1786484901.8010352,
+    "seen": 1794174925.4837403,
+    "ast_hash": "b39b0c04c8b06a94fa53e598a344f2b4",
+    "semantic_hash": "b39b0c04c8b06a94fa53e598a344f2b4"
+  },
+  "virtual-patient/virtual-patient-ui/vite.config.ts": {
+    "mtime": 1793737807.2246554,
+    "seen": 1794174925.4837418,
+    "ast_hash": "7b2739209399a69abe0faf891124bca9",
+    "semantic_hash": "7b2739209399a69abe0faf891124bca9"
+  },
+  "AGENTS.md": {
+    "mtime": 1792517888.9741428,
+    "seen": 1794174925.4837432,
+    "ast_hash": "1336ec051536acc38e69a03146999514",
+    "semantic_hash": "1336ec051536acc38e69a03146999514"
+  },
+  "DocumentoOverleaf/capitulos/1_introduccion.tex": {
+    "mtime": 1793733148.167851,
+    "seen": 1794174925.4837449,
+    "ast_hash": "7e48817c8f58628fb81854d7e0a54f3e",
+    "semantic_hash": "7e48817c8f58628fb81854d7e0a54f3e"
+  },
+  "DocumentoOverleaf/capitulos/2_trabajo_relacionado/2_trabajo_relacionado.tex": {
+    "mtime": 1786459463.6043332,
+    "seen": 1794174925.483746,
+    "ast_hash": "05a7dcddc35e34a9fbf11c8ee27842f2",
+    "semantic_hash": "05a7dcddc35e34a9fbf11c8ee27842f2"
+  },
+  "DocumentoOverleaf/capitulos/2_trabajo_relacionado/estado_del_arte.tex": {
+    "mtime": 1793733195.3324604,
+    "seen": 1794174925.4837472,
+    "ast_hash": "5de4b770034b413c8f5e2aa2f070e720",
+    "semantic_hash": "5de4b770034b413c8f5e2aa2f070e720"
+  },
+  "DocumentoOverleaf/capitulos/2_trabajo_relacionado/evaluacion_retroalimentacion.tex": {
+    "mtime": 1793733195.3364792,
+    "seen": 1794174925.4837487,
+    "ast_hash": "66a33755099c345c90934fc362dfd947",
+    "semantic_hash": "66a33755099c345c90934fc362dfd947"
+  },
+  "DocumentoOverleaf/capitulos/2_trabajo_relacionado/marco_referencia.tex": {
+    "mtime": 1793733320.3201847,
+    "seen": 1794174925.4837499,
+    "ast_hash": "870148e95f647fafec3488113aa363d5",
+    "semantic_hash": "870148e95f647fafec3488113aa363d5"
+  },
+  "DocumentoOverleaf/capitulos/2_trabajo_relacionado/sistemas_multimodales.tex": {
+    "mtime": 1793733195.3400047,
+    "seen": 1794174925.483751,
+    "ast_hash": "2088322682e6e64dceff36df71c4d315",
+    "semantic_hash": "2088322682e6e64dceff36df71c4d315"
+  },
+  "DocumentoOverleaf/capitulos/3_cronograma.tex": {
+    "mtime": 1786462031.065658,
+    "seen": 1794174925.4837527,
+    "ast_hash": "a15b11460f1bdcc91e67f5de945c5203",
+    "semantic_hash": "a15b11460f1bdcc91e67f5de945c5203"
+  },
+  "DocumentoOverleaf/capitulos/3_desarrollo.tex": {
+    "mtime": 1794156402.5939436,
+    "seen": 1794174925.4837537,
+    "ast_hash": "ed579628f413d3bd87bb7eddeef5d675",
+    "semantic_hash": "ed579628f413d3bd87bb7eddeef5d675"
+  },
+  "DocumentoOverleaf/capitulos/3_metodologia_core.tex": {
+    "mtime": 1788890085.6161711,
+    "seen": 1794174925.4837554,
+    "ast_hash": "b03c2370f822f674e9d23320f9d1a1ab",
+    "semantic_hash": "b03c2370f822f674e9d23320f9d1a1ab"
+  },
+  "DocumentoOverleaf/capitulos/4_avances.tex": {
+    "mtime": 1788890089.2979162,
+    "seen": 1794174925.4837565,
+    "ast_hash": "88ed174ef89887de7cf2037c47cf66af",
+    "semantic_hash": "88ed174ef89887de7cf2037c47cf66af"
+  },
+  "DocumentoOverleaf/capitulos/4_protocolo_evaluacion.tex": {
+    "mtime": 1793733231.6651435,
+    "seen": 1794174925.483758,
+    "ast_hash": "3897360e60a1c2385be4303bff397ec1",
+    "semantic_hash": "3897360e60a1c2385be4303bff397ec1"
+  },
+  "DocumentoOverleaf/capitulos/5_contribuciones_limitaciones.tex": {
+    "mtime": 1793733148.1830988,
+    "seen": 1794174925.4837594,
+    "ast_hash": "0de97195a3e10ba011e1b59f98e43dfa",
+    "semantic_hash": "0de97195a3e10ba011e1b59f98e43dfa"
+  },
+  "DocumentoOverleaf/main.tex": {
+    "mtime": 1791308517.396931,
+    "seen": 1794174925.4837606,
+    "ast_hash": "ba516c1065f3877efc57dcf973bbaa01",
+    "semantic_hash": "ba516c1065f3877efc57dcf973bbaa01"
+  },
+  "DocumentoOverleaf/portada/portada.tex": {
+    "mtime": 1786455007.795319,
+    "seen": 1794174925.4837623,
+    "ast_hash": "28c2a11e5fbf8f298427a3b3f28d4be8",
+    "semantic_hash": "28c2a11e5fbf8f298427a3b3f28d4be8"
+  },
+  "DocumentoOverleaf/preamble.tex": {
+    "mtime": 1779435171.6548061,
+    "seen": 1794174925.4837637,
+    "ast_hash": "77b0bf592f31801d3ee8474fe668b144",
+    "semantic_hash": "77b0bf592f31801d3ee8474fe668b144"
+  },
+  "DocumentoOverleaf/referencias.bib": {
+    "mtime": 1788890092.296522,
+    "seen": 1794174925.483765,
+    "ast_hash": "c803fb3456a55532d39810d4ed3d877f",
+    "semantic_hash": "c803fb3456a55532d39810d4ed3d877f"
+  },
+  "DocumentoOverleaf/referencias_desarrollo.bib": {
+    "mtime": 1791308439.2514975,
+    "seen": 1794174925.4837663,
+    "ast_hash": "987da986ba4b267fdf643397ab204838",
+    "semantic_hash": "987da986ba4b267fdf643397ab204838"
+  },
+  "DocumentoOverleaf/tablas/criterios_comunicativos_base.tex": {
+    "mtime": 1786462031.0761747,
+    "seen": 1794174925.4837675,
+    "ast_hash": "83a39798af32da75338c58cce8bc8861",
+    "semantic_hash": "83a39798af32da75338c58cce8bc8861"
+  },
+  "DocumentoOverleaf/tablas/mapeo_criterios_evidencia_final.tex": {
+    "mtime": 1786466787.0928793,
+    "seen": 1794174925.483769,
+    "ast_hash": "edbf83639491edac628e9abc30f17db5",
+    "semantic_hash": "edbf83639491edac628e9abc30f17db5"
+  },
+  "DocumentoOverleaf/tablas/operacionalizacion_audio.tex": {
+    "mtime": 1786464700.7733788,
+    "seen": 1794174925.4837704,
+    "ast_hash": "63550442c8821ef0daef002ccf8fd94a",
+    "semantic_hash": "63550442c8821ef0daef002ccf8fd94a"
+  },
+  "DocumentoOverleaf/tablas/operacionalizacion_video.tex": {
+    "mtime": 1786464700.7743776,
+    "seen": 1794174925.4837716,
+    "ast_hash": "b35b9c22af0f88f6f38dfea4249dbe22",
+    "semantic_hash": "b35b9c22af0f88f6f38dfea4249dbe22"
+  },
+  "DocumentoOverleaf/tablas/seleccion_criterios_multimodales.tex": {
+    "mtime": 1786468455.961041,
+    "seen": 1794174925.4837732,
+    "ast_hash": "7e21cc5d3c91de0b938011165cef0461",
+    "semantic_hash": "7e21cc5d3c91de0b938011165cef0461"
+  },
+  "DocumentoOverleaf/tablas/variables_no_verbales.tex": {
+    "mtime": 1793733231.669005,
+    "seen": 1794174925.4837744,
+    "ast_hash": "a629eef140c33009e501f983c8e91c83",
+    "semantic_hash": "a629eef140c33009e501f983c8e91c83"
+  },
+  "DocumentoOverleaf/tablas/variables_paraverbales.tex": {
+    "mtime": 1791308831.2537167,
+    "seen": 1794174925.4837759,
+    "ast_hash": "6948d0d0623442ff1da672c6909b4a37",
+    "semantic_hash": "6948d0d0623442ff1da672c6909b4a37"
+  },
+  "doc/ARCHITECTURE_AND_DATA.md": {
+    "mtime": 1794163723.3679378,
+    "seen": 1794174925.4837773,
+    "ast_hash": "823f3477ace1ef386504db706ecda486",
+    "semantic_hash": "823f3477ace1ef386504db706ecda486"
+  },
+  "doc/CODE_EDITING.md": {
+    "mtime": 1794165040.4883487,
+    "seen": 1794174925.4837787,
+    "ast_hash": "3c0afe6ab4e81e27005326c08b25bf89",
+    "semantic_hash": "3c0afe6ab4e81e27005326c08b25bf89"
+  },
+  "doc/DOCUMENT_EDITING.md": {
+    "mtime": 1791308697.3997104,
+    "seen": 1794174925.4837801,
+    "ast_hash": "c760d7a0d32ed7fe43e123861b60ffc3",
+    "semantic_hash": "c760d7a0d32ed7fe43e123861b60ffc3"
+  },
+  "doc/EXPERT_REFERENCE_FORM.md": {
+    "mtime": 1791308333.1866386,
+    "seen": 1794174925.4837813,
+    "ast_hash": "1a9e6e15e3d8d22d8e46a968b6d78e71",
+    "semantic_hash": "1a9e6e15e3d8d22d8e46a968b6d78e71"
+  },
+  "doc/OBJECTIVE1_EVIDENCE_MAP.md": {
+    "mtime": 1791308629.5680785,
+    "seen": 1794174925.4837828,
+    "ast_hash": "b8daa12c16518dcf4353169cdfdf6d46",
+    "semantic_hash": "b8daa12c16518dcf4353169cdfdf6d46"
+  },
+  "doc/OPEN_QUESTIONS.md": {
+    "mtime": 1794156857.501184,
+    "seen": 1794174925.4837842,
+    "ast_hash": "290f8d8e56c9cc56417be3d06b16bff5",
+    "semantic_hash": "290f8d8e56c9cc56417be3d06b16bff5"
+  },
+  "doc/PROJECT_GRAPH.md": {
+    "mtime": 1794174839.109273,
+    "seen": 1794174925.4837856,
+    "ast_hash": "365a8a5cddb3b443ab4511a199b81850",
+    "semantic_hash": "365a8a5cddb3b443ab4511a199b81850"
+  },
+  "doc/README.md": {
+    "mtime": 1794174298.7748892,
+    "seen": 1794174925.4837873,
+    "ast_hash": "fa32c7600a87f520362f5442f92299ad",
+    "semantic_hash": "fa32c7600a87f520362f5442f92299ad"
+  },
+  "doc/RESEARCH_TRACEABILITY.md": {
+    "mtime": 1791308631.2121139,
+    "seen": 1794174925.4837885,
+    "ast_hash": "ee6f89b96da7dbf424f9745e7ea83e08",
+    "semantic_hash": "ee6f89b96da7dbf424f9745e7ea83e08"
+  },
+  "doc/STUDY_DESIGN_FREEZE.md": {
+    "mtime": 1794156857.5031917,
+    "seen": 1794174925.48379,
+    "ast_hash": "200580b8ce7ebeb2ce89c1d32538c013",
+    "semantic_hash": "200580b8ce7ebeb2ce89c1d32538c013"
+  },
+  "doc/STUDY_PROTOCOL.md": {
+    "mtime": 1791908982.7001958,
+    "seen": 1794174925.483791,
+    "ast_hash": "aed0b54b489616d1ff1154207fd19476",
+    "semantic_hash": "aed0b54b489616d1ff1154207fd19476"
+  },
+  "doc/TEACHER_GRADING.md": {
+    "mtime": 1794170345.2976394,
+    "seen": 1794174925.4837925,
+    "ast_hash": "43f00153e32bffd650985623abbd334c",
+    "semantic_hash": "43f00153e32bffd650985623abbd334c"
+  },
+  "doc/THESIS_COMPLETION_ROADMAP.md": {
+    "mtime": 1791315753.0172067,
+    "seen": 1794174925.483794,
+    "ast_hash": "3fcbb41a75f69760be1aa05672aff5fc",
+    "semantic_hash": "3fcbb41a75f69760be1aa05672aff5fc"
+  },
+  "doc/THESIS_CONTEXT.md": {
+    "mtime": 1791908972.953701,
+    "seen": 1794174925.4837952,
+    "ast_hash": "0628203e01e3534fcdb61e226910a397",
+    "semantic_hash": "0628203e01e3534fcdb61e226910a397"
+  },
+  "doc/plans/2026-11-08-self-assessment.md": {
+    "mtime": 1794164280.613912,
+    "seen": 1794174925.4837968,
+    "ast_hash": "841a1cd3426ee9b24bc6efddb7a1928d",
+    "semantic_hash": "841a1cd3426ee9b24bc6efddb7a1928d"
+  },
+  "docs/terminology.md": {
+    "mtime": 1793733357.363422,
+    "seen": 1794174925.483798,
+    "ast_hash": "d59aa456f800771a0af479b6e165ee91",
+    "semantic_hash": "d59aa456f800771a0af479b6e165ee91"
+  },
+  "virtual-patient/DEPLOYMENT.md": {
+    "mtime": 1794156857.5058894,
+    "seen": 1794174925.4837992,
+    "ast_hash": "b2efd7a415fb80c3618e956731480a7b",
+    "semantic_hash": "b2efd7a415fb80c3618e956731480a7b"
+  },
+  "virtual-patient/README.md": {
+    "mtime": 1793728171.3685327,
+    "seen": 1794174925.483801,
+    "ast_hash": "8a4cb253deff46d86efc519c1dfc9c5d",
+    "semantic_hash": "8a4cb253deff46d86efc519c1dfc9c5d"
+  },
+  "virtual-patient/docs/catalog-access.md": {
+    "mtime": 1793642548.2048302,
+    "seen": 1794174925.483802,
+    "ast_hash": "c5a1090076f43e8bde81496453364947",
+    "semantic_hash": "c5a1090076f43e8bde81496453364947"
+  },
+  "virtual-patient/docs/interview-capture-integrity.md": {
+    "mtime": 1794173166.1323762,
+    "seen": 1794174925.4838035,
+    "ast_hash": "4491d85e655853586f24c0169b1e7761",
+    "semantic_hash": "4491d85e655853586f24c0169b1e7761"
+  },
+  "virtual-patient/docs/learning-moments.md": {
+    "mtime": 1793733274.1831803,
+    "seen": 1794174925.4838054,
+    "ast_hash": "3fec2d4671f45d4e893a9a3d4b2a7802",
+    "semantic_hash": "3fec2d4671f45d4e893a9a3d4b2a7802"
+  },
+  "virtual-patient/docs/multimodal-evaluation.md": {
+    "mtime": 1793733274.186703,
+    "seen": 1794174925.4838078,
+    "ast_hash": "22bf0f51d001a0310b82d364b65ec127",
+    "semantic_hash": "22bf0f51d001a0310b82d364b65ec127"
+  },
+  "virtual-patient/docs/self-assessment.md": {
+    "mtime": 1794170345.2926128,
+    "seen": 1794174925.4838102,
+    "ast_hash": "26d0ca4ee39ec3c77a87de0870a6c4f8",
+    "semantic_hash": "26d0ca4ee39ec3c77a87de0870a6c4f8"
+  },
+  "virtual-patient/docs/superpowers/plans/2026-11-08-calibration-cleanup.md": {
+    "mtime": 1794156857.5058894,
+    "seen": 1794174925.4838126,
+    "ast_hash": "97122544cad1b720179387bedb7d0cb2",
+    "semantic_hash": "97122544cad1b720179387bedb7d0cb2"
+  },
+  "virtual-patient/docs/superpowers/plans/2026-11-08-calibration-reference.md": {
+    "mtime": 1794152237.6045756,
+    "seen": 1794174925.483815,
+    "ast_hash": "5846a439f5f55324436700e4dcd1bb45",
+    "semantic_hash": "5846a439f5f55324436700e4dcd1bb45"
+  },
+  "virtual-patient/docs/user-management.md": {
+    "mtime": 1792514762.5411148,
+    "seen": 1794174925.483817,
+    "ast_hash": "922d44185202492147ee94174569923c",
+    "semantic_hash": "922d44185202492147ee94174569923c"
+  },
+  "virtual-patient/virtual-patient-api/app/multimodal/README.md": {
+    "mtime": 1794156857.5041916,
+    "seen": 1794174925.4838195,
+    "ast_hash": "b5e083c0cc3687dbc8a3b95ceaad9f4c",
+    "semantic_hash": "b5e083c0cc3687dbc8a3b95ceaad9f4c"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/models/README.md": {
+    "mtime": 1789651373.6068275,
+    "seen": 1794174925.4838219,
+    "ast_hash": "25af0c0cb19a488ff2ed87cbd6790037",
+    "semantic_hash": "25af0c0cb19a488ff2ed87cbd6790037"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/models/ccdbhg_cnn_lmk_hp/GPL-3.0-only.txt": {
+    "mtime": 1789623740.4135149,
+    "seen": 1794174925.483824,
+    "ast_hash": "e26e02008656364d2ef1e7911bb16d8a",
+    "semantic_hash": "e26e02008656364d2ef1e7911bb16d8a"
+  },
+  "virtual-patient/virtual-patient-api/app/nonverbal/tests/fixtures/README.md": {
+    "mtime": 1789650491.8825724,
+    "seen": 1794174925.4838266,
+    "ast_hash": "b27e79ef0b314cded31f2c55fc05212e",
+    "semantic_hash": "b27e79ef0b314cded31f2c55fc05212e"
+  },
+  "virtual-patient/virtual-patient-api/config/README.md": {
+    "mtime": 1793737622.8761268,
+    "seen": 1794174925.483829,
+    "ast_hash": "6e98ddb6c51c95babb42d1b5702d39b0",
+    "semantic_hash": "6e98ddb6c51c95babb42d1b5702d39b0"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/completeness.txt": {
+    "mtime": 1793728020.434475,
+    "seen": 1794174925.4838314,
+    "ast_hash": "8698058bfc67a4e0226ba25a8348f1ba",
+    "semantic_hash": "8698058bfc67a4e0226ba25a8348f1ba"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/completeness_verification.txt": {
+    "mtime": 1793728020.4771724,
+    "seen": 1794174925.4838336,
+    "ast_hash": "fcc0e31e966ab4fa09293946743bab55",
+    "semantic_hash": "fcc0e31e966ab4fa09293946743bab55"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/female_gender_instructions.txt": {
+    "mtime": 1793728020.389718,
+    "seen": 1794174925.4838357,
+    "ast_hash": "bc3bdb85a5b323fef6b7c05ce3792e87",
+    "semantic_hash": "bc3bdb85a5b323fef6b7c05ce3792e87"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/general_communication.txt": {
+    "mtime": 1793728020.3659394,
+    "seen": 1794174925.4838376,
+    "ast_hash": "749f643ba4507a96ff479e30ce4c2218",
+    "semantic_hash": "749f643ba4507a96ff479e30ce4c2218"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/hypothesis_completeness.txt": {
+    "mtime": 1793728020.4625268,
+    "seen": 1794174925.4838398,
+    "ast_hash": "649449ed3775c33a4494e4d9d64ea0e5",
+    "semantic_hash": "649449ed3775c33a4494e4d9d64ea0e5"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/male_gender_instructions.txt": {
+    "mtime": 1793728020.4164734,
+    "seen": 1794174925.483842,
+    "ast_hash": "8906bcb7d3d3e772d4aff1a99fd30a35",
+    "semantic_hash": "8906bcb7d3d3e772d4aff1a99fd30a35"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/open_communication.txt": {
+    "mtime": 1793728020.3390727,
+    "seen": 1794174925.4838438,
+    "ast_hash": "5f20b7983f2a07640a0e1d40bc3eb41e",
+    "semantic_hash": "5f20b7983f2a07640a0e1d40bc3eb41e"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/show_empathy.txt": {
+    "mtime": 1793728020.2848792,
+    "seen": 1794174925.4838457,
+    "ast_hash": "f31eca219246a825fc68e83121746397",
+    "semantic_hash": "f31eca219246a825fc68e83121746397"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/show_interest.txt": {
+    "mtime": 1793728020.258571,
+    "seen": 1794174925.4838476,
+    "ast_hash": "c678585cd4f5265be733208f1d49c5dd",
+    "semantic_hash": "c678585cd4f5265be733208f1d49c5dd"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/evaluation_prompts/speak_clearly.txt": {
+    "mtime": 1793728020.3092356,
+    "seen": 1794174925.4838498,
+    "ast_hash": "0923af63528c2ae7adde20aac15c4299",
+    "semantic_hash": "0923af63528c2ae7adde20aac15c4299"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/interview_prompt/interview_prompt.txt": {
+    "mtime": 1793728019.922162,
+    "seen": 1794174925.4838521,
+    "ast_hash": "346d5b0435690994d84e501e340e7843",
+    "semantic_hash": "346d5b0435690994d84e501e340e7843"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/learning_moments/prompt.txt": {
+    "mtime": 1793733156.2427125,
+    "seen": 1794174925.4838543,
+    "ast_hash": "4a9c861e34e04f21a6ebcb13ae715a22",
+    "semantic_hash": "4a9c861e34e04f21a6ebcb13ae715a22"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/memory_tool_instructions/background_learning_instructions.txt": {
+    "mtime": 1793728020.0987003,
+    "seen": 1794174925.4838567,
+    "ast_hash": "c45e6921a6cd79477f289f7a08daeb6b",
+    "semantic_hash": "c45e6921a6cd79477f289f7a08daeb6b"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/memory_tool_instructions/manage_memory_instructions.txt": {
+    "mtime": 1793728020.046441,
+    "seen": 1794174925.4838586,
+    "ast_hash": "5616d33b4fdaefb60de9d1527fafb2ae",
+    "semantic_hash": "5616d33b4fdaefb60de9d1527fafb2ae"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/memory_tool_instructions/search_memory_instructions.txt": {
+    "mtime": 1793728020.0682795,
+    "seen": 1794174925.4838607,
+    "ast_hash": "38974744da06c975e6f368ad45e532f2",
+    "semantic_hash": "38974744da06c975e6f368ad45e532f2"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/multimodal_evaluation/interpretation_rules.txt": {
+    "mtime": 1793728020.1752717,
+    "seen": 1794174925.4838626,
+    "ast_hash": "97719924ff1752f1f183f690c990ec12",
+    "semantic_hash": "97719924ff1752f1f183f690c990ec12"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/multimodal_evaluation/show_empathy_rules.txt": {
+    "mtime": 1793728146.5733733,
+    "seen": 1794174925.4838645,
+    "ast_hash": "fa9a6123056cc76966ada8c5e69e1c87",
+    "semantic_hash": "fa9a6123056cc76966ada8c5e69e1c87"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/multimodal_evaluation/show_interest_rules.txt": {
+    "mtime": 1793728146.5634525,
+    "seen": 1794174925.4838667,
+    "ast_hash": "e60ea2bc6fc72515e7414e2afd4388c5",
+    "semantic_hash": "e60ea2bc6fc72515e7414e2afd4388c5"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/multimodal_evaluation/speak_clearly_rules.txt": {
+    "mtime": 1793728146.5871944,
+    "seen": 1794174925.4838686,
+    "ast_hash": "679abab81438c346cf395aeb7a8cb1e5",
+    "semantic_hash": "679abab81438c346cf395aeb7a8cb1e5"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/personalities/format_when_to_show.txt": {
+    "mtime": 1793728020.5667856,
+    "seen": 1794174925.4838707,
+    "ast_hash": "539f1173c317b544507c6ad087fec582",
+    "semantic_hash": "539f1173c317b544507c6ad087fec582"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/personalities/gender_note.txt": {
+    "mtime": 1793728020.5798812,
+    "seen": 1794174925.4838731,
+    "ast_hash": "4d1dd8a69d218b9687b39f75d7072cb1",
+    "semantic_hash": "4d1dd8a69d218b9687b39f75d7072cb1"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/personalities/repetition_warning.txt": {
+    "mtime": 1793728020.5974984,
+    "seen": 1794174925.4838755,
+    "ast_hash": "391a2f333bb2462d5d0907b4f8c5713e",
+    "semantic_hash": "391a2f333bb2462d5d0907b4f8c5713e"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/personalities/response_examples.txt": {
+    "mtime": 1793728020.6585054,
+    "seen": 1794174925.4838784,
+    "ast_hash": "cd65e38dfed57689ab50462ba62b320e",
+    "semantic_hash": "cd65e38dfed57689ab50462ba62b320e"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/personalities/strong.txt": {
+    "mtime": 1793863640.5923684,
+    "seen": 1794174925.4838808,
+    "ast_hash": "ba8bac53bee35bad9e88882e118e13f6",
+    "semantic_hash": "ba8bac53bee35bad9e88882e118e13f6"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/personalities/subtle.txt": {
+    "mtime": 1793863640.6124046,
+    "seen": 1794174925.4838834,
+    "ast_hash": "d1dce5a96089dac92acfc4522f4a456f",
+    "semantic_hash": "d1dce5a96089dac92acfc4522f4a456f"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/progress_summary/thread_extractor_instructions.txt": {
+    "mtime": 1793728020.5287995,
+    "seen": 1794174925.4838858,
+    "ast_hash": "5837c00446723b2a330d25a4e09c6034",
+    "semantic_hash": "5837c00446723b2a330d25a4e09c6034"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/translator/basic_translate_prompt.txt": {
+    "mtime": 1793728019.9873803,
+    "seen": 1794174925.4838881,
+    "ast_hash": "5a60d7991c1f661c36d465c053a962f1",
+    "semantic_hash": "5a60d7991c1f661c36d465c053a962f1"
+  },
+  "virtual-patient/virtual-patient-api/config/prompts/translator/structured_translate_prompt.txt": {
+    "mtime": 1793728020.0007668,
+    "seen": 1794174925.4838905,
+    "ast_hash": "c9f938349fee7788a4e57c3d96d75022",
+    "semantic_hash": "c9f938349fee7788a4e57c3d96d75022"
+  },
+  "virtual-patient/virtual-patient-api/requirements-dev.txt": {
+    "mtime": 1794174000.143124,
+    "seen": 1794174925.4838927,
+    "ast_hash": "7d21d731bb94252f5b0076e037753e60",
+    "semantic_hash": "7d21d731bb94252f5b0076e037753e60"
+  },
+  "virtual-patient/virtual-patient-api/requirements.constraints.txt": {
+    "mtime": 1793658432.9308164,
+    "seen": 1794174925.483895,
+    "ast_hash": "39121584b49072e87c0fe2592fc5d207",
+    "semantic_hash": "39121584b49072e87c0fe2592fc5d207"
+  },
+  "virtual-patient/virtual-patient-api/requirements.txt": {
+    "mtime": 1793658432.929889,
+    "seen": 1794174925.4838977,
+    "ast_hash": "e008ce1217a314842ff0d9e74bd1a9e8",
+    "semantic_hash": "e008ce1217a314842ff0d9e74bd1a9e8"
+  },
+  "virtual-patient/virtual-patient-ui/index.html": {
+    "mtime": 1794172222.093111,
+    "seen": 1794174925.4838994,
+    "ast_hash": "0e35d525a2539979d749ff6df31d3469",
+    "semantic_hash": "0e35d525a2539979d749ff6df31d3469"
+  },
+  "virtual-patient/virtual-patient-ui/src/styles/README.md": {
+    "mtime": 1794173166.1293664,
+    "seen": 1794174925.483901,
+    "ast_hash": "d5279bcc55d2b1c8021828dd85c33f19",
+    "semantic_hash": "d5279bcc55d2b1c8021828dd85c33f19"
+  },
+  "virtual-patient/virtual-patient-api/Dockerfile": {
+    "mtime": 1794173999.7990458,
+    "seen": 1794174925.4839022,
+    "ast_hash": "642ba5007ed778f4555830aeb1752367",
+    "semantic_hash": "642ba5007ed778f4555830aeb1752367"
+  },
+  "virtual-patient/virtual-patient-api/alembic.ini": {
+    "mtime": 1786484900.0829072,
+    "seen": 1794174925.4839046,
+    "ast_hash": "d148f1799ac3193efc1e68f996d183d1",
+    "semantic_hash": "d148f1799ac3193efc1e68f996d183d1"
+  },
+  "virtual-patient/virtual-patient-ui/Dockerfile": {
+    "mtime": 1793918408.0602503,
+    "seen": 1794174925.483907,
+    "ast_hash": "c8a49b90f6df6076049c1c40966b7ccb",
+    "semantic_hash": "c8a49b90f6df6076049c1c40966b7ccb"
+  },
+  "virtual-patient/virtual-patient-ui/nginx.conf": {
+    "mtime": 1793918407.6439877,
+    "seen": 1794174925.4839096,
+    "ast_hash": "c61dbb21131bed78bccd33794d81a8c1",
+    "semantic_hash": "c61dbb21131bed78bccd33794d81a8c1"
+  },
+  "virtual-patient/virtual-patient-ui/src/index.css": {
+    "mtime": 1788883035.042544,
+    "seen": 1794174925.483912,
+    "ast_hash": "5203ade48014a4cf0cbba07edbf8da3c",
+    "semantic_hash": "5203ade48014a4cf0cbba07edbf8da3c"
+  },
+  "virtual-patient/virtual-patient-ui/src/styles/design-system.css": {
+    "mtime": 1794173999.4317095,
+    "seen": 1794174925.4839141,
+    "ast_hash": "5550967da173589fdd14e33cfe2a8162",
+    "semantic_hash": "5550967da173589fdd14e33cfe2a8162"
+  }
+}

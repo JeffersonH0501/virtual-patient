@@ -3,13 +3,28 @@
 import pytest
 from pydantic import ValidationError
 
-from app.models.user import UserCreate, UserRole, UserUpdate
+from app.models.user import AdminUserCreate, UserCreate, UserRole, UserUpdate, User
+from app.routers.users import require_superuser
+from fastapi import HTTPException
 
 
-def test_public_registration_accepts_student_and_teacher_roles() -> None:
-    for role in (UserRole.STUDENT, UserRole.TEACHER):
-        request = UserCreate(email=f"new-{role.value}@example.org", name="New User", password="secret", role=role)
-        assert request.role == role
+def test_public_registration_defaults_to_student() -> None:
+    assert UserCreate(email="new@example.org", name="New User", password="secret").role == UserRole.STUDENT
+
+
+def test_admin_creation_cannot_create_superusers() -> None:
+    for role in (UserRole.TEACHER, UserRole.STUDENT):
+        assert AdminUserCreate(email="new@example.org", name="New User", password="secret", role=role).role == role
+    with pytest.raises(ValidationError):
+        AdminUserCreate(email="new@example.org", name="New User", password="secret", role="superuser")
+
+
+@pytest.mark.parametrize("role", [UserRole.STUDENT, UserRole.TEACHER])
+def test_management_rejects_non_superusers(role) -> None:
+    user = User(id=1, email="user@example.org", name="User", role=role)
+    with pytest.raises(HTTPException) as failure:
+        require_superuser(user)
+    assert failure.value.status_code == 403
 
 
 def test_public_registration_rejects_superuser_role() -> None:

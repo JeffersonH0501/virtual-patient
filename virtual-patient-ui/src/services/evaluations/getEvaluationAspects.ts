@@ -1,8 +1,10 @@
 import { transformToCamelCase } from '../../utils/apiTransform';
 import { API_URL } from '../../utils/request';
 import { getAuthHeaders } from '../auth/authHeaders';
+import {MultimodalAspectMetadata} from '../../types/evaluation';
 
 export type EvaluationAspectsResponse = {
+  multimodalAspects?: MultimodalAspectMetadata[];
   aspects: {
     generalCommunication: string[];
     showInterest: string[];

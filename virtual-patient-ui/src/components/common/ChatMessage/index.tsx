@@ -1,6 +1,6 @@
 import {FC, useEffect, useRef, useState} from 'react';
 import {Message} from '../../../types';
-import {Play, Pause} from '../../../icons';
+import {Play, Pause} from 'lucide-react';
 import doctorImage from '../../../assets/doctor.png';
 import patientImageM from '../../../assets/patient_m.png';
 
@@ -82,7 +82,7 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <article className={`flex gap-4 mb-6 ${isDoctor ? 'flex-row-reverse' : ''}`}>
+    <article className={`flex gap-layout mb-layout ${isDoctor ? 'flex-row-reverse' : ''}`}>
       <img
         src={
           message.senderAvatar ||
@@ -94,20 +94,20 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
         className="w-10 h-10 rounded-full"
       />
       <div
-        className={`p-4 rounded-xl max-w-chat-bubble max-sm:max-w-full text-gray-900 text-left flex flex-col gap-3 ${
-          isDoctor ? 'bg-blue-50' : 'bg-gray-100'
+        className={`p-inset rounded-xl max-w-chat-bubble max-sm:max-w-full text-neutral-900 text-left flex flex-col gap-layout ${
+          isDoctor ? 'bg-brand-50' : 'bg-neutral-100'
         }`}
       >
         {message.audioUrl && (
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-layout">
             <button
               onClick={togglePlayPause}
-              className="relative flex-shrink-0 w-9 h-9 bg-blue-500 hover:bg-blue-600 rounded-full flex items-center justify-center transition-colors"
+              className="ui-icon-button relative w-9 h-9"
             >
               {isPlaying ? (
-                <span className="[&_svg]:h-6 [&_svg]:w-6"><Pause color="currentColor" /></span>
+                <span className="[&_svg]:h-6 [&_svg]:w-6"><Pause /></span>
               ) : (
-                <span className="[&_svg]:h-6 [&_svg]:w-6"><Play color="currentColor" /></span>
+                <span className="[&_svg]:h-6 [&_svg]:w-6"><Play /></span>
               )}
               <svg className="absolute inset-0 w-9 h-9 -rotate-90" viewBox="0 0 48 48">
                 <circle
@@ -133,7 +133,7 @@ export const ChatMessage: FC<ChatMessageProps> = ({message, audioAutoPlayEnabled
               </svg>
             </button>
             <audio ref={audioRef} src={message.audioUrl} />
-            <div className="flex-1 border-l border-gray-300 pl-3">{message.content}</div>
+            <div className="flex-1 border-l border-neutral-300 pl-inset">{message.content}</div>
           </div>
         )}
         {!message.audioUrl && message.content}

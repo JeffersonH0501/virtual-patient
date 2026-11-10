@@ -14,11 +14,13 @@ from sqlalchemy import (
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     JSON,
     String,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -66,8 +68,8 @@ class InterviewRecordingDB(Base):
     ended_at = Column(DateTime(timezone=True), nullable=True)
     duration_ms = Column(BigInteger, nullable=True)
     capture_config = Column(JSON, nullable=False, default=dict)
-    consent_basis = Column(String(30), nullable=False, default="institutional")
-    consent_policy_version = Column(String(80), nullable=False)
+    consent_basis = Column(String(30), nullable=False, default="managed-externally")
+    consent_policy_version = Column(String(80), nullable=False, default="not-recorded")
     retention_expires_at = Column(DateTime(timezone=True), nullable=True)
     failure_code = Column(String(80), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -84,9 +86,39 @@ class InterviewRecordingDB(Base):
         back_populates="recording",
         cascade="all, delete-orphan",
     )
+    segments = relationship(
+        "InterviewRecordingSegmentDB", cascade="all, delete-orphan",
+        order_by="InterviewRecordingSegmentDB.sequence",
+    )
 
     __table_args__ = (
         CheckConstraint("duration_ms IS NULL OR duration_ms >= 0", name="ck_recording_duration"),
+    )
+
+
+class InterviewRecordingSegmentDB(Base):
+    __tablename__ = "interview_recording_segments"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    recording_id = Column(
+        String(36), ForeignKey("interview_recordings.id", ondelete="CASCADE"), nullable=False,
+    )
+    sequence = Column(Integer, nullable=False)
+    offset_ms = Column(BigInteger, nullable=False)
+    duration_ms = Column(BigInteger, nullable=True)
+    capture_config = Column(JSON, nullable=False, default=dict)
+    calibration = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    sealed_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("recording_id", "sequence", name="uq_recording_segment_sequence"),
+        Index("uq_recording_active_segment", "recording_id", unique=True,
+              postgresql_where=text("sealed_at IS NULL"), sqlite_where=text("sealed_at IS NULL")),
+        CheckConstraint("sequence >= 0 AND offset_ms >= 0", name="ck_recording_segment_position"),
+        CheckConstraint("(duration_ms IS NULL AND sealed_at IS NULL) OR "
+                        "(duration_ms >= 0 AND duration_ms IS NOT NULL AND sealed_at IS NOT NULL)",
+                        name="ck_recording_segment_seal"),
     )
 
 
@@ -101,6 +133,7 @@ class InterviewMediaAssetDB(Base):
         index=True,
     )
     kind = Column(String(30), nullable=False)
+    segment_id = Column(String(36), ForeignKey("interview_recording_segments.id", ondelete="CASCADE"), nullable=True)
     storage_key = Column(String(500), nullable=False, unique=True)
     content_type = Column(String(100), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
@@ -112,7 +145,10 @@ class InterviewMediaAssetDB(Base):
     recording = relationship("InterviewRecordingDB", back_populates="assets")
 
     __table_args__ = (
-        UniqueConstraint("recording_id", "kind", name="uq_recording_media_kind"),
+        Index("uq_recording_legacy_media_kind", "recording_id", "kind", unique=True,
+              postgresql_where=text("segment_id IS NULL"), sqlite_where=text("segment_id IS NULL")),
+        Index("uq_recording_segment_media_kind", "segment_id", "kind", unique=True,
+              postgresql_where=text("segment_id IS NOT NULL"), sqlite_where=text("segment_id IS NOT NULL")),
         CheckConstraint("size_bytes >= 0", name="ck_media_asset_size"),
         CheckConstraint("duration_ms >= 0", name="ck_media_asset_duration"),
     )
@@ -135,6 +171,8 @@ class InterviewTurnDB(Base):
         index=True,
     )
     speaker = Column(String(20), nullable=False)
+    segment_id = Column(String(36), ForeignKey("interview_recording_segments.id", ondelete="CASCADE"),
+                        nullable=True, index=True)
     sequence = Column(Integer, nullable=False)
     start_ms = Column(BigInteger, nullable=False)
     end_ms = Column(BigInteger, nullable=False)
@@ -225,6 +263,8 @@ class RecordingUnavailableRequest(BaseModel):
 
 
 class TurnUpsertRequest(BaseModel):
+    patient_roi_snapshots: Optional[list[dict]] = None
+    segment_id: Optional[str] = Field(default=None, min_length=36, max_length=36)
     speaker: Literal["student", "patient"]
     sequence: int = Field(ge=0)
     start_ms: int = Field(ge=0)
@@ -261,8 +301,6 @@ class InterviewRecapResponse(BaseModel):
     recording_status: RecordingStatus
     duration_ms: Optional[int] = None
     observation_processing: Dict[str, Any] = Field(default_factory=dict)
-    student_audio_source: Optional[str] = None
-    student_video_source: Optional[str] = None
-    patient_audio_source: Optional[str] = None
-    patient_video_source: Optional[str] = None
+    evaluation_processing: Dict[str, Any] = Field(default_factory=dict)
+    blocks: Optional[List[Dict[str, Any]]] = None
     turns: List[RecapTurn] = Field(default_factory=list)

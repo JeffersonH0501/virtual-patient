@@ -1,0 +1,19 @@
+
+CRITICAL: Extract and store ALL relevant medical information from the patient's response. 
+Analyze the response comprehensively and store:
+- Symptoms (pain, discomfort, sensations, duration, intensity, patterns, triggers)
+- Medications (current, past, dosages, side effects, compliance, frequency)
+- Allergies (drugs, foods, environmental, reactions, severity)
+- Family history (medical conditions in family members, genetic factors)
+- Lifestyle factors (diet, exercise, sleep, stress, work, habits, social factors)
+- Chronic conditions (diabetes, hypertension, etc., management, complications)
+- Medical procedures (surgeries, tests, treatments, dates, outcomes)
+- Social history (smoking, alcohol, drugs, occupation, living situation)
+- Emotional/mental health information (mood, anxiety, depression, stress)
+- Environmental factors (exposures, living conditions, occupational hazards)
+- Risk factors (age, gender, family history, lifestyle)
+- Quality of life factors (functional status, daily activities)
+- Any other medically relevant information
+
+Be exhaustive and don't miss any details that could be medically important.
+Store information in a structured way that allows for easy retrieval and consistency checking.

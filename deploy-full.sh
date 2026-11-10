@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
+set +x
 set -Eeuo pipefail
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.full.yml"
 ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env.full}"
 
-if [[ ! -f "$ENV_FILE" ]]; then
-  echo "Missing $ENV_FILE" >&2
+if [[ ! -f "$ENV_FILE" || ! -r "$ENV_FILE" ]]; then
+  echo "Missing or unreadable environment file: $ENV_FILE" >&2
   echo "Create it with: cp .env.full.example .env.full" >&2
   exit 1
 fi
@@ -28,7 +28,7 @@ validate_configuration() {
     AZURE_OPENAI_LLM_DEPLOYMENT_NAME AZURE_OPENAI_LLM_MINI_DEPLOYMENT_NAME
     AZURE_OPENAI_STT_DEPLOYMENT_NAME AZURE_OPENAI_TTS_DEPLOYMENT_NAME
     AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
-    VITE_RECAPTCHA_SITE_KEY
+    VITE_RECAPTCHA_SITE_KEY RECAPTCHA_SECRET_KEY
   )
 
   for key in "${required[@]}"; do
@@ -39,23 +39,25 @@ validate_configuration() {
     fi
   done
 
-  for certificate in cert.pem key.pem; do
-    if [[ ! -f "$ROOT_DIR/virtual-patient-ui/ssl/$certificate" ]]; then
-      echo "Missing TLS file: virtual-patient-ui/ssl/$certificate" >&2
+  local deployment_file
+  for deployment_file in config/deployment.json config/secrets/video-processing-worker-token.txt; do
+    if [[ ! -s "$ROOT_DIR/$deployment_file" ]]; then
+      echo "Missing or empty deployment file: $deployment_file" >&2
       exit 1
     fi
   done
+
 }
 
 wait_for_ui() {
   local port
   local attempt
-  port="$(env_value HTTPS_PORT)"
-  port="${port:-443}"
+  port="${HTTP_PORT:-$(env_value HTTP_PORT)}"
+  port="${port:-8091}"
 
   for ((attempt = 1; attempt <= 60; attempt++)); do
-    if curl --fail --insecure --silent --show-error "https://127.0.0.1:${port}/health" >/dev/null 2>&1; then
-      echo "UI is ready: https://127.0.0.1:${port}"
+    if curl --fail --silent --show-error "http://127.0.0.1:${port}/health" >/dev/null 2>&1; then
+      echo "UI is ready: http://127.0.0.1:${port}"
       return 0
     fi
     sleep 2
@@ -77,12 +79,13 @@ case "$action" in
     validate_configuration
     compose up -d --build postgres
     compose --profile tools run --rm setup
-    compose up -d --build api ui
+    compose up -d --build api video-processing-worker ui
     verify
     ;;
   up)
     validate_configuration
-    compose up -d postgres api ui
+    compose up -d postgres api video-processing-worker ui
+    verify
     ;;
   verify)
     validate_configuration
@@ -90,7 +93,7 @@ case "$action" in
     ;;
   restart)
     validate_configuration
-    compose up -d --build --force-recreate api ui
+    compose up -d --build --force-recreate api video-processing-worker ui
     verify
     ;;
   status)

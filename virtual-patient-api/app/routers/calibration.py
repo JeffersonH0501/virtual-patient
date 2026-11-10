@@ -1,48 +1,37 @@
-"""Authenticated temporary multimodal calibration processing.
-
-The active flow processes gaze, camera, and voice as independent checkpoints.
-Each upload is analyzed in a crash-isolated worker and deleted immediately. The
-client keeps passed checkpoint results in memory, assembles the final draft, and
-only persists it when the user starts the simulation. The original combined
-endpoint remains available for compatibility with earlier clients.
-
-No ``CalibrationAttemptDB`` or ``CalibrationMediaAssetDB`` row is ever created by
-this flow, and the calibration media is never stored permanently (Requirement:
-zero calibration DB rows and zero permanent calibration files before the
-interview starts).
-"""
+"""Authenticated calibration processing with private interview references."""
 
 from __future__ import annotations
 
-import asyncio
 import json
-import logging
 import os
-import sys
+import logging
 import tempfile
 from time import perf_counter
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import func
+from app.core.database import get_db
+from app.media.calibration import preserve_capture, discard_capture_references, require_pending_resume
+from app.media.storage import get_media_storage
+from app.models.calibration_capture import CalibrationCaptureDB
+from app.models.medical_interview import MedicalInterviewDB
+from app.controllers.interview_lifecycle import lock_row
 
 from app.core.auth import get_current_active_user
-from app.core.database import get_db
 from app.models.calibration import (
-    CalibrationCaptureMetadata,
+    UnifiedCalibrationMetadata, GuidedOnlyMetadata,
     CameraCalibrationMetadata,
-    GazeCalibrationMetadata,
-    VoiceCalibrationMetadata,
+    GazeCalibrationMetadata, LiveGazeMetadata,
 )
-from app.multimodal.schemas import PersonalBaseline
 from app.multimodal.video_processing_client import (
     process_calibration_video,
     warmup_video_processing_worker,
 )
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.utils.runtime_metrics import current_rss_mb, process_id
 
 router = APIRouter(prefix="/calibration", tags=["calibration"])
@@ -57,12 +46,32 @@ ALLOWED_VIDEO = {"video/webm": ".webm", "video/mp4": ".mp4"}
 # clinical or methodology parameter.
 MAX_CALIBRATION_BYTES = 100 * 1024 * 1024  # 100 MiB
 CALIBRATION_UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1 MiB
-CALIBRATION_PROCESS_TIMEOUT_SECONDS = 180
 
-# Versioned identifier for this calibration protocol/result. Persisted with the
-# calibration result so a stored baseline is traceable to how it was produced.
-CALIBRATION_VERSION = "multimodal_calibration_v1"
 
+@router.get("/tests")
+def list_calibration_tests(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """List the authenticated superuser's retained test references."""
+    if current_user.role != UserRole.SUPERUSER:
+        raise HTTPException(403, "Calibration tests are only available to superusers")
+    rows = db.query(MedicalInterviewDB.id, MedicalInterviewDB.created_at,
+        func.count(CalibrationCaptureDB.id).label("capture_count")).join(
+        CalibrationCaptureDB, CalibrationCaptureDB.medical_interview_id == MedicalInterviewDB.id).filter(
+        MedicalInterviewDB.user_id == current_user.id,
+        MedicalInterviewDB.interview_metadata["calibration_test"].as_boolean().is_(True),
+    ).group_by(MedicalInterviewDB.id, MedicalInterviewDB.created_at).order_by(MedicalInterviewDB.created_at.desc()).all()
+    return {"tests": [{"interview_id": row.id, "created_at": row.created_at, "capture_count": row.capture_count} for row in rows]}
+
+@router.delete("/drafts/{interview_id}", status_code=204)
+def discard_calibration_draft(interview_id: int, current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db)):
+    """Erase calibration references while preserving the owned interview record."""
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
+    if interview is None or interview.user_id != current_user.id:
+        raise HTTPException(404, "Interview not found")
+    if interview.start_time is not None or interview.recording is not None or interview.messages:
+        raise HTTPException(409, "A started interview cannot be discarded as calibration")
+    discard_capture_references(db, interview)
+    return None
 
 @router.post("/warm-up")
 async def warm_up_visual_worker(
@@ -84,66 +93,23 @@ async def warm_up_visual_worker(
     return {"status": "ready"}
 
 
-class CalibrationProcessResponse(BaseModel):
-    """Result of a temporary calibration processing request.
-
-    The client keeps this in memory as a draft. Nothing is persisted server-side
-    until the user starts an interview and the draft is saved into
-    ``interview_metadata.calibration``.
-    """
-
-    status: str  # "passed" | "failed"
-    failure_reason: str | None
-    calibration_version: str
-    profile: dict | None
-    quality: dict | None
-    personal_baseline: PersonalBaseline | None
-
-
 class CalibrationStageResponse(BaseModel):
-    stage: Literal["gaze", "camera", "voice"]
+    stage: Literal["gaze", "camera", "unified", "guided"]
     status: Literal["passed", "failed"]
     failure_reason: str | None
     result: dict | None
-
-
-async def _run_isolated_worker(path: Path, metadata: CalibrationCaptureMetadata, mode: str) -> dict:
-    """Run native libraries in a child process so an abort cannot kill the API."""
-    with tempfile.TemporaryDirectory(prefix="calibration-worker-") as directory:
-        metadata_path = Path(directory) / "metadata.json"
-        result_path = Path(directory) / f"{mode}-result.json"
-        metadata_path.write_text(metadata.model_dump_json(), encoding="utf-8")
-        process = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "app.nonverbal.calibration_worker", mode,
-            str(path), str(metadata_path), str(result_path),
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-            env={**os.environ, "PYTHONUNBUFFERED": "1"},
-        )
-        try:
-            _, stderr = await asyncio.wait_for(process.communicate(), timeout=CALIBRATION_PROCESS_TIMEOUT_SECONDS)
-        except TimeoutError:
-            process.kill()
-            await process.communicate()
-            raise RuntimeError("Calibration worker timed out")
-        if not result_path.is_file():
-            detail = stderr.decode("utf-8", errors="replace")[-2000:]
-            raise RuntimeError(f"Calibration worker exited with {process.returncode}: {detail}")
-        return json.loads(result_path.read_text(encoding="utf-8"))
+    attestation: str | None = None
 
 
 async def _run_timed_worker(
     path: Path,
-    metadata: CalibrationCaptureMetadata,
+    metadata: CameraCalibrationMetadata | GazeCalibrationMetadata | GuidedOnlyMetadata,
     mode: str,
 ) -> tuple[dict, float]:
     """Run one calibration branch and emit its end-to-end wall-clock time."""
     started_at = perf_counter()
     try:
-        if mode in {"video", "gaze", "camera"}:
-            result = await process_calibration_video(path, metadata, mode)
-        else:
-            result = await _run_isolated_worker(path, metadata, mode)
+        result = await process_calibration_video(path, metadata, mode)
     except Exception:
         elapsed = perf_counter() - started_at
         logger.exception(
@@ -159,39 +125,6 @@ async def _run_timed_worker(
         elapsed,
     )
     return result, elapsed
-
-
-def _assemble_result(video_result: dict, audio_result: dict) -> tuple[str, str | None, dict, dict, dict | None]:
-    """Combine the isolated video/audio worker outputs into a calibration result.
-
-    Returns ``(status, failure_reason, profile, quality, personal_baseline)``.
-    The assembly logic is unchanged from the previous durable flow so a valid
-    calibration produces a functionally equivalent numeric result.
-    """
-    profile = video_result["profile"]
-    quality = video_result["quality"]
-    quality["valid_speech_duration_ms"] = audio_result["voiced_duration_ms"]
-    quality["clipping_detected"] = audio_result["clipping_detected"]
-    audio_passed = (
-        audio_result["voiced_duration_ms"] >= 3000
-        and not audio_result["clipping_detected"]
-        and audio_result["baseline_f0_semitones"] is not None
-        and audio_result["baseline_loudness"] is not None
-    )
-    if video_result["neutral_head"] and audio_passed:
-        camera_center = profile.get("camera_reference_center") or [0.0, 0.0]
-        profile["personal_baseline"] = {
-            **video_result["neutral_head"],
-            "baseline_f0_semitones": audio_result["baseline_f0_semitones"],
-            "baseline_loudness": audio_result["baseline_loudness"],
-            "neutral_gaze_yaw": float(camera_center[0]),
-            "neutral_gaze_pitch": float(camera_center[1]),
-        }
-    passed = bool(video_result["passed"] and audio_passed and profile.get("personal_baseline"))
-    failure_reason = None if passed else (video_result["failure_reason"] or "insufficient_audio")
-    result_status = "passed" if passed else "failed"
-    personal_baseline = profile.get("personal_baseline") if passed else None
-    return result_status, failure_reason, profile, quality, personal_baseline
 
 
 async def _write_upload_to_temp(upload: UploadFile, extension: str) -> tuple[Path, int]:
@@ -218,6 +151,10 @@ async def _write_upload_to_temp(upload: UploadFile, extension: str) -> tuple[Pat
             handle.write(chunk)
         handle.flush()
         os.fsync(handle.fileno())
+    except BaseException:
+        handle.close()
+        temp_path.unlink(missing_ok=True)
+        raise
     finally:
         if not handle.closed:
             handle.close()
@@ -228,8 +165,7 @@ async def _write_upload_to_temp(upload: UploadFile, extension: str) -> tuple[Pat
 def _delete_temp(path: Path | None) -> None:
     """Delete a temporary calibration file, ignoring an already-gone file.
 
-    Calibration media is never persisted; this is always invoked from a
-    ``finally`` block so a processing failure still removes the file.
+    The private reference copy is independent of this worker input.
     """
     if path is None:
         return
@@ -241,122 +177,265 @@ def _delete_temp(path: Path | None) -> None:
         logger.warning("calibration_process_event event=temp_delete_failed")
 
 
-@router.post("/process", response_model=CalibrationProcessResponse)
-async def process_calibration(
-    video: Annotated[UploadFile, File()],
+@router.post("/gaze-test/frame")
+async def process_gaze_test_frame(
+    media: Annotated[UploadFile, File()],
+    attestations_json: Annotated[str, Form()],
+    geometry_json: Annotated[str, Form()],
+    attempt_id: Annotated[str, Form(min_length=36, max_length=36)],
+    current_user: User = Depends(get_current_active_user),
+):
+    """Evaluate one temporary frame using this user's signed test calibration."""
+    if current_user.role != UserRole.SUPERUSER:
+        raise HTTPException(403, "Gaze tests are only available to superusers")
+    from app.multimodal.calibration_attestation import verify_calibration_checkpoints
+    try:
+        attestations = json.loads(attestations_json)
+        geometry = json.loads(geometry_json)
+    except (TypeError, ValueError) as error:
+        raise HTTPException(422, "Invalid gaze test metadata") from error
+    verified = verify_calibration_checkpoints(current_user.id, 0, attestations, attempt_id)
+    if geometry != verified["profile"]["capture_geometry"]:
+        raise HTTPException(409, "Capture geometry changed; recalibration is required")
+    if media.content_type != "image/jpeg":
+        raise HTTPException(415, "A JPEG frame is required")
+    try:
+        content = await media.read(2 * 1024 * 1024 + 1)
+    finally:
+        await media.close()
+    if not content or len(content) > 2 * 1024 * 1024:
+        raise HTTPException(413, "Invalid gaze test frame size")
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, prefix="virtual-patient-gaze-", suffix=".jpg") as handle:
+            path = Path(handle.name)
+            handle.write(content)
+        result = await process_calibration_video(path, LiveGazeMetadata(profile=verified["profile"]), "live-gaze")
+        return {"state": result.get("state") if result.get("state") in {"inside", "outside"} else "indeterminate"}
+    except Exception as error:
+        logger.exception("Live gaze processing failed")
+        raise HTTPException(503, "Gaze test processing failed") from error
+    finally:
+        _delete_temp(path)
+
+
+@router.post("/nonverbal-test", response_model=CalibrationStageResponse)
+async def process_nonverbal_test(
+    stage: Annotated[Literal["unified", "camera", "guided"], Form()],
+    media: Annotated[UploadFile, File()],
     duration_ms: Annotated[int, Form(ge=1)],
     metadata_json: Annotated[str, Form()],
+    attempt_id: Annotated[str, Form(min_length=36, max_length=36)],
+    current_user: User = Depends(get_current_active_user),
+):
+    """Analyze a superuser's temporary capture without an interview or retained media."""
+    if current_user.role != UserRole.SUPERUSER:
+        raise HTTPException(403, "Nonverbal tests are only available to superusers")
+    from jose import jwt, JWTError
+    from app.core.config import settings
+    from app.multimodal.calibration_attestation import AUDIENCE, sign_checkpoint, verify_calibration_checkpoints
+
+    try:
+        payload = json.loads(metadata_json)
+        metadata_type = {"unified": UnifiedCalibrationMetadata, "camera": CameraCalibrationMetadata,
+                         "guided": GuidedOnlyMetadata}[stage]
+        metadata = metadata_type.model_validate(payload)
+        if stage == "unified" and metadata.camera_reference_end_ms > duration_ms:
+            raise ValueError("Camera interval exceeds captured duration")
+        if stage == "guided":
+            if metadata.guided_checks[-1].end_ms > duration_ms:
+                raise ValueError("Guided checks exceed captured duration")
+            from app.models.calibration import NONVERBAL_CHECK_KINDS
+            if tuple(item.kind for item in metadata.guided_checks) == NONVERBAL_CHECK_KINDS:
+                metadata.profile = {}
+                metadata.camera_result = {}
+            else:
+                verified = verify_calibration_checkpoints(current_user.id, 0, metadata.attestations, attempt_id)
+                if verified["profile"]["capture_geometry"] != metadata.geometry.model_dump(mode="json"):
+                    raise ValueError("Capture geometry changed")
+                camera = jwt.decode(metadata.attestations["camera"], settings.secret_key,
+                                    algorithms=["HS256"], audience=AUDIENCE)
+                metadata.profile = verified["profile"]
+                metadata.camera_result = camera["result"]
+            metadata.attestations = {}
+        elif stage == "camera":
+            gaze = jwt.decode(payload["attestations"]["gaze"], settings.secret_key,
+                              algorithms=["HS256"], audience=AUDIENCE)
+            if (gaze["sub"] != str(current_user.id) or gaze["interview_id"] != 0
+                    or gaze["stage"] != "gaze" or gaze.get("resume_attempt_id") != attempt_id
+                    or gaze["result"].get("passed") is not True
+                    or gaze["result"]["profile"]["affine_matrix"] != metadata.affine_matrix
+                    or gaze["metadata"]["geometry"] != metadata.geometry.model_dump(mode="json")):
+                raise ValueError("Camera checkpoint does not match gaze calibration")
+        if hasattr(metadata, "experimental_quality_bypass"):
+            metadata.experimental_quality_bypass = False
+    except (ValueError, TypeError, KeyError, IndexError, JWTError) as error:
+        raise HTTPException(422, "Invalid nonverbal test metadata") from error
+
+    extension = ALLOWED_VIDEO.get((media.content_type or "").split(";", 1)[0].lower())
+    if extension is None:
+        raise HTTPException(415, "Unsupported calibration media type")
+    path = None
+    try:
+        path, size = await _write_upload_to_temp(media, extension)
+        if not size:
+            raise HTTPException(400, "Calibration media upload is empty")
+        result, elapsed = await _run_timed_worker(path, metadata, stage)
+    except HTTPException:
+        raise
+    except Exception as error:
+        logger.exception("Nonverbal test processing failed")
+        raise HTTPException(503, "Nonverbal test processing failed") from error
+    finally:
+        _delete_temp(path)
+    if stage == "guided":
+        if isinstance(result.get("guided_checks"), dict):
+            result["guided_checks"]["processing_time_seconds"] = elapsed
+        return CalibrationStageResponse(stage=stage, status="passed" if result.get("passed") else "failed",
+                                        failure_reason=result.get("failure_reason"), result=result)
+    if stage == "unified":
+        checkpoints = {}
+        for name in ("gaze", "camera"):
+            outcome = result.get(name)
+            if outcome is None:
+                continue
+            data = metadata.model_dump(mode="json") if name == "gaze" else result["camera_metadata"]
+            passed = outcome.get("passed") is True
+            checkpoints[name] = {"stage": name, "status": "passed" if passed else "failed",
+                "failure_reason": outcome.get("failure_reason"), "result": outcome,
+                "attestation": sign_checkpoint(current_user.id, 0, name, outcome, data, attempt_id) if passed else None}
+        failed = result.get("failed_stage")
+        return CalibrationStageResponse(stage=stage, status="passed" if result.get("passed") else "failed",
+            failure_reason=(result.get(failed) or {}).get("failure_reason") if failed else None,
+            result={"checkpoints": checkpoints, "failed_stage": failed, "processing_time_seconds": elapsed})
+    passed = result.get("passed") is True
+    return CalibrationStageResponse(stage=stage, status="passed" if passed else "failed",
+        failure_reason=result.get("failure_reason"), result=result,
+        attestation=sign_checkpoint(current_user.id, 0, stage, result, metadata.model_dump(mode="json"), attempt_id) if passed else None)
+
+
+@router.delete("/resume/{interview_id}/{attempt_id}", status_code=204)
+def discard_resume_calibration(
+    interview_id: int,
+    attempt_id: str,
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db),
 ):
-    """Process a calibration clip temporarily and return a result draft.
-
-    No database row and no permanent media asset are created. The upload is
-    streamed to a temporary file, analyzed by the crash-isolated video and audio
-    workers, and the temporary file is always deleted before returning.
-    """
-    try:
-        metadata = CalibrationCaptureMetadata.model_validate(json.loads(metadata_json))
-    except Exception as error:
-        raise HTTPException(status_code=422, detail="Invalid calibration metadata") from error
-    if metadata.voice_baseline_end_ms > duration_ms + 1000:
-        raise HTTPException(status_code=422, detail="Calibration metadata exceeds media duration")
-    content_type = (video.content_type or "").split(";", 1)[0].lower()
-    extension = ALLOWED_VIDEO.get(content_type)
-    if extension is None:
-        raise HTTPException(status_code=415, detail="Unsupported calibration media type")
-
-    temp_path: Path | None = None
-    try:
-        temp_path, size_bytes = await _write_upload_to_temp(video, extension)
-        if size_bytes <= 0:
-            raise HTTPException(status_code=400, detail="Calibration media upload is empty")
-
-        analysis_started_at = perf_counter()
-        video_result, video_seconds = await _run_timed_worker(temp_path, metadata, "video")
-        logger.info(
-            "Calibration video stage timing user_id=%s performance=%s",
-            current_user.id,
-            json.dumps(video_result.get("performance", {}), sort_keys=True),
-        )
-        audio_result, audio_seconds = await _run_timed_worker(temp_path, metadata, "audio")
-        total_seconds = perf_counter() - analysis_started_at
-        logger.info(
-            "Calibration analysis timing user_id=%s video_seconds=%.3f audio_seconds=%.3f total_seconds=%.3f slowest_branch=%s",
-            current_user.id,
-            video_seconds,
-            audio_seconds,
-            total_seconds,
-            "video" if video_seconds >= audio_seconds else "audio",
-        )
-    except HTTPException:
-        raise
-    except Exception:
-        logger.exception("Calibration processing failed user_id=%s", current_user.id)
-        return CalibrationProcessResponse(
-            status="failed",
-            failure_reason="processing_failed",
-            calibration_version=CALIBRATION_VERSION,
-            profile=None,
-            quality=None,
-            personal_baseline=None,
-        )
-    finally:
-        _delete_temp(temp_path)
-
-    result_status, failure_reason, profile, quality, baseline_payload = _assemble_result(
-        video_result, audio_result
-    )
-    personal_baseline = (
-        PersonalBaseline.model_validate(baseline_payload) if baseline_payload else None
-    )
-    return CalibrationProcessResponse(
-        status=result_status,
-        failure_reason=failure_reason,
-        calibration_version=CALIBRATION_VERSION,
-        profile=profile,
-        quality=quality,
-        personal_baseline=personal_baseline,
-    )
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
+    if interview is None or interview.user_id != current_user.id:
+        raise HTTPException(404, "Interview not found")
+    recording, _ = require_pending_resume(db, interview, attempt_id)
+    recording.capture_config = {key: value for key, value in recording.capture_config.items()
+                                if key != "resume_attempt"}
+    captures = db.query(CalibrationCaptureDB).filter(
+        CalibrationCaptureDB.medical_interview_id == interview_id,
+        CalibrationCaptureDB.capture_metadata["resume_attempt_id"].as_string() == attempt_id,
+    ).all()
+    keys = [capture.storage_key for capture in captures]
+    for capture in captures:
+        db.delete(capture)
+    db.commit()
+    for key in keys:
+        try:
+            get_media_storage().delete(key)
+        except (OSError, ValueError):
+            logger.warning("calibration_process_event event=resume_capture_delete_deferred")
 
 
 @router.post("/process-stage", response_model=CalibrationStageResponse)
 async def process_calibration_stage(
-    stage: Annotated[Literal["gaze", "camera", "voice"], Form()],
+    stage: Annotated[Literal["gaze", "camera", "unified", "guided"], Form()],
+    interview_id: Annotated[int, Form(ge=1)],
     media: Annotated[UploadFile, File()],
     duration_ms: Annotated[int, Form(ge=1)],
     metadata_json: Annotated[str, Form()],
     current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
+    resume_attempt_id: Annotated[str | None, Form()] = None,
 ):
-    """Analyze one temporary calibration checkpoint independently."""
+    """Preserve an owned capture, then analyze or reuse its recorded outcome."""
     metadata_types = {
+        "unified": UnifiedCalibrationMetadata, "guided": GuidedOnlyMetadata,
         "gaze": GazeCalibrationMetadata,
         "camera": CameraCalibrationMetadata,
-        "voice": VoiceCalibrationMetadata,
     }
     try:
         metadata_payload = json.loads(metadata_json)
-        if stage == "voice":
-            metadata_payload["duration_ms"] = duration_ms
         metadata = metadata_types[stage].model_validate(metadata_payload)
+        if stage == "unified" and metadata.camera_reference_end_ms > duration_ms:
+            raise ValueError("Camera interval exceeds captured duration")
+        if stage == "unified" and metadata.guided_checks and metadata.guided_checks[-1].end_ms > duration_ms:
+            raise ValueError("Guided checks exceed captured duration")
     except Exception as error:
         raise HTTPException(status_code=422, detail="Invalid calibration stage metadata") from error
 
     content_type = (media.content_type or "").split(";", 1)[0].lower()
+    if hasattr(metadata, "experimental_quality_bypass"):
+        experiment = db.get(MedicalInterviewDB, interview_id)
+        metadata.experimental_quality_bypass = bool(current_user.role == UserRole.SUPERUSER and resume_attempt_id is None
+            and experiment is not None and experiment.user_id == current_user.id and experiment.start_time is None
+            and (experiment.interview_metadata or {}).get("calibration_test") is True)
+    if stage == "guided":
+        from app.multimodal.calibration_attestation import verify_calibration_checkpoints
+        if current_user.role != UserRole.SUPERUSER:
+            raise HTTPException(403, "Guided checks are only available to superusers")
+        interview = db.get(MedicalInterviewDB, interview_id)
+        if interview is None or interview.user_id != current_user.id or not (interview.interview_metadata or {}).get("calibration_test"):
+            raise HTTPException(404, "Calibration test not found")
+        verified = verify_calibration_checkpoints(current_user.id, interview_id, metadata.attestations, resume_attempt_id, allow_experimental=True)
+        if verified["profile"]["capture_geometry"] != metadata.geometry.model_dump(mode="json"):
+            raise HTTPException(422, "Repeat calibration after changing capture geometry")
+        if metadata.guided_checks[-1].end_ms > duration_ms:
+            raise HTTPException(422, "Guided checks exceed captured duration")
+        camera_capture = db.get(CalibrationCaptureDB, verified["capture_ids"]["camera"])
+        if camera_capture is None or camera_capture.medical_interview_id != interview_id:
+            raise HTTPException(422, "Camera reference is no longer available")
+        metadata.profile = verified["profile"]
+        metadata.camera_result = (camera_capture.result or {}).get("camera", camera_capture.result)
+        metadata.attestations = {}
     extension = ALLOWED_VIDEO.get(content_type)
     if extension is None:
         raise HTTPException(status_code=415, detail="Unsupported calibration media type")
 
     temp_path: Path | None = None
+    capture = None
     try:
         temp_path, size_bytes = await _write_upload_to_temp(media, extension)
         if size_bytes <= 0:
             raise HTTPException(status_code=400, detail="Calibration media upload is empty")
-        result, elapsed_seconds = await _run_timed_worker(temp_path, metadata, stage)
+        capture_metadata = metadata.model_dump(mode="json")
+        for optional_field in ("guided_checks", "guided_environment", "guided_protocol"):
+            if optional_field not in metadata_payload:
+                capture_metadata.pop(optional_field, None)
+        capture = await preserve_capture(db, current_user.id, interview_id, stage, temp_path,
+            content_type, duration_ms, capture_metadata, resume_attempt_id)
+        if capture.result is not None and capture.result.get("failure_reason") != "processing_failed":
+            result, elapsed_seconds = capture.result, 0.0
+        else:
+            processing_started_at = perf_counter()
+            try:
+                result, elapsed_seconds = await _run_timed_worker(temp_path, metadata, stage)
+            except Exception:
+                result, elapsed_seconds = {"passed": False, "failure_reason": "processing_failed"}, perf_counter() - processing_started_at
+            result["processing_time_seconds"] = elapsed_seconds
+            if isinstance(result.get("guided_checks"), dict):
+                result["guided_checks"]["processing_time_seconds"] = elapsed_seconds
+            result["capture_id"] = capture.id
+            if stage == "unified":
+                for checkpoint in ("gaze", "camera"):
+                    if isinstance(result.get(checkpoint), dict):
+                        result[checkpoint]["capture_id"] = capture.id
+            # Refresh under a row lock so expiry/deletion cannot be overwritten.
+            from app.controllers.interview_lifecycle import lock_row
+            capture = lock_row(db, CalibrationCaptureDB, capture.id)
+            if capture is None:
+                raise HTTPException(409, "Calibration reference was deleted")
+            capture.result = result
+            db.commit()
         safe_quality = {
             key: result.get(key)
             for key in (
-                "passed", "failure_reason", "voiced_duration_ms", "clipping_detected"
+                "passed", "failure_reason"
             )
             if key in result
         }
@@ -385,25 +464,57 @@ async def process_calibration_stage(
         )
     except HTTPException:
         raise
-    except Exception:
+    except Exception as error:
+        db.rollback()
         logger.exception(
             "performance_event component=calibration operation=checkpoint phase=failed "
             "user_id=%s stage=%s capture_duration_ms=%s parent_rss_mb=%s",
             current_user.id, stage, duration_ms, current_rss_mb(),
         )
-        return CalibrationStageResponse(
-            stage=stage,
-            status="failed",
-            failure_reason="processing_failed",
-            result=None,
-        )
+        raise HTTPException(503, "Calibration could not be saved; retry the original upload") from error
     finally:
         _delete_temp(temp_path)
 
     passed = bool(result.get("passed"))
+    experimental_allowed = getattr(metadata,"experimental_quality_bypass",False)
+    accepted = passed or experimental_allowed and result.get("experimental_quality_bypass") is True
+    if result.get("failure_reason") == "processing_failed":
+        return CalibrationStageResponse(stage=stage, status="failed", failure_reason="processing_failed", result=result)
+    from app.multimodal.calibration_attestation import sign_checkpoint
+    if stage == "guided":
+        return CalibrationStageResponse(stage=stage, status="passed" if passed else "failed",
+            failure_reason=result.get("failure_reason"), result=result)
+    if stage == "unified":
+        if not passed:
+            failed_stage = result.get("failed_stage")
+            failed_result = result.get(failed_stage, {})
+            logger.warning(
+                "calibration_rejected stage=%s reason=%s quality=%s",
+                failed_stage, failed_result.get("failure_reason"),
+                json.dumps(failed_result.get("quality", {}), sort_keys=True),
+            )
+        checkpoints = {}
+        for checkpoint in ("gaze", "camera"):
+            outcome = result.get(checkpoint)
+            if outcome is None:
+                continue
+            checkpoint_metadata = metadata.model_dump(mode="json") if checkpoint == "gaze" else result["camera_metadata"]
+            checkpoints[checkpoint] = {
+                "stage": checkpoint, "status": "passed" if outcome["passed"] or experimental_allowed and outcome.get("experimental_quality_bypass") else "failed",
+                "failure_reason": outcome.get("failure_reason"), "result": outcome,
+                "attestation": sign_checkpoint(current_user.id, interview_id, checkpoint, outcome, checkpoint_metadata, resume_attempt_id) if outcome["passed"] or experimental_allowed and outcome.get("experimental_quality_bypass") else None,
+            }
+        return CalibrationStageResponse(stage=stage, status="passed" if accepted else "failed",
+            failure_reason=result.get(result.get("failed_stage"), {}).get("failure_reason") if not passed else None,
+            result={"checkpoints": checkpoints, "failed_stage": result.get("failed_stage"),
+                    "experimental_quality_bypass": result.get("experimental_quality_bypass", False),
+                    "processing_time_seconds": result.get("processing_time_seconds"),
+                    **({"guided_checks": result["guided_checks"]} if "guided_checks" in result else {})})
+
     return CalibrationStageResponse(
         stage=stage,
-        status="passed" if passed else "failed",
+        status="passed" if accepted else "failed",
         failure_reason=result.get("failure_reason"),
         result=result,
+        attestation=sign_checkpoint(current_user.id, interview_id, stage, result, metadata.model_dump(mode="json"), resume_attempt_id) if accepted else None,
     )

@@ -41,6 +41,8 @@ RELATIVE_LAG = 5
 class CCDbHGFrameFeatures:
     timestamp_ms: float
     values: np.ndarray
+    max_gap_ms: float = 100.0
+    continuity_id: int = 0
 
 
 @dataclass(frozen=True)
@@ -64,6 +66,9 @@ class NodAnalysis:
     events: tuple[NodEvent, ...]
     evaluated: bool
     reason: str | None = None
+    evaluated_timestamps_ms: tuple[float, ...] = ()
+    predictions: tuple[WindowPrediction, ...] = ()
+    frame_features: tuple[dict, ...] = ()
 
 
 class CNNLmkHp(nn.Module):
@@ -144,14 +149,31 @@ def head_pose_features(matrix: np.ndarray) -> np.ndarray:
 
 
 def frame_features(observations: Sequence[SharedFrameObservation]) -> list[CCDbHGFrameFeatures]:
-    return [CCDbHGFrameFeatures(item.timestamp_ms, np.concatenate((head_pose_features(item.facial_transformation_matrix), landmark_features(item)))) for item in observations if item.face_valid and item.landmarks is not None and item.facial_transformation_matrix is not None]
+    features = []
+    continuity_id = 0
+    for item in observations:
+        if not item.face_valid or item.landmarks is None or item.facial_transformation_matrix is None:
+            continuity_id += 1
+            continue
+        try:
+            values = np.concatenate((head_pose_features(item.facial_transformation_matrix), landmark_features(item)))
+            if not np.isfinite(values).all():
+                raise ValueError("Non-finite face features")
+        except (ValueError, IndexError, TypeError):
+            continuity_id += 1
+            continue
+        features.append(CCDbHGFrameFeatures(item.timestamp_ms, values, item.sampling_max_gap_ms, continuity_id))
+    return features
 
 
-def resample_windows(features: Sequence[CCDbHGFrameFeatures], *, max_gap_ms: float = 100.0) -> list[tuple[float, np.ndarray]]:
+def resample_windows(features: Sequence[CCDbHGFrameFeatures], *, max_gap_ms: float | None = None) -> list[tuple[float, np.ndarray]]:
     if len(features) < 2:
         return []
     times = np.asarray([item.timestamp_ms for item in features], dtype=float)
     values = np.asarray([item.values for item in features], dtype=float)
+    if (values.shape != (len(features), 18) or not np.isfinite(times).all()
+            or not np.isfinite(values).all() or np.any(np.diff(times) <= 0)):
+        raise ValueError("CCDb-HG features must be finite with strictly increasing timestamps")
     windows = []
     end = times[0] + TARGET_STEP_MS * (WINDOW_SAMPLES - 1)
     while end <= times[-1] + 1e-6:
@@ -160,7 +182,12 @@ def resample_windows(features: Sequence[CCDbHGFrameFeatures], *, max_gap_ms: flo
         valid = True
         for target, index in zip(targets, indexes):
             left = max(index - 1, 0); right = min(index, len(times)-1)
-            if min(abs(target-times[left]), abs(times[right]-target)) > max_gap_ms:
+            gap_limit = max_gap_ms if max_gap_ms is not None else min(features[left].max_gap_ms, features[right].max_gap_ms)
+            if not np.isfinite(gap_limit) or gap_limit <= 0:
+                raise ValueError("CCDb-HG gap limit must be finite and positive")
+            if (features[left].continuity_id != features[right].continuity_id
+                    or times[right] - times[left] > gap_limit + 1e-6
+                    or min(abs(target-times[left]), abs(times[right]-target)) > gap_limit):
                 valid = False; break
         if valid:
             windows.append((float(end), np.column_stack([np.interp(targets, times, values[:,channel]) for channel in range(18)])))
@@ -201,6 +228,8 @@ def infer(features: Sequence[CCDbHGFrameFeatures], std: np.ndarray, model: CNNLm
         tensor = torch.from_numpy(preprocess_window(window,std).T[None]).float()
         with torch.no_grad():
             probabilities = torch.softmax(model(tensor), dim=1)[0]
+        if not torch.isfinite(probabilities).all():
+            raise ValueError("CCDb-HG probabilities must be finite")
         class_id = int(torch.argmax(probabilities))
         output.append(WindowPrediction(timestamp, class_id, float(probabilities[class_id])))
     return output
@@ -209,13 +238,18 @@ def infer(features: Sequence[CCDbHGFrameFeatures], std: np.ndarray, model: CNNLm
 def analyze_nods(observations: Sequence[SharedFrameObservation]) -> NodAnalysis:
     """Run CCDb-HG over already-decoded shared observations."""
     features = frame_features(observations)
+    raw_features = tuple({"timestamp_ms": item.timestamp_ms, "head_pose": item.values[:3].tolist(),
+                          "landmark_groups": item.values[3:].reshape(5, 3).tolist()}
+                         for item in features)
     if not resample_windows(features):
-        return NodAnalysis((), False, "insufficient_signal")
+        return NodAnalysis((), False, "insufficient_signal", frame_features=raw_features)
     _, std, model = load_default_bundle()
     predictions = infer(features, std, model)
     if not predictions:
-        return NodAnalysis((), False, "insufficient_signal")
-    return NodAnalysis(tuple(nod_events(predictions)), True)
+        return NodAnalysis((), False, "insufficient_signal", frame_features=raw_features)
+    return NodAnalysis(tuple(nod_events(predictions)), True,
+                       evaluated_timestamps_ms=tuple(item.timestamp_ms for item in predictions),
+                       predictions=tuple(predictions), frame_features=raw_features)
 
 
 def _smooth(labels: list[int], margin: int = 3) -> list[int]:
@@ -226,6 +260,12 @@ def _smooth(labels: list[int], margin: int = 3) -> list[int]:
 
 
 def nod_events(predictions: Sequence[WindowPrediction], *, short_event_margin: int = 6) -> list[NodEvent]:
+    # Smooth contiguous inference only; missing windows are unavailable time.
+    for index in range(1, len(predictions)):
+        gap = predictions[index].timestamp_ms - predictions[index - 1].timestamp_ms
+        if gap <= 0 or gap > TARGET_STEP_MS * 1.5:
+            return (nod_events(predictions[:index], short_event_margin=short_event_margin)
+                    + nod_events(predictions[index:], short_event_margin=short_event_margin))
     labels = _smooth([item.class_id for item in predictions])
     events: list[NodEvent] = []
     start = None
@@ -244,9 +284,17 @@ def nod_events(predictions: Sequence[WindowPrediction], *, short_event_margin: i
 
 
 def assign_nods_to_turns(events: Sequence[NodEvent], windows: Sequence[object]) -> dict[str, tuple[int,float]]:
+    counts = {window.turn_id: 0 for window in windows}
+    for event in events:
+        for window in sorted(windows, key=lambda item: (item.start_ms, item.end_ms, item.turn_id)):
+            if window.start_ms <= event.midpoint_ms < window.end_ms:
+                counts[window.turn_id] += 1
+                break
     result = {}
     for window in windows:
-        count = sum(window.start_ms <= event.midpoint_ms < window.end_ms for event in events)
+        count = counts[window.turn_id]
         duration_minutes = (window.end_ms-window.start_ms)/60000.0
         result[window.turn_id] = (count, count/duration_minutes if duration_minutes > 0 else 0.0)
     return result
+
+

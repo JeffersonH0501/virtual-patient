@@ -1,53 +1,10 @@
-"""Multimodal pipeline orchestration (Requirements 17, 18, 19, 24, 25).
+"""Orchestrate extraction, derivation and persistence for one interview.
 
-This module owns the *scientific orchestration* of the staged, versioned
-multimodal pipeline. It is intentionally the only place that wires the stages
-together; the router merely schedules :func:`process_multimodal_interview` as a
-background task (task 6.2). Moving orchestration here keeps the router thin and
-keeps the methodology in one auditable place.
-
-The 16-step flow (design section "pipeline.py — orchestration"):
-
-1.  Open a DB session, load the recording + interview; return early if missing.
-2.  Load the methodology config once (capturing ``versions`` + ``config_hash``
-    for every result).
-3.  Read the personal baseline (``calibration.read_personal_baseline``).
-4.  Resolve turn windows: student turns feed paraverbal; all turns feed
-    nonverbal. The interaction context is ``speaking`` for student turns and
-    ``listening`` for patient turns.
-5.  Update ``observation_processing`` (stage + status) on every transition.
-6.  Run OpenSMILE once over the needed student segments.
-7.  Preprocess paraverbal per student turn.
-8.  Decode once and run MediaPipe once per frame; fan out to smile, BlazeGaze,
-    and CCDb-HG before segmenting by turn window.
-9.  Preprocess nonverbal per turn.
-10. Compute ``SessionReferences`` once with the two-pass ``min_turns`` guard.
-11. Run the threshold engine per turn.
-12. Run the label engine per turn.
-13. Assemble one :class:`MultimodalTurnResult` per turn and persist the layered
-    JSON into ``interview_turns.paraverbal`` / ``.nonverbal_features``.
-14. Batch the DB writes into a single commit near the end.
-15. Set the final ``observation_processing`` status
-    (``complete`` / ``partial`` / ``failed`` / ``unavailable``) from the
-    error/quality taxonomy: a single missing feature/modality yields
-    ``partial``, never ``failed``.
-16. Structured logging at each stage; no ``print()``.
-
-Design boundaries preserved here:
-
-* NO interview-level aggregation and NO late fusion (Requirement 17.4, 20.4).
-  After the ``labeling`` stage the pipeline reaches a clear, stubbed hand-off
-  point (:func:`_late_fusion_handoff`) and stops; the downstream
-  recording -> multimodal -> text-evaluation -> late-fusion -> feedback-coherence
-  sequence is only *prepared*, not implemented.
-* Paraverbal features are never fabricated for patient turns (Requirement 17.3):
-  the paraverbal layer is ``None`` for patient turns. The nonverbal layer is
-  present for all turns (Requirement 17.2).
-* Every unavailable value is represented with ``null`` + ``status`` + ``reason``
-  and never a fabricated number (Requirement 16.3, 24.3).
-* Performance: video is decoded once over the full interview; OpenSMILE runs once
-  per needed student segment; session percentiles are computed once; the DB
-  writes are batched into a single commit (Requirement 19.2-19.5).
+Continuous video is the normal final source; explicitly requested incremental
+processing consumes durable clip results. Audio runs before visual models in the
+isolated pipeline process. Shared turn_results owns reference populations,
+threshold/label assembly and layered JSON; completion/reprocess owns evaluation.
+Stage updates remain observable, and unavailable evidence never fabricates data.
 """
 
 from __future__ import annotations
@@ -59,6 +16,11 @@ from time import perf_counter
 from typing import Any, Sequence
 
 from app.core.database import SessionLocal
+from app.multimodal.turn_results import (
+    _assemble_turn_result, _persist_turn, compute_session_references, _OutcomeTracker,
+    _context_for, _context_for_speaker, _STUDENT_SPEAKER, _PARAVERBAL_SESSION_FEATURES, _NONVERBAL_SESSION_FEATURES,
+    STATUS_COMPLETE, STATUS_PARTIAL, STATUS_UNAVAILABLE,
+)
 from app.media import get_media_storage
 from app.models.medical_interview import (
     InterviewMediaAssetDB,
@@ -69,6 +31,7 @@ from app.models.medical_interview import (
     TurnVideoAnalysisDB,
     TurnVideoAnalysisStatus,
 )
+from app.models.medical_interview.interview_recording import InterviewRecordingSegmentDB
 from app.multimodal.constants import NONVERBAL_GAZE_QUEUE_CAPACITY
 from app.multimodal.calibration import read_calibration_profile, read_personal_baseline
 from app.multimodal.config_loader import (
@@ -76,25 +39,7 @@ from app.multimodal.config_loader import (
     MethodologyConfig,
     load_methodology_config,
 )
-from app.multimodal.label_engine import (
-    integrate_nonverbal_labels,
-    integrate_paraverbal_labels,
-)
-from app.multimodal.schemas import (
-    ModalityLayer,
-    MultimodalTurnResult,
-    NonverbalProcessedFeatures,
-    NonverbalRawFeatures,
-    OutcomeStatus,
-    ParaverbalProcessedFeatures,
-    ParaverbalRawFeatures,
-    PersonalBaseline,
-    UnavailableReason,
-)
-from app.multimodal.threshold_engine import (
-    compute_nonverbal_base_labels,
-    compute_paraverbal_base_labels,
-)
+from app.multimodal.schemas import MultimodalTurnResult, NonverbalProcessedFeatures, NonverbalRawFeatures, ParaverbalProcessedFeatures, ParaverbalRawFeatures, PersonalBaseline, UnavailableReason
 from app.nonverbal.preprocessing import preprocess_nonverbal_turn
 from app.nonverbal.video_observations import (
     TurnWindow,
@@ -103,7 +48,6 @@ from app.nonverbal.video_observations import (
     segment_nonverbal_observations_by_turn,
 )
 from app.nonverbal.ccdbhg import NodAnalysis, analyze_nods
-from app.nonverbal.gaze import create_tracker
 from app.paraverbal.opensmile_extractor import (
     StudentTurnAudio,
     analyze_student_turns,
@@ -134,27 +78,8 @@ STAGE_FINISHED = "finished"
 # Statuses.
 STATUS_QUEUED = "queued"
 STATUS_PROCESSING = "processing"
-STATUS_COMPLETE = "complete"
-STATUS_PARTIAL = "partial"
 STATUS_FAILED = "failed"
-STATUS_UNAVAILABLE = "unavailable"
 
-# Session-relative features whose per-session P25/P75 references drive the
-# session_percentiles strategy (thresholds.yaml). Kept here as the single list
-# the two-pass step iterates so the reference computation stays in lock-step
-# with the config without re-parsing YAML per feature.
-_PARAVERBAL_SESSION_FEATURES = ("median_loudness", "loudness_p20_p80_range")
-_NONVERBAL_SESSION_FEATURES = ("nod_rate_min", "mean_smile_activation")
-
-# Percentile keys the session_percentiles strategy reads by default.
-_SESSION_PERCENTILES = {"p25": 0.25, "p75": 0.75}
-
-_STUDENT_SPEAKER = "student"
-_CONTEXT_SPEAKING = "speaking"
-_CONTEXT_LISTENING = "listening"
-
-
-# ---------------------------------------------------------------------------
 # Public entry point
 # ---------------------------------------------------------------------------
 
@@ -169,7 +94,7 @@ async def process_multimodal_interview(
 
     Scheduled by the router as a background task
     (``background_tasks.add_task(process_multimodal_interview, ...)``). It owns
-    its own DB session (like the legacy router processing function) and never
+    its own DB session and never
     raises to its caller: any unexpected failure is logged and recorded as a
     ``failed`` observation-processing status so the interview is not left in an
     ambiguous state.
@@ -219,7 +144,12 @@ async def process_multimodal_interview(
             STAGE_QUEUED,
         )
 
-        if not use_full_video:
+        if (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1':
+            from app.multimodal.block_turns import stage_block_turns
+            stage_block_turns(db, recording, validate_cache=True)
+            db.commit()
+        if not use_full_video or any((segment.capture_config or {}).get('mediaTransport') in {'indexed_chunks_v1', 'reusable_blocks_v1'}
+                                     for segment in getattr(recording, 'segments', ())):
             await _wait_for_turn_video_jobs(db, interview_id, recording_id)
         _run_pipeline(
             db=db,
@@ -294,21 +224,23 @@ def _run_pipeline(
 
     # Step 3: read the personal baseline (may be None -> missing_calibration).
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_CALIBRATION)
-    # Calibration lives in ``interview_metadata.calibration``: the personal
-    # baseline (read via the single accessor) and the gaze affine profile.
-    calibration_profile = read_calibration_profile(interview)
-    try:
-        baseline = read_personal_baseline(interview)
-    except Exception:  # noqa: BLE001 - malformed stored calibration is unavailable.
-        baseline = None
-    baseline_available = baseline is not None
+    segments = getattr(recording, "segments", ())
+    profiles = {
+        segment.id: read_calibration_profile(interview, segment=segment)
+        for segment in segments
+    } if segments else {None: read_calibration_profile(interview)}
+    baselines = {
+        segment.id: read_personal_baseline(interview, segment=segment)
+        if profiles[segment.id] is not None else None
+        for segment in segments
+    } if segments else {None: read_personal_baseline(interview)}
     logger.info(
         "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
         "result=%s",
         interview_id,
         recording_id,
         STAGE_CALIBRATION,
-        "baseline_available" if baseline_available else "missing_calibration",
+        "baseline_available" if any(baselines.values()) else "missing_calibration",
     )
 
     # Step 4: resolve turn windows. All turns, ordered by sequence; student
@@ -325,17 +257,40 @@ def _run_pipeline(
     # Track whether any modality yielded a usable outcome and whether any gap
     # occurred, to decide complete vs partial vs unavailable at the end.
     outcome = _OutcomeTracker()
+    turns_by_segment = _turns_by_segment(segments, turns)
+    if sum(map(len, turns_by_segment.values())) < len(turns):
+        outcome.note_gap()
 
     # Step 6: paraverbal extraction (OpenSMILE once per needed student segment).
     phase_started = perf_counter()
-    paraverbal_raw = _extract_paraverbal(
-        db=db,
-        recording=recording,
-        interview_id=interview_id,
-        recording_id=recording_id,
-        student_turns=student_turns,
-        outcome=outcome,
-    )
+    paraverbal_raw: dict[str, ParaverbalRawFeatures] = {}
+    cached_visual: dict[str, NonverbalRawFeatures] = {}
+    for segment in segments:
+        from app.multimodal.block_turns import valid_block_job
+        segment_turns = {turn.id: turn for turn in turns_by_segment.get(segment.id, ())}
+        for job in db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.recording_id == recording_id).all():
+            turn = segment_turns.get(job.turn_id)
+            if turn is None or not valid_block_job(job, turn, segment):
+                continue
+            try:
+                cached_visual[turn.id] = NonverbalRawFeatures.model_validate(job.result)
+                audio = (job.result.get('extractor') or {}).get('paraverbal_raw')
+                if audio is not None and turn.speaker == _STUDENT_SPEAKER:
+                    paraverbal_raw[turn.id] = ParaverbalRawFeatures.model_validate(audio)
+            except (ValueError, TypeError):
+                cached_visual.pop(turn.id, None)
+    for segment in segments or (None,):
+        segment_id = segment.id if segment is not None else None
+        paraverbal_raw.update(_extract_paraverbal(
+            db=db,
+            recording=recording,
+            interview_id=interview_id,
+            recording_id=recording_id,
+            student_turns=[turn for turn in turns_by_segment.get(segment_id, ())
+                           if turn.speaker == _STUDENT_SPEAKER and turn.id not in paraverbal_raw],
+            outcome=outcome,
+            segment=segment,
+        ))
     timings_ms["paraverbal_extraction"] = (perf_counter() - phase_started) * 1000
 
     # Step 7: paraverbal preprocessing per student turn. Pause segmentation uses
@@ -347,24 +302,31 @@ def _run_pipeline(
         raw = paraverbal_raw.get(turn.id)
         if raw is None:
             continue
-        paraverbal_processed[turn.id] = preprocess_paraverbal(raw, baseline=baseline)
+        paraverbal_processed[turn.id] = preprocess_paraverbal(raw)
     timings_ms["paraverbal_preprocessing"] = (perf_counter() - phase_started) * 1000
 
-    # Step 8: shared MediaPipe/BlazeGaze/CCDb-HG extraction over the full video.
+    # Step 8: shared MediaPipe/CCDb-HG extraction over the full video.
     phase_started = perf_counter()
-    nonverbal_raw, nonverbal_context = _extract_nonverbal(
-        db=db,
-        recording=recording,
-        interview_id=interview_id,
-        recording_id=recording_id,
-        turns=turns,
-        outcome=outcome,
-        calibration_profile=calibration_profile,
-        use_full_video=use_full_video,
-    )
+    nonverbal_raw: dict[str, NonverbalRawFeatures] = dict(cached_visual)
+    nonverbal_context: dict[str, str] = {turn.id: _context_for(turn) for turn in turns if turn.id in cached_visual}
+    if use_full_video:
+        for segment in segments or (None,):
+            segment_id = segment.id if segment is not None else None
+            raw, context = _extract_nonverbal(
+                db=db, recording=recording, interview_id=interview_id, recording_id=recording_id,
+                turns=[turn for turn in turns_by_segment.get(segment_id, ()) if turn.id not in cached_visual], outcome=outcome,
+                calibration_profile=profiles[segment_id], use_full_video=True, segment=segment,
+            )
+            nonverbal_raw.update(raw)
+            nonverbal_context.update(context)
+    else:
+        nonverbal_raw, nonverbal_context = _extract_nonverbal(
+            db=db, recording=recording, interview_id=interview_id, recording_id=recording_id,
+            turns=[turn for group in turns_by_segment.values() for turn in group], outcome=outcome,
+        )
     timings_ms["nonverbal_extraction"] = (perf_counter() - phase_started) * 1000
 
-    # Step 9: nonverbal preprocessing per turn. Gaze tolerance, AU12 activation,
+    # Step 9: nonverbal preprocessing per turn. Gaze tolerance, smile activation,
     # and nod detector parameters are technical constants owned by the nonverbal
     # preprocessing module, so no methodology config is threaded here.
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_NONVERBAL_PREPROCESSING)
@@ -378,23 +340,26 @@ def _run_pipeline(
         result = preprocess_nonverbal_turn(
             raw,
             nonverbal_context.get(turn.id, _context_for(turn)),
-            baseline=baseline,
+            baseline=baselines.get(getattr(turn, "segment_id", None)),
         )
         nonverbal_processed[turn.id] = result.processed
         nonverbal_reasons[turn.id] = result.reasons
     timings_ms["nonverbal_preprocessing"] = (perf_counter() - phase_started) * 1000
 
     # Step 10: compute SessionReferences once (two-pass, guarded).
-    para_session_refs = _session_references(
+    para_session_refs = compute_session_references(
         processed_by_turn=paraverbal_processed,
+        raw_by_turn=paraverbal_raw,
         feature_names=_PARAVERBAL_SESSION_FEATURES,
         min_turns=min_turns_for_session_stats,
     )
-    nonverbal_session_refs = _session_references(
-        processed_by_turn=nonverbal_processed,
+    nonverbal_session_refs = {speaker: compute_session_references(
+        processed_by_turn={turn.id: nonverbal_processed[turn.id]
+                           for turn in turns if turn.speaker == speaker and turn.id in nonverbal_processed},
+        raw_by_turn=nonverbal_raw,
         feature_names=_NONVERBAL_SESSION_FEATURES,
         min_turns=min_turns_for_session_stats,
-    )
+    ) for speaker in ("student", "patient")}
     logger.info(
         "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
         "result=session_refs paraverbal_available=%s nonverbal_available=%s "
@@ -407,6 +372,33 @@ def _run_pipeline(
         min_turns_for_session_stats,
     )
 
+    from app.multimodal.extraction_provenance import build_extraction_manifest, record_extraction_manifest
+    calibration = {
+        segment_id: {"baseline": baseline.model_dump() if baseline is not None else None,
+                     "profile": profiles[segment_id]}
+        for segment_id, baseline in baselines.items()
+    }
+    manifest = build_extraction_manifest(config, mode="continuous" if use_full_video else "stored_visual",
+        references={"paraverbal": para_session_refs, "nonverbal_by_speaker": nonverbal_session_refs},
+        calibration=calibration if segments else calibration[None])
+    manifest_hash = record_extraction_manifest(recording, manifest)
+    for raw in paraverbal_raw.values():
+        raw.extractor = {**raw.extractor, "extraction_manifest_hash": manifest_hash,
+                         "labeling_manifest_hash": manifest_hash}
+    for raw in nonverbal_raw.values():
+        metadata = dict(raw.extractor)
+        stored_manifest = metadata.pop("extraction_manifest", None)
+        if metadata.get('continuous_capture') and stored_manifest is not None:
+            metadata['extraction_manifest_hash'] = record_extraction_manifest(recording, stored_manifest)
+        elif use_full_video:
+            metadata["extraction_manifest_hash"] = manifest_hash
+        elif stored_manifest is not None:
+            metadata["extraction_manifest_hash"] = record_extraction_manifest(recording, stored_manifest)
+        elif "extraction_manifest_hash" not in metadata:
+            metadata["extraction_provenance"] = "legacy_unavailable"
+        metadata["labeling_manifest_hash"] = manifest_hash
+        raw.extractor = metadata
+
     # Steps 11-13: threshold + label + assemble per turn.
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_THRESHOLDING)
     phase_started = perf_counter()
@@ -417,14 +409,14 @@ def _run_pipeline(
             config=config,
             versions=versions,
             config_hash=config_hash,
-            baseline_available=baseline_available,
+            baseline_available=baselines.get(getattr(turn, "segment_id", None)) is not None,
             paraverbal_raw=paraverbal_raw.get(turn.id),
             paraverbal_processed=paraverbal_processed.get(turn.id),
             para_session_refs=para_session_refs,
             nonverbal_raw=nonverbal_raw.get(turn.id),
             nonverbal_processed=nonverbal_processed.get(turn.id),
             nonverbal_reasons=nonverbal_reasons.get(turn.id, {}),
-            nonverbal_session_refs=nonverbal_session_refs,
+            nonverbal_session_refs=nonverbal_session_refs.get(turn.speaker),
             outcome=outcome,
         )
         results.append((turn, result))
@@ -432,8 +424,7 @@ def _run_pipeline(
 
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_LABELING)
 
-    # Hand-off point: interview-level aggregation and late fusion are NOT done
-    # here (Requirement 17.4, 20.4). This is only a prepared boundary.
+    # Evaluation remains owned by completion/reprocessing after observations finish.
     _late_fusion_handoff(interview_id=interview_id, recording_id=recording_id)
 
     # Steps 13-14: batch-persist all per-turn layered results in one commit.
@@ -485,6 +476,19 @@ def _run_pipeline(
 # ---------------------------------------------------------------------------
 
 
+def _turns_by_segment(segments, turns) -> dict[str | None, list[InterviewTurnDB]]:
+    if not segments:
+        return {None: [turn for turn in turns if getattr(turn, "segment_id", None) is None]}
+    by_id = {segment.id: segment for segment in segments}
+    groups: dict[str | None, list[InterviewTurnDB]] = {}
+    for turn in turns:
+        segment = by_id.get(turn.segment_id)
+        if (segment is not None and segment.duration_ms is not None
+                and segment.offset_ms <= turn.start_ms < turn.end_ms <= segment.offset_ms + segment.duration_ms):
+            groups.setdefault(segment.id, []).append(turn)
+    return groups
+
+
 def _extract_paraverbal(
     *,
     db: Any,
@@ -493,6 +497,7 @@ def _extract_paraverbal(
     recording_id: str,
     student_turns: Sequence[InterviewTurnDB],
     outcome: "_OutcomeTracker",
+    segment: InterviewRecordingSegmentDB | None = None,
 ) -> dict[str, ParaverbalRawFeatures]:
     """Run OpenSMILE once over the needed student segments (Requirement 19.2).
 
@@ -514,7 +519,8 @@ def _extract_paraverbal(
         return {}
 
     storage = get_media_storage()
-    asset = _ready_asset(db, recording.id, MediaAssetKind.STUDENT_AUDIO.value)
+    asset = _ready_asset(db, recording.id, MediaAssetKind.STUDENT_AUDIO.value,
+                         segment.id if segment is not None else None)
     if asset is None:
         outcome.note_gap()
         logger.info(
@@ -528,12 +534,14 @@ def _extract_paraverbal(
 
     try:
         audio_path = storage.resolve(asset.storage_key)
+        offset_ms = segment.offset_ms if segment is not None else 0
         windows = [
             StudentTurnAudio(
                 turn_id=turn.id,
-                start_ms=turn.start_ms,
-                end_ms=turn.end_ms,
+                start_ms=turn.start_ms - offset_ms,
+                end_ms=turn.end_ms - offset_ms,
                 transcript=turn.transcript,
+                message_id=getattr(turn, 'message_id', None),
             )
             for turn in student_turns
         ]
@@ -574,6 +582,7 @@ def _extract_nonverbal(
     outcome: "_OutcomeTracker",
     calibration_profile: dict | None = None,
     use_full_video: bool = False,
+    segment: InterviewRecordingSegmentDB | None = None,
 ) -> tuple[dict[str, NonverbalRawFeatures], dict[str, str]]:
     """Load turn jobs, or explicitly recover from the canonical full video."""
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_NONVERBAL_EXTRACTION)
@@ -621,7 +630,8 @@ def _extract_nonverbal(
         return raw_by_turn, context_by_turn
 
     storage = get_media_storage()
-    asset = _ready_asset(db, recording.id, MediaAssetKind.STUDENT_VIDEO.value)
+    asset = _ready_asset(db, recording.id, MediaAssetKind.STUDENT_VIDEO.value,
+                         segment.id if segment is not None else None)
     if asset is None:
         outcome.note_gap()
         logger.info(
@@ -635,33 +645,23 @@ def _extract_nonverbal(
 
     try:
         video_path = storage.resolve(asset.storage_key)
+        source = segment if segment is not None else recording
+        offset_ms = segment.offset_ms if segment is not None else 0
         windows = [
             TurnWindow(
                 turn_id=turn.id,
-                start_ms=turn.start_ms,
-                end_ms=turn.end_ms,
+                start_ms=turn.start_ms - offset_ms,
+                end_ms=turn.end_ms - offset_ms,
                 conversation_speaker=turn.speaker,
             )
             for turn in turns
         ]
         profile = calibration_profile
-        tracker = create_tracker(affine_matrix=profile.get("affine_matrix")) if profile else create_tracker()
         observations = extract_nonverbal_video_observations_parallel(
             video_path,
-            tracker=tracker,
             queue_capacity=NONVERBAL_GAZE_QUEUE_CAPACITY,
+            calibration_profile=profile,
         )
-        try:
-            nod_analysis = analyze_nods([item.shared for item in observations])
-        except Exception:  # noqa: BLE001 - preserve other visual branches.
-            logger.exception(
-                "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
-                "modality=nonverbal branch=ccdbhg result=extractor_failure",
-                interview_id,
-                recording_id,
-                STAGE_NONVERBAL_EXTRACTION,
-            )
-            nod_analysis = NodAnalysis((), False, "extractor_failure")
         segmented = segment_nonverbal_observations_by_turn(observations, windows)
     except Exception:  # noqa: BLE001 - one modality failing must not fail all.
         outcome.note_gap()
@@ -679,13 +679,21 @@ def _extract_nonverbal(
     windows_by_id = {window.turn_id: window for window in windows}
     for turn_id, turn_observations in segmented.items():
         try:
+            try:
+                local_nods = analyze_nods([item.shared for item in turn_observations])
+            except Exception:  # noqa: BLE001 - preserve the other visual branches.
+                logger.exception("multimodal_pipeline turn_id=%s branch=ccdbhg result=extractor_failure", turn_id)
+                local_nods = NodAnalysis((), False, "extractor_failure")
             raw_by_turn[turn_id] = build_turn_raw_features(
                 turn_observations,
                 windows_by_id[turn_id],
-                nod_analysis=nod_analysis,
+                nod_analysis=local_nods,
                 calibration_profile=profile,
-                patient_roi_snapshots=(recording.capture_config or {}).get("patientRoiSnapshots", []),
+                patient_roi_snapshots=(source.capture_config or {}).get("patientRoiSnapshots", []),
+                interaction_area_snapshots=(source.capture_config or {}).get("interactionAreaSnapshots", []),
+                roi_duration_ms=source.duration_ms,
             )
+            raw_by_turn[turn_id].extractor["source"] = "full_session_video"
         except Exception:  # noqa: BLE001 - a malformed row is a per-turn gap.
             outcome.note_gap()
             logger.warning(
@@ -717,7 +725,7 @@ def _extract_nonverbal(
 
 
 async def _wait_for_turn_video_jobs(
-    db: Any, interview_id: int, recording_id: str, timeout_seconds: float = 900.0
+    db: Any, interview_id: int, recording_id: str, timeout_seconds: float = 21600.0
 ) -> None:
     """Wait only for durable queued/processing turn jobs before final assembly."""
     loop = asyncio.get_running_loop()
@@ -740,316 +748,12 @@ async def _wait_for_turn_video_jobs(
                 "multimodal_pipeline interview_id=%s recording_id=%s result=turn_job_timeout pending=%s",
                 interview_id, recording_id, len(pending),
             )
-            return
+            raise TimeoutError("Turn video analysis did not finish before the deadline")
         await asyncio.sleep(0.2)
 
 
 # ---------------------------------------------------------------------------
-# Per-turn assembly (threshold + label + layered result)
-# ---------------------------------------------------------------------------
-
-
-def _assemble_turn_result(
-    *,
-    turn: InterviewTurnDB,
-    config: MethodologyConfig,
-    versions: dict,
-    config_hash: str,
-    baseline_available: bool,
-    paraverbal_raw: ParaverbalRawFeatures | None,
-    paraverbal_processed: ParaverbalProcessedFeatures | None,
-    para_session_refs: dict[str, dict[str, float]] | None,
-    nonverbal_raw: NonverbalRawFeatures | None,
-    nonverbal_processed: NonverbalProcessedFeatures | None,
-    nonverbal_reasons: dict[str, UnavailableReason],
-    nonverbal_session_refs: dict[str, dict[str, float]] | None,
-    outcome: "_OutcomeTracker",
-) -> MultimodalTurnResult:
-    """Run the threshold + label engines and build one turn's layered result.
-
-    Paraverbal is only computed for student turns; for patient turns the
-    paraverbal layer is ``None`` and is never fabricated (Requirement 17.3). The
-    nonverbal layer is always attempted (Requirement 17.2).
-    """
-    context = _context_for(turn)
-    is_student = turn.speaker == _STUDENT_SPEAKER
-
-    paraverbal_layer: ModalityLayer | None = None
-    if is_student:
-        paraverbal_layer = _paraverbal_layer(
-            config=config,
-            baseline_available=baseline_available,
-            raw=paraverbal_raw,
-            processed=paraverbal_processed,
-            session_refs=para_session_refs,
-            outcome=outcome,
-        )
-
-    nonverbal_layer = _nonverbal_layer(
-        config=config,
-        baseline_available=baseline_available,
-        raw=nonverbal_raw,
-        processed=nonverbal_processed,
-        reasons=nonverbal_reasons,
-        session_refs=nonverbal_session_refs,
-        outcome=outcome,
-    )
-
-    return MultimodalTurnResult(
-        turn_id=turn.id,
-        modality_context=context,
-        paraverbal=paraverbal_layer,
-        nonverbal=nonverbal_layer,
-        versions=versions,
-        config_hash=config_hash,
-    )
-
-
-def _paraverbal_layer(
-    *,
-    config: MethodologyConfig,
-    baseline_available: bool,
-    raw: ParaverbalRawFeatures | None,
-    processed: ParaverbalProcessedFeatures | None,
-    session_refs: dict[str, dict[str, float]] | None,
-    outcome: "_OutcomeTracker",
-) -> ModalityLayer:
-    """Build the paraverbal :class:`ModalityLayer` for one student turn."""
-    if raw is None or processed is None:
-        outcome.note_gap()
-        return ModalityLayer(
-            status=OutcomeStatus.UNAVAILABLE,
-            reason=UnavailableReason.INSUFFICIENT_SIGNAL,
-        )
-
-    base_labels = compute_paraverbal_base_labels(
-        processed,
-        config,
-        baseline_available=baseline_available,
-        session_refs=session_refs,
-    )
-    integrated = integrate_paraverbal_labels(base_labels, config)
-    outcome.note_ok()
-    return ModalityLayer(
-        raw=raw.model_dump(),
-        processed=processed.model_dump(),
-        base_labels=base_labels.model_dump(),
-        integrated_labels=integrated.model_dump(),
-        quality=raw.audio_quality,
-        status=OutcomeStatus.OK,
-    )
-
-
-def _nonverbal_layer(
-    *,
-    config: MethodologyConfig,
-    baseline_available: bool,
-    raw: NonverbalRawFeatures | None,
-    processed: NonverbalProcessedFeatures | None,
-    reasons: dict[str, UnavailableReason],
-    session_refs: dict[str, dict[str, float]] | None,
-    outcome: "_OutcomeTracker",
-) -> ModalityLayer:
-    """Build the nonverbal :class:`ModalityLayer` for one turn (all speakers)."""
-    if raw is None or processed is None:
-        outcome.note_gap()
-        return ModalityLayer(
-            status=OutcomeStatus.UNAVAILABLE,
-            reason=UnavailableReason.INSUFFICIENT_SIGNAL,
-        )
-
-    base_labels = compute_nonverbal_base_labels(
-        processed,
-        config,
-        baseline_available=baseline_available,
-        session_refs=session_refs,
-        unavailable_reasons=reasons,
-    )
-    integrated = integrate_nonverbal_labels(base_labels, config)
-    outcome.note_ok()
-    quality = dict(raw.video_quality)
-    if reasons:
-        # Surface per-feature unavailability reasons alongside quality so every
-        # null carries an explanation (Requirement 24.3).
-        quality = {
-            **quality,
-            "feature_reasons": {name: reason.value for name, reason in reasons.items()},
-        }
-    return ModalityLayer(
-        raw=raw.model_dump(),
-        processed=processed.model_dump(),
-        base_labels=base_labels.model_dump(),
-        integrated_labels=integrated.model_dump(),
-        quality=quality,
-        status=OutcomeStatus.OK,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Persistence (batched) — layered per-turn JSON, design section 20
-# ---------------------------------------------------------------------------
-
-
-def _persist_turn(turn: InterviewTurnDB, result: MultimodalTurnResult) -> None:
-    """Write the layered per-turn result into the existing JSON columns.
-
-    Paraverbal is written only for student turns (``None`` for patient turns, so
-    it is never fabricated). Nonverbal is written for all turns. The persisted
-    shape matches design section 20: ``raw``/``processed``/``base_labels``/
-    ``integrated_labels``/``quality``/``versions``/``config_hash``/``status``/
-    ``reason``. This function only stages the columns on the ORM object; the
-    caller commits once (batched writes, Requirement 19.5).
-    """
-    # ``versions`` and ``config_hash`` live on the turn result, not on the
-    # per-modality layer; both persisted layers carry the same methodology
-    # provenance so each column is independently traceable (Requirement 16.1,
-    # 16.2). Reassigning a new dict (never in-place mutation) marks the plain
-    # ``Column(JSON)`` attribute dirty, which is exactly how the legacy router
-    # persisted ``turn.paraverbal`` before the single commit.
-    turn.paraverbal = _layer_to_json(
-        result.paraverbal, versions=result.versions, config_hash=result.config_hash
-    )
-    turn.nonverbal_features = _layer_to_json(
-        result.nonverbal, versions=result.versions, config_hash=result.config_hash
-    )
-
-
-def _layer_to_json(
-    layer: ModalityLayer | None,
-    *,
-    versions: dict,
-    config_hash: str,
-) -> dict[str, Any] | None:
-    """Serialize one modality layer to the persisted JSON shape, or ``None``.
-
-    Produces the design section-20 shape: ``raw``/``processed``/``base_labels``/
-    ``integrated_labels``/``quality``/``versions``/``config_hash``/``status``/
-    ``reason``. ``versions`` and ``config_hash`` are the turn-result provenance
-    stamped into every persisted modality layer (Requirement 16.1, 16.2).
-
-    ``None`` (e.g. the paraverbal layer of a patient turn) is stored as SQL
-    ``NULL`` rather than an empty object, so patient turns carry no fabricated
-    paraverbal payload.
-    """
-    if layer is None:
-        return None
-    return {
-        "raw": layer.raw,
-        "processed": layer.processed,
-        "base_labels": layer.base_labels,
-        "integrated_labels": layer.integrated_labels,
-        "quality": layer.quality,
-        "versions": versions,
-        "config_hash": config_hash,
-        "status": layer.status.value,
-        "reason": layer.reason.value if layer.reason is not None else None,
-    }
-
-
-# ---------------------------------------------------------------------------
-# Two-pass session references (Requirement 13, 19.4)
-# ---------------------------------------------------------------------------
-
-
-def compute_session_references(
-    *,
-    processed_by_turn: dict[str, Any],
-    feature_names: Sequence[str],
-    min_turns: int,
-) -> dict[str, dict[str, float]] | None:
-    """Public wrapper over :func:`_session_references` for reuse outside the pipeline.
-
-    The relabel script (``scripts/relabel_multimodal.py``) recomputes session
-    references from stored processed features using the exact same two-pass,
-    guarded percentile logic the pipeline uses, so that relabeling reproduces the
-    pipeline's session-relative labels without re-extracting media (Requirement
-    21.1, design Property 14). Exposing this thin wrapper keeps that logic in one
-    place rather than duplicating the linear-interpolation percentile in the
-    script.
-    """
-    return _session_references(
-        processed_by_turn=processed_by_turn,
-        feature_names=feature_names,
-        min_turns=min_turns,
-    )
-
-
-def _session_references(
-    *,
-    processed_by_turn: dict[str, Any],
-    feature_names: Sequence[str],
-    min_turns: int,
-) -> dict[str, dict[str, float]] | None:
-    """Compute per-feature P25/P75 session references, or ``None`` when guarded.
-
-    Pass 1 (already done by the caller) produced processed features for every
-    valid turn. Here, pass 2 computes the session percentiles once: for each
-    session-relative feature, gather its non-``None`` values across turns and, if
-    at least ``min_turns`` turns qualify, compute P25/P75 with the same linear
-    interpolation the preprocessing percentiles use. When fewer than
-    ``min_turns`` qualifying turns exist, return ``None`` so every
-    session-relative family becomes ``insufficient_reference_data`` (Requirement
-    13.3). A feature with no values is simply omitted from the reference map, so
-    the threshold engine reports ``insufficient_reference_data`` for it.
-    """
-    qualifying_turns = len(processed_by_turn)
-    if min_turns > 0 and qualifying_turns < min_turns:
-        return None
-    if qualifying_turns == 0:
-        return None
-
-    references: dict[str, dict[str, float]] = {}
-    for feature in feature_names:
-        values = [
-            value
-            for processed in processed_by_turn.values()
-            if (value := getattr(processed, feature, None)) is not None
-        ]
-        if len(values) < min_turns or not values:
-            continue
-        references[feature] = {
-            key: _percentile(values, fraction)
-            for key, fraction in _SESSION_PERCENTILES.items()
-        }
-    return references or None
-
-
-def _percentile(values: Sequence[float], fraction: float) -> float:
-    """Percentile via linear interpolation between closest ranks (NumPy default).
-
-    Consistent with ``app/paraverbal/preprocessing._percentile``: for ``n``
-    sorted values the target rank is ``fraction * (n - 1)`` and the result
-    interpolates linearly between the two bracketing samples. Callers guarantee a
-    non-empty input.
-    """
-    ordered = sorted(float(value) for value in values)
-    count = len(ordered)
-    if count == 1:
-        return ordered[0]
-    rank = fraction * (count - 1)
-    lower_index = int(rank)
-    upper_index = min(lower_index + 1, count - 1)
-    weight = rank - lower_index
-    return ordered[lower_index] + (ordered[upper_index] - ordered[lower_index]) * weight
-
-
-# ---------------------------------------------------------------------------
-# Context helpers (Requirement 9.5)
-# ---------------------------------------------------------------------------
-
-
-def _context_for(turn: InterviewTurnDB) -> str:
-    """Interaction context from the turn speaker: student -> speaking else listening."""
-    return _context_for_speaker(turn.speaker)
-
-
-def _context_for_speaker(speaker: str) -> str:
-    return _CONTEXT_SPEAKING if speaker == _STUDENT_SPEAKER else _CONTEXT_LISTENING
-
-
-# ---------------------------------------------------------------------------
-# observation_processing lifecycle updates (Requirement 18)
-# ---------------------------------------------------------------------------
+# Recording lifecycle updates
 
 
 def _set_stage(
@@ -1067,7 +771,14 @@ def _set_stage(
     this pipeline; the pipeline owns every subsequent lifecycle transition. Kept
     deliberately small: it records status/stage plus optional details only.
     """
+    pending_manifests = dict((recording.capture_config or {}).get("extraction_manifests", {}))
+    with db.no_autoflush:
+        db.refresh(recording, attribute_names=["capture_config"], with_for_update=True)
     capture_config = dict(recording.capture_config or {})
+    if pending_manifests:
+        capture_config["extraction_manifests"] = {
+            **capture_config.get("extraction_manifests", {}), **pending_manifests,
+        }
     capture_config["observation_processing"] = {
         "status": status,
         "stage": stage,
@@ -1102,6 +813,7 @@ def _ready_asset(
     db: Any,
     recording_id: str,
     kind: str,
+    segment_id: str | None = None,
 ) -> InterviewMediaAssetDB | None:
     """Return the ready media asset of ``kind`` for a recording, or ``None``.
 
@@ -1113,6 +825,7 @@ def _ready_asset(
         .filter(
             InterviewMediaAssetDB.recording_id == recording_id,
             InterviewMediaAssetDB.kind == kind,
+            InterviewMediaAssetDB.segment_id == segment_id,
             InterviewMediaAssetDB.status == "ready",
         )
         .first()
@@ -1124,54 +837,20 @@ def _ready_asset(
 # ---------------------------------------------------------------------------
 
 
-class _OutcomeTracker:
-    """Tracks whether the run produced usable outcomes and/or hit any gap.
-
-    Final status rules (Requirement 24.2): if at least one modality/family
-    yielded a usable outcome and no gap occurred -> ``complete``; if usable
-    outcomes exist but any single feature/modality was missing -> ``partial``
-    (never ``failed`` for a single gap); if nothing usable was produced ->
-    ``unavailable``. A wholesale failure is handled separately by the caller
-    (``failed``) via exception handling.
-    """
-
-    def __init__(self) -> None:
-        self._any_ok = False
-        self._any_gap = False
-
-    def note_ok(self) -> None:
-        self._any_ok = True
-
-    def note_gap(self) -> None:
-        self._any_gap = True
-
-    def final_status(self) -> str:
-        if not self._any_ok:
-            return STATUS_UNAVAILABLE
-        if self._any_gap:
-            return STATUS_PARTIAL
-        return STATUS_COMPLETE
-
-
 # ---------------------------------------------------------------------------
 # Prepared hand-off (Requirement 20.4, 17.4): NO late fusion implemented here
 # ---------------------------------------------------------------------------
 
 
 def _late_fusion_handoff(*, interview_id: int, recording_id: str) -> None:
-    """Stubbed hand-off after ``labeling``; NO aggregation or late fusion here.
+    """Record the label boundary; completion/reprocess owns LLM evaluation.
 
-    The intended downstream ordering is:
-    recording -> multimodal -> text-evaluation -> late-fusion -> feedback-coherence.
-    This pipeline deliberately stops after producing per-turn integrated labels.
-    Interview-level aggregation and late-fusion scoring are out of scope for this
-    feature (Requirement 17.4, 20.4) and must be implemented as a separate stage.
-    This function is the single, explicit boundary where that future stage will
-    be wired in; today it only records that the boundary was reached.
+    The observation pipeline does not score performance. Its caller waits for
+    terminal observations and delegates to the separate evaluation service.
     """
     logger.info(
         "multimodal_pipeline interview_id=%s recording_id=%s stage=%s "
-        "result=handoff reason=late_fusion_not_implemented",
+        "result=handoff reason=evaluation_owned_by_orchestrator",
         interview_id,
         recording_id,
         STAGE_LABELING,

@@ -7,7 +7,7 @@ This should be run once to create the shared procedural memory store that can be
 import sys
 from pathlib import Path
 
-from langgraph.store.postgres import PostgresStore
+from app.core.memory_store import PostgresStore
 from datetime import datetime
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

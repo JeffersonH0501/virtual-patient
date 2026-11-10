@@ -25,7 +25,7 @@ Design boundaries preserved here (Requirement 11.1-11.4, 12.3):
 
 Inclusive boundary semantics are exactly as documented in ``thresholds.yaml``:
 
-* ``fixed_bands`` / ``baseline_delta`` (``boundary: inclusive_typical``):
+* ``fixed_bands`` (``boundary: inclusive_typical``):
   ``value < low_below`` -> ``labels[0]``; ``low_below <= value <= high_above`` ->
   ``labels[1]``; ``value > high_above`` -> ``labels[2]``. So e.g. speech rate 110
   and 170 -> typical, pause-time ratio 0.15 and 0.30 -> typical, relative pitch
@@ -52,6 +52,8 @@ session guard failed) or a required percentile is missing, the feature yields a
 """
 
 from __future__ import annotations
+from math import isfinite
+from numbers import Real
 
 from typing import Any, Callable, Mapping
 
@@ -83,8 +85,7 @@ class _StrategyContext:
     Bundled into a single object so the dispatch table entries share one uniform
     signature. ``value`` is the processed feature value (already ``None`` when the
     feature could not be derived), ``entry`` is the feature's threshold config
-    block, ``baseline_available`` reports whether a personal baseline exists (for
-    ``baseline_delta``), and ``feature_refs`` is the per-feature session
+    block, and ``feature_refs`` is the per-feature session
     percentile dict (or ``None`` when session references are unavailable).
     """
 
@@ -160,21 +161,6 @@ def _fixed_bands(ctx: _StrategyContext) -> FamilyLabel:
     return _ok(chosen, value=value)
 
 
-def _baseline_delta(ctx: _StrategyContext) -> FamilyLabel:
-    """Band the already-computed relative value against symmetric edges.
-
-    The relative value (e.g. ``relative_pitch_shift_st``) is produced by
-    preprocessing as a delta from the personal baseline, so this strategy only
-    bands it and never re-subtracts the baseline. When no personal baseline is
-    available the relative value cannot exist, so the feature is unavailable with
-    reason ``missing_calibration``. Otherwise the banding is identical to
-    ``fixed_bands`` (boundaries inclusive to typical).
-    """
-    if not ctx.baseline_available:
-        return _unavailable(UnavailableReason.MISSING_CALIBRATION)
-    return _fixed_bands(ctx)
-
-
 def _session_percentiles(ctx: _StrategyContext) -> FamilyLabel:
     """Session-relative classification against per-feature P(low)/P(high).
 
@@ -219,8 +205,14 @@ def _binary(ctx: _StrategyContext) -> FamilyLabel:
         return _unavailable(UnavailableReason.FEATURE_UNAVAILABLE)
 
     value = float(ctx.value)
-    chosen = labels[1] if value > threshold else labels[0]
+    chosen = labels[1] if (value >= threshold if ctx.entry.get('boundary') == 'greater_or_equal' else value > threshold) else labels[0]
     return _ok(chosen, value=value)
+
+
+def _pause_duration(ctx: _StrategyContext) -> FamilyLabel:
+    value = float(ctx.value)
+    labels = ctx.entry['labels']
+    return _ok(labels[0] if value < ctx.entry['brief_below_ms'] else labels[1] if value < ctx.entry['long_from_ms'] else labels[2], value=value)
 
 
 def _four_band(ctx: _StrategyContext) -> FamilyLabel:
@@ -262,17 +254,12 @@ def _passthrough(ctx: _StrategyContext) -> FamilyLabel:
 # table (rather than per-feature branching) keeps the engine declarative.
 _STRATEGIES: dict[str, Callable[[_StrategyContext], FamilyLabel]] = {
     "fixed_bands": _fixed_bands,
-    "baseline_delta": _baseline_delta,
     "session_percentiles": _session_percentiles,
     "binary": _binary,
+    "pause_duration": _pause_duration,
     "four_band": _four_band,
     "passthrough": _passthrough,
 }
-
-# Strategies that do not consume a processed feature value directly, so a
-# ``None`` value is not by itself a reason to mark the feature unavailable.
-_VALUE_OPTIONAL_STRATEGIES = frozenset({"passthrough"})
-
 
 # ---------------------------------------------------------------------------
 # Core classification of one feature
@@ -289,8 +276,7 @@ def _classify_feature(
     """Classify a single processed feature into one base ``FamilyLabel``.
 
     Resolves the strategy declaratively from ``entry['strategy']``. A missing or
-    ``None`` value yields ``feature_unavailable`` (except for value-optional
-    strategies such as ``passthrough``); an unknown strategy name is a config
+    ``None`` value yields ``feature_unavailable``; an unknown strategy name is a config
     error surfaced as ``processing_error`` so it is visible rather than silent.
     """
     strategy_name = entry.get("strategy") if isinstance(entry, Mapping) else None
@@ -301,8 +287,10 @@ def _classify_feature(
     if strategy is None:
         return _unavailable(UnavailableReason.PROCESSING_ERROR)
 
-    if value is None and strategy_name not in _VALUE_OPTIONAL_STRATEGIES:
+    if value is None:
         return _unavailable(UnavailableReason.FEATURE_UNAVAILABLE)
+    if isinstance(value, Real) and not isfinite(value):
+        return _unavailable(UnavailableReason.PROCESSING_ERROR)
 
     ctx = _StrategyContext(
         value=value,
@@ -393,9 +381,9 @@ def compute_paraverbal_base_labels(
 ) -> ParaverbalBaseLabels:
     """Map paraverbal processed features to per-feature base labels.
 
-    Produces base labels for the ``temporal``, ``prosodic_level``, and
-    ``prosodic_modulation`` families from the ``paraverbal`` section of
-    ``thresholds.yaml``. ``baseline_available`` gates ``baseline_delta`` features
+    Produces base labels for the ``speech_timing``, ``prosodic_level``, and
+    ``prosodic_variability`` families from the ``paraverbal`` section of
+    ``thresholds.yaml``. Visual reference availability is tracked separately
     (relative pitch shift); ``session_refs`` supplies the per-feature P25/P75
     references for ``session_percentiles`` features, and is ``None`` when the
     session guard failed (yielding ``insufficient_reference_data`` labels).
@@ -404,8 +392,8 @@ def compute_paraverbal_base_labels(
     value_getter: Callable[[str], Any] = lambda name: getattr(processed, name, None)
 
     return ParaverbalBaseLabels(
-        temporal=_classify_family(
-            family_config=paraverbal_config.get("temporal", {}),
+        speech_timing=_classify_family(
+            family_config=paraverbal_config.get("speech_timing", {}),
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,
@@ -416,8 +404,8 @@ def compute_paraverbal_base_labels(
             baseline_available=baseline_available,
             session_refs=session_refs,
         ),
-        prosodic_modulation=_classify_family(
-            family_config=paraverbal_config.get("prosodic_modulation", {}),
+        prosodic_variability=_classify_family(
+            family_config=paraverbal_config.get("prosodic_variability", {}),
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,
@@ -435,8 +423,8 @@ def compute_nonverbal_base_labels(
 ) -> NonverbalBaseLabels:
     """Map nonverbal processed features to per-feature base labels.
 
-    Produces base labels for the ``visual_orientation``,
-    ``head_gestural_feedback``, and ``facial_expressivity`` families from the
+    Produces base labels for the ``gaze_orientation``,
+    ``head_nods``, and ``smile_activity`` families from the
     ``nonverbal`` section of ``thresholds.yaml``. ``session_refs`` supplies the
     per-feature P25/P75 references for the session-relative nod-rate and
     smile-activation features. ``baseline_available`` is accepted for a uniform
@@ -448,22 +436,22 @@ def compute_nonverbal_base_labels(
     value_getter = _nonverbal_value_getter(processed)
 
     return NonverbalBaseLabels(
-        visual_orientation=_classify_family(
-            family_config=nonverbal_config.get("visual_orientation", {}),
+        gaze_orientation=_classify_family(
+            family_config=nonverbal_config.get("gaze_orientation", {}),
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,
             unavailable_reasons=unavailable_reasons,
         ),
-        head_gestural_feedback=_classify_family(
-            family_config=nonverbal_config.get("head_gestural_feedback", {}),
+        head_nods=_classify_family(
+            family_config=nonverbal_config.get("head_nods", {}),
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,
             unavailable_reasons=unavailable_reasons,
         ),
-        facial_expressivity=_classify_family(
-            family_config=nonverbal_config.get("facial_expressivity", {}),
+        smile_activity=_classify_family(
+            family_config=nonverbal_config.get("smile_activity", {}),
             value_getter=value_getter,
             baseline_available=baseline_available,
             session_refs=session_refs,

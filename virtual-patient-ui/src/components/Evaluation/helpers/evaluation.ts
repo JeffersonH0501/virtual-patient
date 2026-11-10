@@ -1,18 +1,18 @@
-import { EvaluationResult } from '../../../types/evaluation';
+import type {BadgeTone} from '../../common/Badge';
 import {getEvaluationScoreBand} from '../../../utils/evaluationScore';
 
-export const getAspectDisplayName = (aspect: EvaluationResult['aspect'], t: any): string => {
+export const getAspectDisplayName = (aspect: string, t: any): string => {
   switch (aspect) {
     case 'general_communication':
       return t('evaluation.generalCommunication');
     case 'completeness':
       return t('evaluation.completeness');
     case 'show_interest':
-      return t('evaluation.showingInterest');
+      return t('evaluation.interestInPatient');
     case 'show_empathy':
-      return t('evaluation.showingEmpathy');
+      return t('evaluation.understandingAndEmpathy');
     case 'speak_clearly':
-      return t('evaluation.speakingClearly');
+      return t('evaluation.communicationClarity');
     case 'open_communication':
       return t('evaluation.openCommunication');
     default:
@@ -20,11 +20,11 @@ export const getAspectDisplayName = (aspect: EvaluationResult['aspect'], t: any)
   }
 };
 
-export const getScoreColor = (score: number): string => {
+export const getScoreTone = (score: number): BadgeTone => {
   const band = getEvaluationScoreBand(score);
-  if (band === 'high') return 'bg-success-50 text-success-700';
-  if (band === 'medium') return 'bg-warning-50 text-warning-700';
-  return 'bg-danger-50 text-danger-700';
+  if (band === 'high') return 'success';
+  if (band === 'medium') return 'warning';
+  return 'danger';
 };
 
 export const getScoreLabel = (score: number, t: any): string => {
@@ -34,13 +34,14 @@ export const getScoreLabel = (score: number, t: any): string => {
   return t('evaluation.needsImprovement');
 };
 
-export const sortEvaluationResults = (results: EvaluationResult[]): EvaluationResult[] => {
-  const order = ['general_communication', 'completeness', 'show_interest', 'show_empathy', 'speak_clearly', 'open_communication'];
+export const EVALUATION_ASPECT_ORDER = ['general_communication', 'completeness', 'show_interest', 'show_empathy', 'speak_clearly', 'open_communication'];
+
+export const sortEvaluationResults = <T extends {aspect: string}>(results: T[]): T[] => {
   return [...results].sort((a, b) => {
-    const aIndex = order.indexOf(a.aspect);
-    const bIndex = order.indexOf(b.aspect);
-    const aPos = aIndex === -1 ? order.length : aIndex;
-    const bPos = bIndex === -1 ? order.length : bIndex;
+    const aIndex = EVALUATION_ASPECT_ORDER.indexOf(a.aspect);
+    const bIndex = EVALUATION_ASPECT_ORDER.indexOf(b.aspect);
+    const aPos = aIndex === -1 ? EVALUATION_ASPECT_ORDER.length : aIndex;
+    const bPos = bIndex === -1 ? EVALUATION_ASPECT_ORDER.length : bIndex;
     return aPos - bPos;
   });
 };

@@ -88,15 +88,22 @@ def _nonverbal(**overrides: Any) -> NonverbalProcessedFeatures:
 
 # (modality, family, feature, low_edge, high_edge)
 _FIXED_BAND_FEATURES = [
-    ("paraverbal", "temporal", "speech_rate_wpm", 110, 170),
-    ("paraverbal", "temporal", "articulation_rate_wpm", 130, 210),
-    ("paraverbal", "temporal", "median_pause_duration_ms", 500, 1000),
-    ("paraverbal", "temporal", "pause_frequency_per_min", 12, 24),
-    ("paraverbal", "temporal", "pause_time_ratio", 0.15, 0.30),
-    ("paraverbal", "prosodic_modulation", "f0_p20_p80_range_semitones", 4, 8),
-    ("nonverbal", "visual_orientation", "visual_alignment_ratio", 0.30, 0.65),
-    ("nonverbal", "visual_orientation", "median_visual_alignment_dwell_ms", 500, 1500),
+    ("paraverbal", "speech_timing", "speech_rate_wpm", 110, 170),
+    ("paraverbal", "speech_timing", "articulation_rate_wpm", 130, 210),
+    ("paraverbal", "speech_timing", "pause_frequency_per_min", 12, 24),
+    ("paraverbal", "speech_timing", "pause_time_ratio", 0.15, 0.30),
+    ("paraverbal", "prosodic_variability", "f0_p20_p80_range_semitones", 4, 8),
 ]
+
+
+@pytest.mark.parametrize("value,expected", [(500, "pause_duration_brief"), (999, "pause_duration_brief"), (1000, "pause_duration_typical"), (1999, "pause_duration_typical"), (2000, "pause_duration_long")])
+def test_pause_duration_boundaries(config, value, expected):
+    assert _classify_single(config, "paraverbal", "speech_timing", "median_pause_duration_ms", value).value == expected
+
+
+@pytest.mark.parametrize("value,expected", [(0.499, "interaction_gaze_outside"), (0.5, "interaction_gaze_inside")])
+def test_interaction_gaze_boundary(config, value, expected):
+    assert _classify_single(config, "nonverbal", "gaze_orientation", "interaction_gaze_ratio", value).value == expected
 
 
 def _classify_single(
@@ -182,74 +189,14 @@ def test_fixed_bands_just_above_high_edge_is_high(
 # ---------------------------------------------------------------------------
 
 
-def test_baseline_delta_lower_boundary_is_typical(config):
-    """-3 st is inside the typical band (boundary inclusive to typical)."""
-    labels = _labels_for(config, "paraverbal", "prosodic_level", "relative_pitch_shift_st")
-    result = compute_paraverbal_base_labels(
-        _para(relative_pitch_shift_st=-3),
-        config,
-        baseline_available=True,
-        session_refs=None,
-    )
-    label = result.prosodic_level["relative_pitch_shift_st"]
-    assert label.status is OutcomeStatus.OK
-    assert label.value == labels[1]
 
 
-def test_baseline_delta_upper_boundary_is_typical(config):
-    """+3 st is inside the typical band (boundary inclusive to typical)."""
-    labels = _labels_for(config, "paraverbal", "prosodic_level", "relative_pitch_shift_st")
-    result = compute_paraverbal_base_labels(
-        _para(relative_pitch_shift_st=3),
-        config,
-        baseline_available=True,
-        session_refs=None,
-    )
-    label = result.prosodic_level["relative_pitch_shift_st"]
-    assert label.status is OutcomeStatus.OK
-    assert label.value == labels[1]
 
 
-def test_baseline_delta_below_low_edge_is_low(config):
-    """A relative shift below -3 st is classified as the low band."""
-    labels = _labels_for(config, "paraverbal", "prosodic_level", "relative_pitch_shift_st")
-    result = compute_paraverbal_base_labels(
-        _para(relative_pitch_shift_st=-3.5),
-        config,
-        baseline_available=True,
-        session_refs=None,
-    )
-    label = result.prosodic_level["relative_pitch_shift_st"]
-    assert label.status is OutcomeStatus.OK
-    assert label.value == labels[0]
 
 
-def test_baseline_delta_above_high_edge_is_high(config):
-    """A relative shift above +3 st is classified as the high band."""
-    labels = _labels_for(config, "paraverbal", "prosodic_level", "relative_pitch_shift_st")
-    result = compute_paraverbal_base_labels(
-        _para(relative_pitch_shift_st=3.5),
-        config,
-        baseline_available=True,
-        session_refs=None,
-    )
-    label = result.prosodic_level["relative_pitch_shift_st"]
-    assert label.status is OutcomeStatus.OK
-    assert label.value == labels[2]
 
 
-def test_baseline_delta_without_baseline_is_missing_calibration(config):
-    """No personal baseline -> unavailable with reason MISSING_CALIBRATION."""
-    result = compute_paraverbal_base_labels(
-        _para(relative_pitch_shift_st=0.0),
-        config,
-        baseline_available=False,
-        session_refs=None,
-    )
-    label = result.prosodic_level["relative_pitch_shift_st"]
-    assert label.status is OutcomeStatus.UNAVAILABLE
-    assert label.reason is UnavailableReason.MISSING_CALIBRATION
-    assert label.value is None
 
 
 # ---------------------------------------------------------------------------
@@ -319,53 +266,12 @@ def test_session_percentiles_above_p75_is_high(config):
     assert label.value == labels[2]
 
 
-def test_session_percentiles_nonverbal_nod_rate_bands(config):
-    """nod_rate_min bands low/typical/high against supplied session references."""
-    labels = _labels_for(config, "nonverbal", "head_gestural_feedback", "nod_rate_min")
-    refs = {"nod_rate_min": {"p25": 5.0, "p75": 15.0}}
-
-    low = compute_nonverbal_base_labels(
-        _nonverbal(nod_rate_min=2.0), config, baseline_available=True, session_refs=refs
-    ).head_gestural_feedback["nod_rate_min"]
-    typical = compute_nonverbal_base_labels(
-        _nonverbal(nod_rate_min=5.0), config, baseline_available=True, session_refs=refs
-    ).head_gestural_feedback["nod_rate_min"]
-    high = compute_nonverbal_base_labels(
-        _nonverbal(nod_rate_min=20.0), config, baseline_available=True, session_refs=refs
-    ).head_gestural_feedback["nod_rate_min"]
-
-    assert low.value == labels[0]
-    assert typical.value == labels[1]
-    assert high.value == labels[2]
+def test_nod_rate_does_not_use_session_percentiles(config):
+    assert _entry(config, "nonverbal", "head_nods", "nod_rate_min")["strategy"] == "passthrough"
 
 
-def test_session_percentiles_nonverbal_smile_activation_bands(config):
-    """mean_smile_activation bands low/typical/high against session references."""
-    labels = _labels_for(config, "nonverbal", "facial_expressivity", "mean_smile_activation")
-    refs = {"mean_smile_activation": {"p25": 0.20, "p75": 0.60}}
-
-    low = compute_nonverbal_base_labels(
-        _nonverbal(mean_smile_activation=0.10),
-        config,
-        baseline_available=True,
-        session_refs=refs,
-    ).facial_expressivity["mean_smile_activation"]
-    typical = compute_nonverbal_base_labels(
-        _nonverbal(mean_smile_activation=0.60),
-        config,
-        baseline_available=True,
-        session_refs=refs,
-    ).facial_expressivity["mean_smile_activation"]
-    high = compute_nonverbal_base_labels(
-        _nonverbal(mean_smile_activation=0.90),
-        config,
-        baseline_available=True,
-        session_refs=refs,
-    ).facial_expressivity["mean_smile_activation"]
-
-    assert low.value == labels[0]
-    assert typical.value == labels[1]
-    assert high.value == labels[2]
+def test_smile_activation_does_not_use_session_percentiles(config):
+    assert _entry(config, "nonverbal", "smile_activity", "mean_smile_activation")["strategy"] == "passthrough"
 
 
 def test_session_percentiles_without_refs_is_insufficient_reference_data(config):
@@ -390,14 +296,14 @@ def test_session_percentiles_without_refs_is_insufficient_reference_data(config)
 
 def test_binary_nod_absent_when_count_zero(config):
     """nod_count == 0 selects the 'absent' label (not greater than threshold)."""
-    labels = _labels_for(config, "nonverbal", "head_gestural_feedback", "nod_present")
+    labels = _labels_for(config, "nonverbal", "head_nods", "nod_present")
     result = compute_nonverbal_base_labels(
         _nonverbal(nod_count=0),
         config,
         baseline_available=True,
         session_refs=None,
     )
-    label = result.head_gestural_feedback["nod_present"]
+    label = result.head_nods["nod_present"]
     assert label.status is OutcomeStatus.OK
     assert label.value == labels[0]
     assert labels[0] == "nod_absent"
@@ -405,14 +311,14 @@ def test_binary_nod_absent_when_count_zero(config):
 
 def test_binary_nod_observed_when_count_positive(config):
     """nod_count == 1 selects the 'observed' label (greater than threshold 0)."""
-    labels = _labels_for(config, "nonverbal", "head_gestural_feedback", "nod_present")
+    labels = _labels_for(config, "nonverbal", "head_nods", "nod_present")
     result = compute_nonverbal_base_labels(
         _nonverbal(nod_count=1),
         config,
         baseline_available=True,
         session_refs=None,
     )
-    label = result.head_gestural_feedback["nod_present"]
+    label = result.head_nods["nod_present"]
     assert label.status is OutcomeStatus.OK
     assert label.value == labels[1]
     assert labels[1] == "nod_observed"
@@ -432,12 +338,12 @@ def _smile_ratio_label(config, value):
         baseline_available=True,
         session_refs=None,
     )
-    return result.facial_expressivity["smile_activity_ratio"]
+    return result.smile_activity["smile_activity_ratio"]
 
 
 def test_four_band_smile_absent_at_zero(config):
     """A ratio of exactly 0.0 is the 'absent' band (band[0])."""
-    labels = _labels_for(config, "nonverbal", "facial_expressivity", "smile_activity_ratio")
+    labels = _labels_for(config, "nonverbal", "smile_activity", "smile_activity_ratio")
     label = _smile_ratio_label(config, 0.0)
     assert label.status is OutcomeStatus.OK
     assert label.value == labels[0]
@@ -445,28 +351,28 @@ def test_four_band_smile_absent_at_zero(config):
 
 def test_four_band_smile_sparse_between_zero_and_first_break(config):
     """0 < ratio < 0.10 is the 'sparse' band (band[1])."""
-    labels = _labels_for(config, "nonverbal", "facial_expressivity", "smile_activity_ratio")
+    labels = _labels_for(config, "nonverbal", "smile_activity", "smile_activity_ratio")
     label = _smile_ratio_label(config, 0.05)
     assert label.value == labels[1]
 
 
 def test_four_band_smile_moderate_at_lower_middle_break(config):
     """A ratio of exactly 0.10 is inside the 'moderate' band (inclusive middle)."""
-    labels = _labels_for(config, "nonverbal", "facial_expressivity", "smile_activity_ratio")
+    labels = _labels_for(config, "nonverbal", "smile_activity", "smile_activity_ratio")
     label = _smile_ratio_label(config, 0.10)
     assert label.value == labels[2]
 
 
 def test_four_band_smile_moderate_at_upper_middle_break(config):
     """A ratio of exactly 0.35 is inside the 'moderate' band (inclusive middle)."""
-    labels = _labels_for(config, "nonverbal", "facial_expressivity", "smile_activity_ratio")
+    labels = _labels_for(config, "nonverbal", "smile_activity", "smile_activity_ratio")
     label = _smile_ratio_label(config, 0.35)
     assert label.value == labels[2]
 
 
 def test_four_band_smile_frequent_above_upper_break(config):
     """A ratio above 0.35 is the 'frequent' band (band[3])."""
-    labels = _labels_for(config, "nonverbal", "facial_expressivity", "smile_activity_ratio")
+    labels = _labels_for(config, "nonverbal", "smile_activity", "smile_activity_ratio")
     label = _smile_ratio_label(config, 0.36)
     assert label.value == labels[3]
 
@@ -484,7 +390,7 @@ def test_missing_paraverbal_feature_is_feature_unavailable(config):
         baseline_available=True,
         session_refs=None,
     )
-    label = result.temporal["speech_rate_wpm"]
+    label = result.speech_timing["speech_rate_wpm"]
     assert label.status is OutcomeStatus.UNAVAILABLE
     assert label.reason is UnavailableReason.FEATURE_UNAVAILABLE
     assert label.value is None
@@ -493,12 +399,12 @@ def test_missing_paraverbal_feature_is_feature_unavailable(config):
 def test_missing_nonverbal_feature_is_feature_unavailable(config):
     """A None nonverbal value yields feature_unavailable for that feature."""
     result = compute_nonverbal_base_labels(
-        _nonverbal(visual_alignment_ratio=None),
+        _nonverbal(interaction_gaze_ratio=None),
         config,
         baseline_available=True,
         session_refs=None,
     )
-    label = result.visual_orientation["visual_alignment_ratio"]
+    label = result.gaze_orientation["interaction_gaze_ratio"]
     assert label.status is OutcomeStatus.UNAVAILABLE
     assert label.reason is UnavailableReason.FEATURE_UNAVAILABLE
     assert label.value is None
@@ -517,7 +423,7 @@ def test_passthrough_context_speaking(config):
         baseline_available=True,
         session_refs=None,
     )
-    label = result.head_gestural_feedback["interaction_context"]
+    label = result.head_nods["interaction_context"]
     assert label.status is OutcomeStatus.OK
     assert label.value == "speaking"
 
@@ -530,6 +436,6 @@ def test_passthrough_context_listening(config):
         baseline_available=True,
         session_refs=None,
     )
-    label = result.head_gestural_feedback["interaction_context"]
+    label = result.head_nods["interaction_context"]
     assert label.status is OutcomeStatus.OK
     assert label.value == "listening"

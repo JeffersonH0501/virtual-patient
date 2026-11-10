@@ -6,6 +6,7 @@ Evaluates doctor's performance in medical interviews
 import asyncio
 from typing import Dict, Any, List, Optional
 from datetime import datetime
+from math import isclose
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from pydantic import BaseModel, Field
 from .schemas import EvaluationResult
@@ -19,6 +20,16 @@ from .helpers.formatting_helpers import (
 from app.models.clinical_case import ClinicalCase
 from app.models.medical_interview.progress_summary import ProgressSummary
 from app.core.azure_openai import create_chat_model
+from app.core.functional_config import read_config_json
+
+COMPLETENESS_WEIGHTS = read_config_json("scoring/completeness.json")
+if (
+    not isinstance(COMPLETENESS_WEIGHTS, dict)
+    or COMPLETENESS_WEIGHTS.keys() != {"progress", "hypotheses"}
+    or not all(type(weight) in (int, float) and 0 <= weight <= 1 for weight in COMPLETENESS_WEIGHTS.values())
+    or not isclose(sum(COMPLETENESS_WEIGHTS.values()), 1)
+):
+    raise ValueError("Invalid completeness scoring weights")
 
 # Initialize the globally selected Azure OpenAI v1 LLM.
 llm = create_chat_model(temperature=0.7)
@@ -34,6 +45,11 @@ class EvaluationAgent:
         self.patient_gender = patient_gender
         self.evaluation_prompts = get_evaluation_prompts(target_language, patient_gender)
         self.structured_model = self.llm.with_structured_output(EvaluationResult)
+        self.run_provenance = []
+
+    def _invocation_config(self, aspect, messages):
+        from .evaluation_provenance import EvaluationProvenanceCallback
+        return {"callbacks": [EvaluationProvenanceCallback(self.run_provenance, aspect, messages[0].content)]}
     
 
 
@@ -75,7 +91,7 @@ class EvaluationAgent:
         # Get evaluation from LLM using structured output
         try:
             # Use cached structured model
-            result = await self.structured_model.ainvoke(messages)
+            result = await self.structured_model.ainvoke(messages, config=self._invocation_config(aspect, messages))
             
             # Ensure the aspect is set correctly
             if result.aspect != aspect:
@@ -84,13 +100,7 @@ class EvaluationAgent:
             return result
             
         except Exception as e:
-            print(f"Error in evaluation for {aspect}: {e}")
-            # Return a default evaluation result
-            return EvaluationResult(
-                aspect=aspect,
-                score=2.5,
-                feedback=f"Evaluation failed due to technical error: {str(e)}"
-            )
+            raise RuntimeError(f"Technical evaluation failure for {aspect}") from e
     
     def _format_conversation(self, messages: List[Dict[str, Any]]) -> str:
         """Format conversation messages for evaluation"""
@@ -112,6 +122,39 @@ class EvaluationAgent:
                 formatted_conversation.append(f"{role.title()}: {content}")
 
         return "\n\n".join(formatted_conversation)
+
+    async def evaluate_multimodal(self, conversations):
+        """Evaluate configured aspects with separate structured output.
+
+        Errors propagate; a technical failure must not fabricate a multimodal
+        performance score. The text-only model and its calls remain unchanged.
+        """
+        from .prompts.multimodal_evaluation import MULTIMODAL_EVALUATION_CONFIG
+        if not hasattr(self, "run_provenance"):
+            self.run_provenance = []
+
+        model = self.llm.with_structured_output(
+            EvaluationResult, method="function_calling", include_raw=True,
+        )
+        results = []
+        for aspect, config in MULTIMODAL_EVALUATION_CONFIG.items():
+            conversation = conversations.get(aspect)
+            if conversation is None or not conversation.has_valid_evidence:
+                continue
+            messages = [
+                SystemMessage(content=config["prompt"](self.target_language)),
+                HumanMessage(content=f"Evaluate this enriched medical interview for {aspect}:\n\n{conversation.text}"),
+            ]
+            response = await model.ainvoke(messages, config=self._invocation_config(aspect, messages))
+            parsed = response.get("parsed")
+            raw = response.get("raw")
+            calls = getattr(raw, "tool_calls", [])
+            # Retain score and feedback only; contextual feedback is a separate call.
+            payload = calls[0]["args"] if calls else (parsed.model_dump() if parsed is not None else None)
+            if payload is None:
+                raise ValueError("Multimodal structured evaluation failed") from response.get("parsing_error")
+            results.append(EvaluationResult.model_validate({**payload, "aspect": aspect}))
+        return results
     
     async def evaluate_completeness(
         self,
@@ -154,8 +197,7 @@ class EvaluationAgent:
         
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"Error in completeness evaluation {i}: {result}")
-                continue
+                raise RuntimeError("Technical completeness evaluation failure") from result
             
             if i == 0:
                 progress_result = result
@@ -164,17 +206,14 @@ class EvaluationAgent:
         
         # If only one result (no hypotheses), return it directly
         if hypothesis_result is None:
-            return progress_result if progress_result else EvaluationResult(
-                aspect="completeness",
-                score=2.5,
-                feedback="Completeness evaluation failed"
-            )
+            if progress_result is None:
+                raise RuntimeError("Completeness evaluation returned no result")
+            return progress_result
         
-        # Combine both results with weighted average (70% progress, 30% hypothesis)
-        # Calculate weighted average score
-        print(f"Progress result score: {progress_result.score}")
-        print(f"Hypothesis result score: {hypothesis_result.score}")
-        combined_score = (progress_result.score * 0.7) + (hypothesis_result.score * 0.3)
+        combined_score = (
+            progress_result.score * COMPLETENESS_WEIGHTS["progress"]
+            + hypothesis_result.score * COMPLETENESS_WEIGHTS["hypotheses"]
+        )
         
         # Concatenate feedbacks with a space
         combined_feedback = f"{progress_result.feedback} \n\n {hypothesis_result.feedback}"
@@ -204,7 +243,6 @@ class EvaluationAgent:
         progress_summary_text = self._format_progress_summary(progress_summary)
         
         # ===== PHASE 1: Compare summary vs clinical case =====
-        print("📊 PHASE 1: Evaluating completeness (summary vs clinical case)...")
         evaluation_prompt = self.evaluation_prompts["completeness"]
         
         # Create messages for LLM
@@ -215,23 +253,16 @@ class EvaluationAgent:
         
         # Get initial evaluation from LLM using structured output
         try:
-            phase1_result = await self.structured_model.ainvoke(messages)
-            phase1_result.aspect = "completeness"
-            print(f"✅ PHASE 1 Result: Score={phase1_result.score}/5")
-            print(f"   Feedback: {phase1_result.feedback[:100]}...")
-        except Exception as e:
-            print(f"❌ Error in phase 1 evaluation: {e}")
-            return EvaluationResult(
-                aspect="completeness",
-                score=2.5,
-                feedback=f"Progress summary completeness evaluation failed due to technical error: {str(e)}"
+            phase1_result = await self.structured_model.ainvoke(
+                messages, config=self._invocation_config("completeness_summary", messages),
             )
+            phase1_result.aspect = "completeness"
+        except Exception as e:
+            raise RuntimeError("Technical progress summary evaluation failure") from e
         
         # ===== PHASE 2: Verify against full conversation =====
         if conversation_text:
-            print("📊 PHASE 2: Verifying evaluation against full conversation...")
             if "completeness_verification" not in self.evaluation_prompts:
-                print("⚠️  Completeness verification prompt not found, skipping phase 2")
                 return phase1_result
             
             # Create verification prompt
@@ -253,16 +284,15 @@ Feedback: {phase1_result.feedback}"""
             
             # Get verification result from LLM
             try:
-                phase2_result = await self.structured_model.ainvoke(verification_messages)
+                phase2_result = await self.structured_model.ainvoke(
+                    verification_messages,
+                    config=self._invocation_config("completeness_verification", verification_messages),
+                )
                 phase2_result.aspect = "completeness"
-                print(f"✅ PHASE 2 Result: Score={phase2_result.score}/5 (adjusted from {phase1_result.score}/5)")
-                print(f"   Feedback: {phase2_result.feedback[:100]}...")
                 return phase2_result
             except Exception as e:
-                print(f"⚠️  Error in phase 2 verification: {e}, returning phase 1 result")
-                return phase1_result
+                raise RuntimeError("Technical completeness verification failure") from e
         else:
-            print("⚠️  No conversation text provided, skipping phase 2 verification")
             return phase1_result
     
     async def _evaluate_hypothesis_completeness(
@@ -277,8 +307,6 @@ Feedback: {phase1_result.feedback}"""
         # Format clinical case and hypotheses for evaluation
         clinical_case_text = self._format_clinical_case(clinical_case)
         hypotheses_text = self._format_hypotheses(hypotheses)
-        print(f"Clinical case text (for hypotheses): {clinical_case_text}")
-        print(f"Hypotheses text: {hypotheses_text}")
         
         # Create evaluation prompt
         evaluation_prompt = self.evaluation_prompts["hypothesis_completeness"]
@@ -292,7 +320,9 @@ Feedback: {phase1_result.feedback}"""
         # Get evaluation from LLM using structured output
         try:
             # Use cached structured model
-            result = await self.structured_model.ainvoke(messages)
+            result = await self.structured_model.ainvoke(
+                messages, config=self._invocation_config("completeness_hypotheses", messages),
+            )
             
             # Ensure the aspect is set correctly
             result.aspect = "completeness"
@@ -300,13 +330,7 @@ Feedback: {phase1_result.feedback}"""
             return result
             
         except Exception as e:
-            print(f"Error in hypothesis completeness evaluation: {e}")
-            # Return a default evaluation result
-            return EvaluationResult(
-                aspect="completeness",
-                score=2.5,
-                feedback=f"Hypothesis completeness evaluation failed due to technical error: {str(e)}"
-            )
+            raise RuntimeError("Technical hypothesis evaluation failure") from e
     
     def _format_hypotheses(self, hypotheses: List[Any]) -> str:
         """Format hypotheses for evaluation"""
@@ -367,9 +391,9 @@ Feedback: {phase1_result.feedback}"""
         formatted = "[PROGRESS SUMMARY]\n"
         
         # Convert ProgressSummary to dict for the helper functions
-        if hasattr(progress_summary, 'dict'):
+        if isinstance(progress_summary, BaseModel):
             # It's a Pydantic model
-            summary_dict = progress_summary.dict()
+            summary_dict = progress_summary.model_dump()
         elif hasattr(progress_summary, '__dict__'):
             # It's an object with attributes
             summary_dict = progress_summary.__dict__
@@ -434,13 +458,7 @@ Feedback: {phase1_result.feedback}"""
         valid_results = []
         for i, result in enumerate(results):
             if isinstance(result, Exception):
-                print(f"Error evaluating aspect '{conversation_aspects[i]}': {result}")
-                # Add a fallback result for failed evaluations
-                valid_results.append(EvaluationResult(
-                    aspect=conversation_aspects[i],
-                    score=2.5,
-                    feedback=f"Evaluation failed: {str(result)}"
-                ))
+                raise RuntimeError(f"Technical evaluation failure for {conversation_aspects[i]}") from result
             else:
                 valid_results.append(result)
         
@@ -493,7 +511,7 @@ Feedback: {phase1_result.feedback}"""
         all_results = []
         for result in results:
             if isinstance(result, Exception):
-                print(f"Error in evaluation: {result}")
+                raise RuntimeError("Technical interview evaluation failure") from result
             elif isinstance(result, list):
                 all_results.extend(result)
             else:

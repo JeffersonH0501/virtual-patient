@@ -2,7 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.auth import get_current_active_user
+from app.core.auth import get_current_active_user, require_superuser
 from app.models.user import User
 from app.models.personality import Personality, PersonalityCreate, PersonalityUpdate, PersonalityListResponse
 from app.controllers.personality_controller import PersonalityController
@@ -16,7 +16,7 @@ router = APIRouter(
 @router.post("", response_model=Personality, status_code=status.HTTP_201_CREATED)
 async def create_personality(
     personality_data: PersonalityCreate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_superuser),
     db: Session = Depends(get_db)
 ):
     """
@@ -128,7 +128,7 @@ async def get_personality_by_namespace_key(
 async def update_personality(
     personality_id: int,
     personality_data: PersonalityUpdate,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_superuser),
     db: Session = Depends(get_db)
 ):
     """
@@ -158,7 +158,7 @@ async def update_personality(
 @router.delete("/{personality_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_personality(
     personality_id: int,
-    current_user: User = Depends(get_current_active_user),
+    current_user: User = Depends(require_superuser),
     db: Session = Depends(get_db)
 ):
     """

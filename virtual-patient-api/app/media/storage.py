@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 
 
 # Interview media storage settings. Hardcoded on purpose: the storage root is the
@@ -18,6 +18,28 @@ from fastapi import UploadFile
 # guard is fixed for the deployment. Neither is sourced from the environment.
 MEDIA_STORAGE_ROOT = Path("/app/media")
 MEDIA_MIN_FREE_BYTES = 256 * 1024 * 1024  # 256 MiB
+MIB = 1024 * 1024
+TURN_VIDEO_MAX_BYTES = 64 * MIB
+RECORDING_FILE_LIMITS = {
+    "student_audio": 64 * MIB,
+    "patient_audio": 64 * MIB,
+    "student_video": 512 * MIB,
+    "patient_video": 512 * MIB,
+}
+
+
+def check_upload_size(size: int, limit: int) -> None:
+    if size > limit:
+        raise HTTPException(status_code=413, detail="Interview media exceeds the maximum allowed size")
+
+
+async def checked_upload_chunks(upload: UploadFile, limit: int) -> AsyncIterator[bytes]:
+    check_upload_size(upload.size or 0, limit)
+    size = 0
+    while chunk := await upload.read(MIB):
+        size += len(chunk)
+        check_upload_size(size, limit)
+        yield chunk
 
 
 @dataclass(frozen=True)
@@ -42,64 +64,43 @@ class LocalMediaStorage:
         upload: UploadFile,
         extension: str,
     ) -> StoredMedia:
-        self._ensure_free_space()
         relative_dir = Path("interviews") / str(interview_id) / recording_id
-        target_dir = (self.root / relative_dir).resolve()
-        self._assert_within_root(target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
-
-        filename = f"{kind}{extension}"
-        target = target_dir / filename
-        temporary = target_dir / f".{filename}.{uuid.uuid4().hex}.tmp"
-        digest = hashlib.sha256()
-        size = 0
-        try:
-            with temporary.open("wb") as output:
-                while chunk := await upload.read(1024 * 1024):
-                    output.write(chunk)
-                    digest.update(chunk)
-                    size += len(chunk)
-                output.flush()
-                os.fsync(output.fileno())
-            temporary.replace(target)
-        except Exception:
-            temporary.unlink(missing_ok=True)
-            raise
-        finally:
-            await upload.close()
-
-        storage_key = (relative_dir / filename).as_posix()
-        return StoredMedia(storage_key=storage_key, size_bytes=size, sha256=digest.hexdigest())
+        filename = f"{kind}-{uuid.uuid4().hex}{extension}"
+        return await self._save_upload(relative_dir / filename, upload, RECORDING_FILE_LIMITS[kind])
 
     async def save_turn_video_upload(
         self, interview_id: int, recording_id: str, turn_id: str, upload: UploadFile, extension: str
     ) -> StoredMedia:
         """Atomically store a temporary video segment for one conversation turn."""
-        self._ensure_free_space()
         relative_dir = Path("interviews") / str(interview_id) / recording_id / "turns"
-        target_dir = (self.root / relative_dir).resolve()
-        self._assert_within_root(target_dir)
-        target_dir.mkdir(parents=True, exist_ok=True)
         filename = f"{turn_id}-{uuid.uuid4().hex}{extension}"
-        target = target_dir / filename
-        temporary = target_dir / f".{filename}.{uuid.uuid4().hex}.tmp"
+        return await self._save_upload(relative_dir / filename, upload, TURN_VIDEO_MAX_BYTES)
+
+    async def _save_upload(self, relative_path: Path, upload: UploadFile, limit: int) -> StoredMedia:
+        target = (self.root / relative_path).resolve()
+        self._assert_within_root(target)
+        temporary = target.with_name(f".{target.name}.tmp")
         digest = hashlib.sha256()
         size = 0
         try:
-            with temporary.open("wb") as output:
-                while chunk := await upload.read(1024 * 1024):
-                    output.write(chunk)
-                    digest.update(chunk)
-                    size += len(chunk)
-                output.flush()
-                os.fsync(output.fileno())
+            try:
+                self._ensure_free_space()
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with temporary.open("xb") as output:
+                    async for chunk in checked_upload_chunks(upload, limit):
+                        self._ensure_free_space(len(chunk))
+                        output.write(chunk)
+                        digest.update(chunk)
+                        size += len(chunk)
+                    output.flush()
+                    os.fsync(output.fileno())
+            finally:
+                await upload.close()
+            # Publish after the last await so cancellation cannot orphan the result.
             temporary.replace(target)
-        except Exception:
-            temporary.unlink(missing_ok=True)
-            raise
         finally:
-            await upload.close()
-        return StoredMedia((relative_dir / filename).as_posix(), size, digest.hexdigest())
+            temporary.unlink(missing_ok=True)
+        return StoredMedia(relative_path.as_posix(), size, digest.hexdigest())
 
     def resolve(self, storage_key: str) -> Path:
         path = (self.root / storage_key).resolve()
@@ -146,9 +147,9 @@ class LocalMediaStorage:
         if path != self.root and self.root not in path.parents:
             raise ValueError("Media path escapes the configured storage root")
 
-    def _ensure_free_space(self) -> None:
+    def _ensure_free_space(self, incoming_bytes: int = 0) -> None:
         available = shutil.disk_usage(self.root).free
-        if available < MEDIA_MIN_FREE_BYTES:
+        if available - incoming_bytes < MEDIA_MIN_FREE_BYTES:
             raise OSError("Insufficient free space for interview media")
 
 

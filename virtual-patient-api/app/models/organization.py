@@ -1,4 +1,5 @@
 from pydantic import BaseModel
+from datetime import datetime
 from typing import Optional
 from sqlalchemy import Boolean, Column, String, DateTime, Integer
 from sqlalchemy.sql import func
@@ -35,8 +36,8 @@ class OrganizationUpdate(BaseModel):
 
 class Organization(OrganizationBase):
     id: int
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
-        from_attributes = True 
+        from_attributes = True

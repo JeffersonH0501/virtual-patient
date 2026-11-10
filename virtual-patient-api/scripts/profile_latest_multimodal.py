@@ -40,12 +40,11 @@ from app.models.medical_interview import (
     MediaAssetKind,
     MedicalInterviewDB,
 )
-from app.multimodal import pipeline
+from app.multimodal import pipeline, turn_results
 from app.multimodal.calibration import read_calibration
 from app.multimodal.config_loader import load_methodology_config
 from app.multimodal.schemas import PersonalBaseline
 from app.nonverbal import ccdbhg
-from app.nonverbal.gaze import create_tracker
 from app.nonverbal.mediapipe_extractor import create_face_landmarker
 from app.nonverbal.preprocessing import preprocess_nonverbal_turn
 from app.nonverbal.video_observations import (
@@ -148,7 +147,7 @@ def _time_audio(path: Path, turns: list[InterviewTurnDB], timer: Timer) -> tuple
     extraction_ms = (perf_counter() - started_total) * 1000.0
     processed = {}
     for turn_id, raw in extracted.items():
-        processed[turn_id] = timer.call("audio.preprocessing", preprocess_paraverbal, raw, baseline=None)
+        processed[turn_id] = timer.call("audio.preprocessing", preprocess_paraverbal, raw)
     opensmile_ms = timer.total("audio.opensmile_and_raw")
     return extracted, {
         "total_ms": extraction_ms + timer.total("audio.preprocessing"),
@@ -228,18 +227,17 @@ def _time_video(path: Path, turns: list[InterviewTurnDB], recording: InterviewRe
     timings: dict[str, list[float]] = {}
     initialization_started = perf_counter()
     landmarker = None if parallel_video else create_face_landmarker(timings=timings)
-    tracker = create_tracker(timings=timings)
     initialization_ms = (perf_counter() - initialization_started) * 1000.0
     try:
         extraction_started = perf_counter()
         if parallel_video:
             observations = extract_nonverbal_video_observations_parallel(
-                path, sample_fps=10.0, tracker=tracker, timings=timings,
+                path, sample_fps=10.0, timings=timings,
                 queue_capacity=queue_capacity,
             )
         else:
             observations = extract_nonverbal_video_observations(
-                path, sample_fps=10.0, landmarker=landmarker, tracker=tracker, timings=timings
+                path, sample_fps=10.0, landmarker=landmarker, timings=timings
             )
         shared_extraction_ms = (perf_counter() - extraction_started) * 1000.0
     finally:
@@ -274,7 +272,6 @@ def _time_video(path: Path, turns: list[InterviewTurnDB], recording: InterviewRe
     for item in observations:
         if not item.gaze.valid:
             invalid_states[item.gaze.state] += 1
-    blaze_batches = int(tracker._optimization_counters.get("blazegaze_batches", 0))
     return raw_by_turn, {
         "total_ms": initialization_ms + shared_extraction_ms + nod["total_ms"] + timer.total("video.turn_segmentation") + timer.total("video.feature_aggregation") + timer.total("video.preprocessing"),
         "initialization_ms": initialization_ms,
@@ -290,26 +287,9 @@ def _time_video(path: Path, turns: list[InterviewTurnDB], recording: InterviewRe
         "no_face_frames": len(observations) - valid_face,
         "smile_ms": sums.get("smile", 0.0),
         "gaze_ms": sums.get("gaze_batch_total", 0.0),
-        "gaze_prepare_ms": sums.get("webeyetrack_prepare_input", 0.0),
-        "gaze_face_reconstruction_ms": sums.get("prepare_input.face_origin.reconstruction.total", 0.0),
-        "gaze_uvz_ms": sums.get("prepare_input.face_origin.reconstruction.uvz_to_xyz", 0.0),
-        "gaze_depth_ms": sums.get("prepare_input.face_origin.reconstruction.depth_refinement_loop", 0.0),
-        "gaze_eyepatch_ms": sums.get("prepare_input.eyepatch.total", 0.0),
-        "gaze_head_vector_ms": sums.get("prepare_input.head_vector.total", 0.0),
-        "gaze_packaging_ms": sums.get("blazegaze_batch_packaging", 0.0),
-        "gaze_inference_ms": sums.get("blazegaze_batch_inference", 0.0),
-        "gaze_affine_kalman_ms": sums.get("webeyetrack_affine_and_kalman", 0.0),
         "valid_gaze": valid_gaze,
         "invalid_gaze": len(observations) - valid_gaze,
         "invalid_gaze_states": dict(invalid_states),
-        "blazegaze_batches": blaze_batches,
-        "blazegaze_samples": int(tracker._optimization_counters.get("blazegaze_samples", 0)),
-        "mean_effective_batch_size": (
-            float(tracker._optimization_counters.get("blazegaze_samples", 0)) / blaze_batches
-            if blaze_batches else None
-        ),
-        "blazegaze_max_batch_size": tracker._optimization_counters.get("blazegaze_max_batch_size"),
-        "mean_inference_ms_sample": sums.get("blazegaze_batch_inference", 0.0) / valid_gaze if valid_gaze else None,
         "turn_segmentation_ms": timer.total("video.turn_segmentation"),
         "feature_aggregation_ms": timer.total("video.feature_aggregation"),
         "preprocessing_ms": timer.total("video.preprocessing"),
@@ -388,13 +368,13 @@ def main() -> None:
         para_processed = audio.pop("processed")
         nonverbal_processed = video.pop("processed")
         nonverbal_reasons = video.pop("reasons")
-        para_refs = timer.call("post.session_references", pipeline._session_references, processed_by_turn=para_processed, feature_names=pipeline._PARAVERBAL_SESSION_FEATURES, min_turns=int(config.thresholds.get("min_turns_for_session_stats", 0) or 0))
-        nonverbal_refs = timer.call("post.session_references", pipeline._session_references, processed_by_turn=nonverbal_processed, feature_names=pipeline._NONVERBAL_SESSION_FEATURES, min_turns=int(config.thresholds.get("min_turns_for_session_stats", 0) or 0))
-        outcome = pipeline._OutcomeTracker()
+        para_refs = timer.call("post.session_references", turn_results.compute_session_references, processed_by_turn=para_processed, feature_names=turn_results._PARAVERBAL_SESSION_FEATURES, min_turns=int(config.thresholds.get("min_turns_for_session_stats", 0) or 0))
+        nonverbal_refs = timer.call("post.session_references", turn_results.compute_session_references, processed_by_turn=nonverbal_processed, feature_names=turn_results._NONVERBAL_SESSION_FEATURES, min_turns=int(config.thresholds.get("min_turns_for_session_stats", 0) or 0))
+        outcome = turn_results._OutcomeTracker()
         results = []
         for turn in turns:
             results.append(timer.call(
-                "post.threshold_labels_assembly", pipeline._assemble_turn_result,
+                "post.threshold_labels_assembly", turn_results._assemble_turn_result,
                 turn=turn, config=config, versions=config.versions.model_dump(), config_hash=config.config_hash,
                 baseline_available=False, paraverbal_raw=audio_raw.get(turn.id),
                 paraverbal_processed=para_processed.get(turn.id), para_session_refs=para_refs,
@@ -467,7 +447,7 @@ def main() -> None:
                 "audio_ms": audio["total_ms"], "video_ms": video["total_ms"],
                 "decode_ms": video["decode_ms"], "conversion_ms": video["frame_conversion_ms"],
                 "mediapipe_ms": video["mediapipe_ms"], "gaze_ms": video["gaze_ms"],
-                "blazegaze_ms": video["gaze_inference_ms"], "nod_ms": video["nod"]["total_ms"],
+                "nod_ms": video["nod"]["total_ms"],
                 "post_ms": sum(payload["post"].values()),
                 "peak_rss_kib": payload["peak_rss_kib"], "sampled_peak_rss_kib": monitor["peak_rss_kib"],
                 "rss_before_kib": payload["rss_before_kib"], "rss_after_kib": payload["rss_after_kib"],

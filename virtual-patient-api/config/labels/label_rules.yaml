@@ -1,0 +1,108 @@
+# Multimodal pipeline — integrated label rules (methodology configuration).
+#
+# This is one of the two research config files (with thresholds.yaml). It maps
+# the per-feature base labels of a family to exactly one integrated label.
+# Rules are evaluated in order (priority): the first rule whose conditions all
+# hold wins. Condition grammar:
+#   all: {slot: value}        -> every slot must equal the given base label (AND)
+#   any: {slot: [v1, v2]}     -> slot must equal one of the listed base labels (OR)
+# A rule may combine `all` and `any`; both must hold. If no rule matches, the
+# `fallback` value is used. `unavailable` names the outcome when the family's
+# base labels are insufficient (missing/unavailable required slots).
+#
+# All labels are in English and are descriptive, provisional research categories,
+# not clinical or psychological judgments. To retune the categories, edit the
+# `value` names and the base-label values referenced under `all` / `any` (those
+# must match the labels produced by thresholds.yaml).
+version: "label_rules_v3_interaction_vad"
+
+families:
+  # PARAVERBAL — temporal. Slots: global_rate, articulation, pause_load,
+  # pause_duration, pause_frequency (base labels from thresholds.speech_timing).
+  speech_timing:
+    rules:
+      - value: no_reportable_pauses
+        all: {pause_present: pause_absent}
+      - value: intermittent_by_long_pauses
+        all: {pause_duration: pause_duration_long}
+        any: {pause_load: [pause_load_high, pause_load_typical]}
+      - value: high_pause_load
+        all: {pause_load: pause_load_high}
+      - value: fast_speech_few_pauses
+        all: {global_rate: speech_rate_high, pause_load: pause_load_low}
+      - value: slow_speech_few_pauses
+        all: {global_rate: speech_rate_low, pause_load: pause_load_low}
+    fallback: mixed_speech_timing_pattern_unclassified
+    unavailable: unavailable
+
+  # PARAVERBAL — intensity relative to eligible turns in the session.
+  prosodic_level:
+    session_relative: true
+    rules:
+      - value: elevated_loudness
+        all: {loudness_level: loudness_high}
+      - value: reduced_loudness
+        all: {loudness_level: loudness_low}
+      - value: typical_loudness
+        all: {loudness_level: loudness_typical}
+    fallback: mixed_prosodic_level_unclassified
+    unavailable: unavailable
+
+  # PARAVERBAL — prosodic modulation. Slots: pitch_variation
+  # (f0_p20_p80_range_semitones), loudness_variation (loudness_p20_p80_range,
+  # session-relative).
+  prosodic_variability:
+    rules:
+      - value: high_f0_and_loudness_variability
+        all: {pitch_variation: f0_variability_high, loudness_variation: loudness_variability_high}
+      - value: reduced_f0_and_loudness_variability
+        all: {pitch_variation: f0_variability_reduced, loudness_variation: loudness_variability_low}
+      - value: high_f0_variability
+        all: {pitch_variation: f0_variability_high}
+      - value: reduced_f0_variability
+        all: {pitch_variation: f0_variability_reduced}
+      - value: marked_loudness_variability
+        all: {loudness_variation: loudness_variability_high}
+      - value: reduced_loudness_variability
+        all: {loudness_variation: loudness_variability_low}
+      - value: typical_modulation
+        all: {pitch_variation: f0_variability_typical, loudness_variation: loudness_variability_typical}
+    fallback: mixed_prosodic_variability_unclassified
+    unavailable: unavailable
+
+  # NONVERBAL — visual orientation. Slots: alignment (visual_alignment_ratio),
+  # dwell (median_visual_alignment_dwell_ms).
+  gaze_orientation:
+    rules:
+      - value: interaction_gaze_inside
+        all: {alignment: interaction_gaze_inside}
+      - value: interaction_gaze_outside
+        all: {alignment: interaction_gaze_outside}
+    fallback: mixed_gaze_orientation_unclassified
+    unavailable: unavailable
+
+  # NONVERBAL — head gestural feedback. Slots: nod_present, nod_rate
+  # (session-relative), context (interaction_context passthrough).
+  head_nods:
+    rules:
+      - value: no_nodding
+        all: {nod_present: nod_absent}
+      - value: nodding_present
+        all: {nod_present: nod_observed}
+    fallback: mixed_head_nods_unclassified
+    unavailable: unavailable
+
+  # NONVERBAL — facial expressivity. Slots: smile_activity (four-band),
+  # smile_activation (session-relative).
+  smile_activity:
+    rules:
+      - value: absent_smile_activity
+        all: {smile_activity: smile_activity_absent}
+      - value: frequent_smile_activity
+        all: {smile_activity: smile_activity_frequent}
+      - value: moderate_smile_activity
+        all: {smile_activity: smile_activity_moderate}
+      - value: scarce_smile_activity
+        all: {smile_activity: smile_activity_sparse}
+    fallback: mixed_smile_activity_unclassified
+    unavailable: unavailable

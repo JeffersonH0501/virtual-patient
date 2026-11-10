@@ -7,11 +7,13 @@ import {CompleteInterviewResponse} from '../../types/interview';
 export const getInterview = async (
   interviewId: string,
   language: 'en' | 'es' = 'en',
+  signal?: AbortSignal,
 ): Promise<CompleteInterviewResponse> => {
   const authHeaders = getAuthHeaders();
   const query = new URLSearchParams({language});
   const response = await apiFetch(`${API_URL}/medical-interviews/${interviewId}/complete?${query}`, {
     method: 'GET',
+    signal,
     headers: {
       'Content-Type': 'application/json',
       accept: 'application/json',

@@ -18,10 +18,12 @@ export default tseslint.config(
       'react-refresh': reactRefresh,
     },
     rules: {
+      // TypeScript checks type/global names; the core rule treats DOM types as values.
+      'no-undef': 'off',
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': [
         'warn',
-        { allowConstantExport: true },
+        { allowConstantExport: true, allowExportNames: ['UserContext', 'useEvaluationAspects'] },
       ],
       // TypeScript ESLint rules
       '@typescript-eslint/adjacent-overload-signatures': 'error',
@@ -174,7 +176,6 @@ export default tseslint.config(
       'no-this-before-super': 'error',
       'no-throw-literal': 'error',
       'no-trailing-spaces': 'error',
-      'no-undef': 'error',
       'no-undef-init': 'error',
       'no-underscore-dangle': 'error',
       'no-unexpected-multiline': 'error',

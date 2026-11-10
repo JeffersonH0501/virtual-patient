@@ -11,9 +11,11 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic, perf_counter
+from tempfile import TemporaryDirectory
 
 from app.core.database import SessionLocal
 from app.media.storage import get_media_storage
+from app.media.patient_roi import slice_patient_roi_snapshots
 from app.multimodal.constants import (
     CALIBRATION_VISUAL_JOB_TIMEOUT_SECONDS,
     NONVERBAL_GAZE_QUEUE_CAPACITY,
@@ -21,10 +23,12 @@ from app.multimodal.constants import (
 )
 from app.models.medical_interview import (
     InterviewRecordingDB,
+    InterviewTurnDB,
     MedicalInterviewDB,
     TurnVideoAnalysisDB,
     TurnVideoAnalysisStatus,
 )
+from app.models.medical_interview.interview_recording import InterviewRecordingSegmentDB
 from app.utils.runtime_metrics import current_rss_mb, process_id
 
 logger = logging.getLogger(__name__)
@@ -38,7 +42,6 @@ class PersistentTurnVideoResources:
         from app.nonverbal.ccdbhg import load_default_bundle
 
         started_at = perf_counter()
-        self.tracker = create_tracker()
         load_default_bundle()
         logger.info(
             "performance_event component=turn_video operation=worker_warmup "
@@ -47,17 +50,6 @@ class PersistentTurnVideoResources:
             process_id(),
             current_rss_mb(),
         )
-
-    def tracker_for(self, profile: dict | None, *, kalman_enabled: bool = True):
-        from app.nonverbal.gaze import reset_tracker
-
-        affine_matrix = profile.get("affine_matrix") if profile else None
-        return reset_tracker(
-            self.tracker,
-            affine_matrix=affine_matrix,
-            kalman_enabled=kalman_enabled,
-        )
-
 
 class _PersistentTurnVideoWorker:
     """Line-protocol client for the restartable isolated visual worker."""
@@ -156,9 +148,9 @@ class _PersistentTurnVideoWorker:
         return payload
 
     def close(self) -> None:
-        if self.process.poll() is not None:
-            return
         try:
+            if self.process.poll() is not None:
+                return
             if self.process.stdin is not None:
                 self.process.stdin.write(json.dumps({"command": "shutdown"}) + "\n")
                 self.process.stdin.flush()
@@ -170,16 +162,18 @@ class _PersistentTurnVideoWorker:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait(timeout=5)
+        finally:
+            for stream in (self.process.stdin, self.process.stdout):
+                if stream is not None:
+                    try:
+                        stream.close()
+                    except OSError:
+                        logger.warning("Unable to close native worker pipe", exc_info=True)
 
 
-def read_calibration_profile(interview):
+def read_calibration_profile(interview, **kwargs):
     from app.multimodal.calibration import read_calibration_profile as implementation
-    return implementation(interview)
-
-
-def create_tracker(**kwargs):
-    from app.nonverbal.gaze import create_tracker as implementation
-    return implementation(**kwargs)
+    return implementation(interview, **kwargs)
 
 
 def extract_nonverbal_video_observations_parallel(*args, **kwargs):
@@ -219,17 +213,19 @@ def _process_job(
     *,
     resources: PersistentTurnVideoResources | None = None,
 ) -> str:
-    # These imports load PyTorch, TensorFlow and MediaPipe. This function runs
+    # These imports load PyTorch and MediaPipe. This function runs
     # only in the isolated child process, so the long-lived API stays light.
     from app.nonverbal.ccdbhg import NodAnalysis
     from app.nonverbal.video_observations import TurnWindow
 
     processing_started = perf_counter()
+    block_source = None
     phase_started = processing_started
     timings_ms: dict[str, float] = {}
     db = SessionLocal()
     storage = get_media_storage()
     storage_key: str | None = None
+    temporary = None
     try:
         job = db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.id == job_id).first()
         if job is None or job.status == TurnVideoAnalysisStatus.COMPLETED.value:
@@ -245,63 +241,90 @@ def _process_job(
         db.commit()
         timings_ms["job_claim"] = (perf_counter() - phase_started) * 1000
         storage_key = job.storage_key
-        if not storage_key:
+        block_source = (job.result or {}).get('block_source')
+        if not storage_key and not block_source:
             raise FileNotFoundError("Turn video segment is unavailable")
 
         interview = db.query(MedicalInterviewDB).filter(
             MedicalInterviewDB.id == job.medical_interview_id,
         ).first()
         phase_started = perf_counter()
-        profile = read_calibration_profile(interview)
-        tracker = (
-            resources.tracker_for(profile)
-            if resources is not None
-            else create_tracker(affine_matrix=profile.get("affine_matrix"))
-            if profile
-            else create_tracker()
-        )
+        turn = db.query(InterviewTurnDB).filter(InterviewTurnDB.id == job.turn_id).first()
+        segment_id = getattr(turn, "segment_id", None)
+        if segment_id is None:
+            profile = read_calibration_profile(interview)
+        else:
+            segment = db.query(InterviewRecordingSegmentDB).filter(
+                InterviewRecordingSegmentDB.id == segment_id,
+                InterviewRecordingSegmentDB.recording_id == job.recording_id,
+            ).first()
+            if segment is None:
+                raise ValueError("Turn video recording segment is unavailable")
+            profile = read_calibration_profile(interview, segment=segment)
+        audio_raw = None
+        window_start = 0
+        roi_duration = max(1, job.end_ms - job.start_ms)
+        roi_snapshots = job.roi_snapshots
+        if block_source:
+            from app.models.recording_block import InterviewRecordingBlockDB
+            from app.multimodal.block_turns import prepare_block_sources
+            block = db.get(InterviewRecordingBlockDB, block_source['block_id'])
+            temporary = TemporaryDirectory()
+            video_path, audio_raw, window_start, roi_duration, clip_start = prepare_block_sources(
+                storage, block, segment, turn, block_source, Path(temporary.name))
+            roi_snapshots = slice_patient_roi_snapshots(
+                block.block_metadata.get('interaction_area_snapshots', []), clip_start, roi_duration)
+        else:
+            video_path = storage.resolve(storage_key)
         timings_ms["model_setup"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         observations = extract_nonverbal_video_observations_parallel(
-            storage.resolve(storage_key),
-            tracker=tracker,
+            video_path,
             queue_capacity=NONVERBAL_GAZE_QUEUE_CAPACITY,
+            calibration_profile=profile,
         )
         timings_ms["video_and_gaze_extraction"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         try:
-            nod_analysis = analyze_nods([item.shared for item in observations])
+            nod_analysis = analyze_nods([item.shared for item in observations if window_start <= item.shared.timestamp_ms < window_start + max(1, job.end_ms - job.start_ms)])
         except Exception:  # noqa: BLE001 - preserve gaze and smile for this turn.
             logger.exception("turn_video_analysis job_id=%s branch=ccdbhg result=failed", job_id)
             nod_analysis = NodAnalysis((), False, "extractor_failure")
         timings_ms["nod_analysis"] = (perf_counter() - phase_started) * 1000
 
-        roi = list(job.roi_snapshots or [])
         duration_ms = max(1, job.end_ms - job.start_ms)
-        window = TurnWindow(job.turn_id, 0, duration_ms, job.speaker)
+        window = TurnWindow(job.turn_id, window_start, window_start + duration_ms, job.speaker)
         phase_started = perf_counter()
         raw = build_turn_raw_features(
-            observations,
+            [item for item in observations if window.start_ms <= item.shared.timestamp_ms < window.end_ms] if block_source else observations,
             window,
             nod_analysis=nod_analysis,
             calibration_profile=profile,
-            patient_roi_snapshots=roi,
+            interaction_area_snapshots=roi_snapshots if block_source else None,
+            roi_duration_ms=roi_duration,
         )
         timings_ms["feature_assembly"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
-        job.result = raw.model_dump(mode="json")
+        from app.multimodal.extraction_provenance import build_extraction_manifest
+        from app.multimodal.config_loader import load_methodology_config
+        raw.extractor = {**raw.extractor, "extraction_manifest": build_extraction_manifest(
+            load_methodology_config(), mode="turn_video", calibration={"profile": profile})}
+        if block_source:
+            from app.multimodal.continuous_turns import runtime_identity
+            raw.extractor.update({'block_capture': block_source, 'block_runtime': runtime_identity(), 'paraverbal_raw': audio_raw})
+        if block_source:
+            db.refresh(job)
+            if (job.result or {}).get('block_source') != block_source:
+                return 'skipped'
+        result = raw.model_dump(mode="json")
+        for field in ("gaze_yaw_samples", "gaze_pitch_samples", "head_pitch_samples", "head_yaw_samples", "head_roll_samples"):
+            if not result.get(field):
+                result.pop(field, None)
+        job.result = result
         job.status = TurnVideoAnalysisStatus.COMPLETED.value
         job.completed_at = datetime.now(timezone.utc)
-        job.storage_key = None
         db.commit()
         timings_ms["persistence"] = (perf_counter() - phase_started) * 1000
-        try:
-            storage.delete(storage_key)
-        except Exception:  # noqa: BLE001 - persisted analysis remains valid.
-            logger.exception(
-                "turn_video_analysis job_id=%s result=cleanup_failed storage_key=%s",
-                job.id, storage_key,
-            )
         queue_wait_ms = (
             (job.started_at - job.queued_at).total_seconds() * 1000
             if job.started_at and job.queued_at else None
@@ -319,6 +342,8 @@ def _process_job(
         db.rollback()
         job = db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.id == job_id).first()
         if job is not None:
+            if block_source and (job.result or {}).get('block_source') != block_source:
+                return 'skipped'
             job.status = TurnVideoAnalysisStatus.FAILED.value
             job.error = str(error)[:2000]
             job.completed_at = datetime.now(timezone.utc)
@@ -331,6 +356,8 @@ def _process_job(
         )
         return "failed"
     finally:
+        if temporary is not None:
+            temporary.cleanup()
         db.close()
 
 
@@ -346,18 +373,11 @@ def queue_depth() -> int:
 
 def fail_pending_turn_video_jobs(db, interview_id: int, reason: str) -> int:
     """Make queued jobs terminal; an already-processing native call may finish safely."""
-    storage = get_media_storage()
     jobs = db.query(TurnVideoAnalysisDB).filter(
         TurnVideoAnalysisDB.medical_interview_id == interview_id,
         TurnVideoAnalysisDB.status == TurnVideoAnalysisStatus.QUEUED.value,
     ).all()
     for job in jobs:
-        if job.storage_key:
-            try:
-                storage.delete(job.storage_key)
-            except Exception:  # noqa: BLE001 - status transition must still persist.
-                logger.exception("turn_video_analysis job_id=%s result=cancel_cleanup_failed", job.id)
-        job.storage_key = None
         job.status = TurnVideoAnalysisStatus.FAILED.value
         job.error = reason
         job.completed_at = datetime.now(timezone.utc)

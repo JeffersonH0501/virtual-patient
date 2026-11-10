@@ -4,8 +4,8 @@
 Summarizes the layered per-turn shape produced by the multimodal pipeline
 (design section 20): per-turn presence of the paraverbal / nonverbal layers,
 each layer's ``status`` / ``reason``, the integrated label per family
-(``temporal`` / ``prosodic_level`` / ``prosodic_modulation`` for paraverbal;
-``visual_orientation`` / ``head_gestural_feedback`` / ``facial_expressivity`` for
+(``speech_timing`` / ``prosodic_level`` / ``prosodic_variability`` for paraverbal;
+``gaze_orientation`` / ``head_nods`` / ``smile_activity`` for
 nonverbal), and the ``versions`` / ``config_hash`` provenance.
 
 Legacy flat JSON (pre-refactor rows carrying top-level ``speech_rate_wpm`` or
@@ -32,11 +32,11 @@ from app.models.medical_interview.interview_recording import (
 )
 from app.routers.interview_recordings import _without_none
 
-_PARAVERBAL_FAMILIES = ("temporal", "prosodic_level", "prosodic_modulation")
+_PARAVERBAL_FAMILIES = ("speech_timing", "prosodic_level", "prosodic_variability")
 _NONVERBAL_FAMILIES = (
-    "visual_orientation",
-    "head_gestural_feedback",
-    "facial_expressivity",
+    "gaze_orientation",
+    "head_nods",
+    "smile_activity",
 )
 
 

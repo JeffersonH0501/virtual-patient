@@ -1,1 +1,1 @@
-export * from './synthesizePatientMessage';
+export * from './patientSpeechUrl';

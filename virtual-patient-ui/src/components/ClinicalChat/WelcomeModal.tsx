@@ -1,63 +1,51 @@
-﻿import {FC} from 'react';
-import {useTranslation} from 'react-i18next';
-import {Modal} from '../common/Modal';
+import {Dialog} from '../common/Dialog';
+import {FC} from 'react';
+import {Trans, useTranslation} from 'react-i18next';
 
 type WelcomeModalProps = {
   isOpen: boolean;
   onAccept: () => void;
   onCancel: () => void;
+  busy?: boolean;
+  error?: boolean;
 };
 
-export const WelcomeModal: FC<WelcomeModalProps> = ({isOpen, onAccept, onCancel}) => {
+export const WelcomeModal: FC<WelcomeModalProps> = ({isOpen, onAccept, onCancel, busy = false, error = false}) => {
   const {t} = useTranslation();
 
   return (
-    <Modal
+    <Dialog
+      title={t('clinicalChat.welcome.title')}
       open={isOpen}
-      closeAction={() => undefined}
-      closeOnOutsideClick={false}
-      hasActions
-      size="small"
+      onClose={onCancel}
       containerId="welcome-modal"
+      hasDismissAction
+      busy={busy}
+      actions={
+        <>
+          <button type="button" onClick={onCancel} disabled={busy} className="ui-button ui-button--secondary">
+            {t('clinicalChat.welcome.cancel')}
+          </button>
+          <button
+            type="button"
+            onClick={onAccept}
+            disabled={busy}
+            className="ui-button ui-button--primary"
+            autoFocus
+          >
+            {t(busy ? 'common.loading' : 'clinicalChat.welcome.accept')}
+          </button>
+        </>
+      }
     >
-      <div className="dialog-shell">
-        <div className="dialog-header">
-          <h2 className="dialog-title">
-            {t('clinicalChat.welcome.title')}
-          </h2>
-        </div>
-
-        <div className="dialog-content flex-1">
-          <div className="space-y-4">
-            <p className="dialog-copy">
-              {t('clinicalChat.welcome.description')}
-            </p>
-            <p className="dialog-annotation">
-              {t('clinicalChat.welcome.description4')}
-            </p>
-          </div>
-        </div>
-        <div className="dialog-footer">
-          <div className="dialog-actions">
-            <button
-              type="button"
-              onClick={onCancel}
-              className="dialog-action dialog-action--secondary"
-            >
-              {t('clinicalChat.welcome.cancel')}
-            </button>
-            <button
-              type="button"
-              onClick={onAccept}
-              className="dialog-action dialog-action--primary"
-              autoFocus
-            >
-              {t('clinicalChat.welcome.accept')}
-            </button>
-          </div>
-        </div>
+      <div className="space-y-layout">
+        <p className="dialog-copy">{t('clinicalChat.welcome.description')}</p>
+        <ul className="dialog-list dialog-copy">
+          {['scope', 'duration', 'evaluation'].map((instruction) =>
+            <li key={instruction}><Trans i18nKey={`clinicalChat.welcome.${instruction}`} /></li>)}
+        </ul>
+        {error && <p className="dialog-copy text-danger-700" role="alert">{t('calibration.startError')}</p>}
       </div>
-    </Modal>
+    </Dialog>
   );
 };
-

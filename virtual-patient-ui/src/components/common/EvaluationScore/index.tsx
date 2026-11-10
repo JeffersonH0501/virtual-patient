@@ -1,10 +1,11 @@
+import {useTranslation} from 'react-i18next';
 import {
   EVALUATION_SCORE_MAX,
   formatEvaluationScoreValue,
   getEvaluationScoreBand,
 } from '../../../utils/evaluationScore';
 
-type EvaluationScoreSize = 'small' | 'medium' | 'large';
+type EvaluationScoreSize = 'compact' | 'large';
 
 type EvaluationScoreProps = {
   score: number;
@@ -12,17 +13,17 @@ type EvaluationScoreProps = {
   className?: string;
 };
 
-export const EvaluationScore = ({score, size = 'medium', className = ''}: EvaluationScoreProps) => {
+export const EvaluationScore = ({score, size = 'compact', className = ''}: EvaluationScoreProps) => {
   const band = getEvaluationScoreBand(score);
-  const sizeClass = size === 'medium' ? 'regular' : size;
-  const formattedScore = formatEvaluationScoreValue(score);
+  const {i18n} = useTranslation();
+  const formattedScore = formatEvaluationScoreValue(score, i18n?.resolvedLanguage ?? i18n?.language);
 
   return (
     <span
-      className={`evaluation-score evaluation-score--${band} evaluation-score--${sizeClass} ${className}`}
+      className={`evaluation-score evaluation-score--${band} ${className}`}
       aria-label={`${formattedScore}/${EVALUATION_SCORE_MAX}`}
     >
-      <span className="evaluation-score-value" aria-hidden="true">
+      <span className={`evaluation-score-value ${size === 'large' ? 'metric-value' : 'numeric-value'}`} aria-hidden="true">
         {formattedScore}
       </span>
       <span className="evaluation-score-scale" aria-hidden="true">

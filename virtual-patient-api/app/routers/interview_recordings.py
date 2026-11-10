@@ -1,72 +1,39 @@
 """Authenticated capture, storage, and replay of synchronized interview media."""
 
-from __future__ import annotations
+from app.media.access import _current_media_user, _get_interview, _require_completed_for_replay, _require_owner, _require_replay_access, _stream_private_media
 
-import json
+from app.core.review_access import can_read_assessments, require_assessments
+
 import logging
-import mimetypes
 import re
-from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from time import perf_counter
-from typing import Annotated, Any, Dict, Optional
+from datetime import datetime, timezone
+from typing import Any, Dict
 
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Cookie,
-    Depends,
-    File,
-    Form,
-    Header,
-    HTTPException,
-    Request,
-    UploadFile,
-    status,
-)
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
-from sqlalchemy.exc import IntegrityError
 
-from app.core.auth import get_current_user_from_token
 from app.core.database import get_db
+from app.controllers.interview_lifecycle import lock_row, require_capture_open
+from app.controllers.recording_segments import require_active_segment
+from app.models.medical_interview import InterviewRecordingSegmentDB
 from app.media import LocalMediaStorage, get_media_storage
-from app.multimodal.process_isolation import process_multimodal_interview_isolated
-from app.multimodal.reprocess import reprocess_interview_evaluation
-from app.multimodal.turn_video_queue import (
-    queue_depth,
-)
-from app.models.medical_interview import (
-    InterviewMediaAssetDB,
-    InterviewRecapResponse,
-    InterviewRecordingDB,
-    InterviewTurnDB,
-    MediaAssetKind,
-    MedicalInterviewDB,
-    RecapTurn,
-    RecordingStartRequest,
-    RecordingStateResponse,
-    RecordingStatus,
-    RecordingUnavailableRequest,
-    SenderType,
-    TurnUpsertRequest,
-    TurnVideoAnalysisDB,
-    TurnVideoAnalysisStatus,
-)
+from app.media.patient_roi import validate_patient_roi as _validate_patient_roi
+from app.media.upload_route import RecordingUploadRoute
+from app.multimodal.processing_jobs import stage_processing_job
+from app.models.medical_interview import InterviewRecapResponse, InterviewRecordingDB, InterviewTurnDB, MedicalInterviewDB, RecapTurn, RecordingStateResponse, RecordingStatus, SenderType, TurnVideoAnalysisDB, TurnVideoAnalysisStatus
 from app.models.medical_interview.interview_message import InterviewMessageDB
 from app.models.user import UserDB, UserRole
-from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.models.calibration_capture import CalibrationCaptureDB
+from app.media.retention import media_retention_deadline
 
 
-router = APIRouter(prefix="/medical-interviews", tags=["interview-recordings"])
+router = APIRouter(prefix="/medical-interviews", tags=["interview-recordings"], route_class=RecordingUploadRoute)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# Interview media governance settings. Hardcoded on purpose: these values are
-# fixed for the deployment and are not sourced from the environment.
-# No automatic deletion is performed yet, so retention has no expiry by default.
-MEDIA_RETENTION_DAYS: int | None = None
-MEDIA_CONSENT_POLICY_VERSION = "institutional-v1"
+
+from app.core.config import settings
+MEDIA_RETENTION_MONTHS = settings.media_retention_months
 
 # Non-terminal observation_processing statuses reported by the multimodal
 # pipeline (see app/multimodal/pipeline.py STATUS_*). While a run is in one of
@@ -93,53 +60,11 @@ KNOWN_FAILURE_CODES = {
 }
 
 
-def _current_media_user(
-    authorization: Annotated[Optional[str], Header()] = None,
-    access_token: Annotated[Optional[str], Cookie()] = None,
-    db: Session = Depends(get_db),
-) -> UserDB:
-    token = access_token
-    if authorization and authorization.lower().startswith("bearer "):
-        token = authorization[7:].strip()
-    if not token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
-    user = get_current_user_from_token(token, db)
-    if user is None or user.disabled:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    return user
-
-
-def _get_interview(db: Session, interview_id: int) -> MedicalInterviewDB:
-    interview = db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id).first()
-    if interview is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
-    return interview
-
-
-def _require_owner(interview: MedicalInterviewDB, user: UserDB) -> None:
-    if interview.user_id != user.id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only the interview owner can modify its recording")
-
-
-def _require_replay_access(interview: MedicalInterviewDB, user: UserDB) -> None:
-    if interview.user_id == user.id or user.role == UserRole.SUPERUSER:
-        return
-    owner_organization_id = interview.user.organization_id if interview.user else None
-    if user.role == UserRole.TEACHER and user.organization_id == owner_organization_id:
-        return
-    raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Recording access denied")
-
-
-def _require_completed_for_replay(interview: MedicalInterviewDB) -> None:
-    # The recap and its media assets are review artifacts. They only become
-    # accessible once the interview is completed (text evaluation ready);
-    # multimodal processing may still be running in the background. While the
-    # interview is in_progress, processing or interrupted, replay stays blocked.
-    if interview.status != "completed":
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Interview results are not ready yet",
-        )
+def _require_analysis_admin(interview: MedicalInterviewDB, user: UserDB) -> None:
+    """Limit manual analysis operations to superusers with interview access."""
+    if user.role != UserRole.SUPERUSER:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser analysis access required")
+    _require_replay_access(interview, user)
 
 
 def _recording_response(recording: InterviewRecordingDB) -> RecordingStateResponse:
@@ -151,58 +76,41 @@ def _recording_response(recording: InterviewRecordingDB) -> RecordingStateRespon
     )
 
 
-@router.post("/{interview_id}/recording/start", response_model=RecordingStateResponse)
-def start_recording(
-    interview_id: int,
-    payload: RecordingStartRequest,
-    user: UserDB = Depends(_current_media_user),
-    db: Session = Depends(get_db),
-):
+@router.get("/{interview_id}/learning-moments")
+def get_learning_moments(interview_id: int, user: UserDB = Depends(_current_media_user), db: Session = Depends(get_db)):
+    from app.multimodal.learning_moments import read_learning_moments
+    interview = _get_interview(db, interview_id)
+    _require_replay_access(interview, user)
+    require_assessments(db, interview, user)
+    _require_completed_for_replay(interview)
+    return read_learning_moments(db, interview_id)
+
+
+@router.post("/{interview_id}/learning-moments/regenerate", status_code=202)
+def regenerate_learning_moments(interview_id: int, user: UserDB = Depends(_current_media_user), db: Session = Depends(get_db)):
+    from app.multimodal.learning_moments import queue_learning_moments, read_learning_moments, recording_for
+    interview = _get_interview(db, interview_id)
+    _require_analysis_admin(interview, user)
+    _require_completed_for_replay(interview)
+    recording = recording_for(db, interview_id, lock=True)
+    capture = recording.capture_config or {} if recording else {}
+    if any(capture.get(key, {}).get("status") in {"queued", "processing", "stale"} for key in ("observation_processing", "evaluation_processing")):
+        raise HTTPException(status_code=409, detail="Wait for current observations and evaluation")
+    try:
+        queue_learning_moments(db, interview_id, force=True)
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return read_learning_moments(db, interview_id)
+
+
+def persist_turn(interview_id, message_id, payload, user, db, *, commit=True):
+    db.info["capture_wait"] = True
     interview = _get_interview(db, interview_id)
     _require_owner(interview, user)
-    if getattr(interview.status, "value", interview.status) != "in_progress":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only in-progress interviews can start recording")
-    if interview.start_time is None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The interview has not started")
-
-    recording = db.query(InterviewRecordingDB).filter(
-        InterviewRecordingDB.medical_interview_id == interview_id
-    ).first()
-    if recording is None:
-        retention_expires_at = None
-        if MEDIA_RETENTION_DAYS is not None:
-            retention_expires_at = payload.started_at + timedelta(days=MEDIA_RETENTION_DAYS)
-        recording = InterviewRecordingDB(
-            medical_interview_id=interview_id,
-            status=RecordingStatus.RECORDING.value,
-            started_at=payload.started_at,
-            capture_config=payload.capture_config,
-            consent_basis="institutional",
-            consent_policy_version=MEDIA_CONSENT_POLICY_VERSION,
-            retention_expires_at=retention_expires_at,
-        )
-        db.add(recording)
-        db.commit()
-        db.refresh(recording)
-        logger.info(
-            "recording_storage_event interview_id=%s recording_id=%s event=started",
-            interview_id,
-            recording.id,
-        )
-    return _recording_response(recording)
-
-
-@router.put("/{interview_id}/recording/turns/{message_id}", response_model=RecapTurn)
-def upsert_turn(
-    interview_id: int,
-    message_id: int,
-    payload: TurnUpsertRequest,
-    user: UserDB = Depends(_current_media_user),
-    db: Session = Depends(get_db),
-):
-    interview = _get_interview(db, interview_id)
-    _require_owner(interview, user)
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
     message = db.query(InterviewMessageDB).filter(
+        # Completed transcripts and timing windows are immutable.
         InterviewMessageDB.id == message_id,
         InterviewMessageDB.interview_id == interview_id,
     ).first()
@@ -226,6 +134,39 @@ def upsert_turn(
         InterviewTurnDB.message_id == message_id,
     ).first()
     values = payload.model_dump()
+    snapshots = values.pop("patient_roi_snapshots")
+    if snapshots is not None:
+        _validate_patient_roi(snapshots, payload.end_ms - payload.start_ms)
+    roi_matches = snapshots is None
+    if snapshots is not None and turn is not None and turn.segment_id:
+        existing_segment = db.get(InterviewRecordingSegmentDB, turn.segment_id)
+        roi_matches = ((existing_segment.capture_config or {}).get("_turn_roi") or {}).get(str(message_id)) == snapshots
+    if turn is not None and roi_matches and all(getattr(turn, key) == value for key, value in values.items()):
+        return _turn_response(turn)
+    require_capture_open(interview)
+    segment = require_active_segment(db, interview_id, payload.segment_id)
+    if segment is not None:
+        if payload.start_ms < segment.offset_ms:
+            raise HTTPException(status_code=422, detail="Turn starts before its recording segment")
+        if snapshots is not None:
+            config = dict(segment.capture_config or {})
+            turn_roi = dict(config.get("_turn_roi") or {})
+            previous_roi = turn_roi.get(str(message_id))
+            if previous_roi is not None and previous_roi != snapshots:
+                raise HTTPException(409, "Confirmed turn ROI cannot be replaced")
+            turn_roi[str(message_id)] = snapshots
+            samples = {sample.get("timestampMs", sample.get("timestamp_ms")): sample
+                       for sample in config.get("patientRoiSnapshots", [])}
+            for sample in snapshots:
+                local_time = sample.get("timestampMs", sample.get("timestamp_ms")) + payload.start_ms - segment.offset_ms
+                samples[local_time] = {**sample, "timestampMs": local_time}
+            segment.capture_config = {**config, "_turn_roi": turn_roi,
+                "patientRoiSnapshots": [samples[key] for key in sorted(samples)]}
+        pending_message = (segment.capture_config or {}).get("_pending_patient_message_id")
+        original_segment = (message.message_metadata or {}).get("capture_segment_id")
+        if ((original_segment is not None and original_segment != segment.id)
+                or (turn is not None and turn.segment_id != segment.id)) and message_id != pending_message:
+            raise HTTPException(status_code=409, detail="Message belongs to a previous recording segment")
     if turn is None:
         turn = InterviewTurnDB(
             medical_interview_id=interview_id,
@@ -234,97 +175,17 @@ def upsert_turn(
         )
         db.add(turn)
     else:
+        job = db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.turn_id == turn.id).first()
+        if job is not None and any(getattr(turn, key) != value for key, value in values.items()):
+            raise HTTPException(status_code=409, detail="A turn with queued analysis cannot be changed")
         for key, value in values.items():
             setattr(turn, key, value)
-    db.commit()
-    db.refresh(turn)
-    return _turn_response(turn)
-
-
-@router.post("/{interview_id}/recording/turns/{turn_id}/video")
-async def upload_turn_video(
-    interview_id: int,
-    turn_id: str,
-    video: Annotated[UploadFile, File()],
-    patient_roi_snapshots: Annotated[str, Form()] = "[]",
-    user: UserDB = Depends(_current_media_user),
-    db: Session = Depends(get_db),
-    storage: LocalMediaStorage = Depends(get_media_storage),
-) -> Dict[str, Any]:
-    """Persist and enqueue one idempotent temporary turn-video analysis."""
-    interview = _get_interview(db, interview_id)
-    _require_owner(interview, user)
-    recording = db.query(InterviewRecordingDB).filter(
-        InterviewRecordingDB.medical_interview_id == interview_id
-    ).first()
-    turn = db.query(InterviewTurnDB).filter(
-        InterviewTurnDB.id == turn_id,
-        InterviewTurnDB.medical_interview_id == interview_id,
-    ).first()
-    if recording is None or turn is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording turn not found")
-    content_type = (video.content_type or "").split(";", 1)[0].lower()
-    extension = ALLOWED_CONTENT_TYPES.get(content_type)
-    if extension not in {".webm", ".mp4"}:
-        raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail="Unsupported turn video type")
-    try:
-        roi_snapshots = json.loads(patient_roi_snapshots)
-    except json.JSONDecodeError as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid patient ROI snapshots") from error
-    if not isinstance(roi_snapshots, list):
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Patient ROI snapshots must be a list")
-
-    stored = await storage.save_turn_video_upload(
-        interview_id, recording.id, turn.id, video, extension
-    )
-    if stored.size_bytes == 0:
-        storage.delete(stored.storage_key)
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Turn video is empty")
-    existing = db.query(TurnVideoAnalysisDB).filter(
-        TurnVideoAnalysisDB.turn_id == turn.id
-    ).first()
-    if existing is not None:
-        if existing.sha256 != stored.sha256:
-            storage.delete(stored.storage_key)
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Turn video already has a different payload")
-        storage.delete(stored.storage_key)
-        return {"turn_id": turn.id, "status": existing.status, "queue_depth": queue_depth()}
-
-    job = TurnVideoAnalysisDB(
-        medical_interview_id=interview_id,
-        recording_id=recording.id,
-        turn_id=turn.id,
-        speaker=turn.speaker,
-        start_ms=turn.start_ms,
-        end_ms=turn.end_ms,
-        storage_key=stored.storage_key,
-        content_type=content_type,
-        size_bytes=stored.size_bytes,
-        sha256=stored.sha256,
-        status=TurnVideoAnalysisStatus.QUEUED.value,
-        roi_snapshots=roi_snapshots,
-    )
-    db.add(job)
-    try:
+    if commit:
         db.commit()
-    except IntegrityError:
-        db.rollback()
-        storage.delete(stored.storage_key)
-        existing = db.query(TurnVideoAnalysisDB).filter(
-            TurnVideoAnalysisDB.turn_id == turn.id
-        ).first()
-        if existing is None or existing.sha256 != stored.sha256:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Turn video already has a different payload",
-            )
-        return {"turn_id": turn.id, "status": existing.status, "queue_depth": queue_depth()}
-    db.refresh(job)
-    logger.info(
-        "turn_video_analysis interview_id=%s turn_id=%s status=queued queue_depth=%s",
-        interview_id, turn.id, queue_depth(),
-    )
-    return {"turn_id": turn.id, "status": job.status, "queue_depth": queue_depth()}
+        db.refresh(turn)
+    else:
+        db.flush()
+    return _turn_response(turn)
 
 
 @router.get("/{interview_id}/recording/turn-video-analyses")
@@ -336,6 +197,7 @@ def list_turn_video_analyses(
     """Expose the durable per-turn queue lifecycle without returning media paths."""
     interview = _get_interview(db, interview_id)
     _require_owner(interview, user)
+    require_assessments(db, interview, user)
     jobs = db.query(TurnVideoAnalysisDB).filter(
         TurnVideoAnalysisDB.medical_interview_id == interview_id
     ).order_by(TurnVideoAnalysisDB.queued_at).all()
@@ -357,242 +219,47 @@ def list_turn_video_analyses(
     return {"counts": counts, "jobs": items}
 
 
-@router.post("/{interview_id}/recording/finalize", response_model=RecordingStateResponse)
-async def finalize_recording(
+@router.post("/{interview_id}/evaluation/matched-control")
+async def generate_matched_control(
     interview_id: int,
-    background_tasks: BackgroundTasks,
-    duration_ms: Annotated[int, Form(ge=0)],
-    source_durations: Annotated[str, Form()],
-    capture_config: Annotated[str, Form()] = "{}",
-    student_audio: Annotated[Optional[UploadFile], File()] = None,
-    student_video: Annotated[Optional[UploadFile], File()] = None,
-    patient_audio: Annotated[Optional[UploadFile], File()] = None,
-    patient_video: Annotated[Optional[UploadFile], File()] = None,
-    user: UserDB = Depends(_current_media_user),
-    db: Session = Depends(get_db),
-    storage: LocalMediaStorage = Depends(get_media_storage),
-):
-    finalize_started_at = perf_counter()
-    interview = _get_interview(db, interview_id)
-    _require_owner(interview, user)
-    recording = db.query(InterviewRecordingDB).filter(
-        InterviewRecordingDB.medical_interview_id == interview_id
-    ).first()
-    if recording is None:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Recording has not been started")
-
-    try:
-        durations: Dict[str, int] = json.loads(source_durations)
-        parsed_capture_config = json.loads(capture_config)
-    except (TypeError, ValueError, json.JSONDecodeError) as error:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid recording metadata") from error
-    if not isinstance(durations, dict) or not isinstance(parsed_capture_config, dict):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Recording metadata must be JSON objects",
-        )
-
-    uploads = {
-        MediaAssetKind.STUDENT_AUDIO.value: student_audio,
-        MediaAssetKind.STUDENT_VIDEO.value: student_video,
-        MediaAssetKind.PATIENT_AUDIO.value: patient_audio,
-        MediaAssetKind.PATIENT_VIDEO.value: patient_video,
-    }
-    logger.info(
-        "recording_storage_event interview_id=%s recording_id=%s event=finalize_requested "
-        "duration_ms=%s asset_kinds=%s",
-        interview_id,
-        recording.id,
-        duration_ms,
-        sorted(kind for kind, upload in uploads.items() if upload is not None),
-    )
-    validated_durations = _validate_source_durations(durations, uploads, duration_ms)
-    latest_turn = db.query(InterviewTurnDB).filter(
-        InterviewTurnDB.medical_interview_id == interview_id
-    ).order_by(InterviewTurnDB.end_ms.desc()).first()
-    if latest_turn and latest_turn.end_ms > duration_ms + MEDIA_DURATION_TOLERANCE_MS:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="A turn extends beyond the common recording timeline",
-        )
-    saved_keys: list[str] = []
-    recording.status = RecordingStatus.FINALIZING.value
-    db.commit()
-    try:
-        for kind, upload in uploads.items():
-            if upload is None:
-                continue
-            source_duration = validated_durations[kind]
-            content_type = (upload.content_type or "").split(";", 1)[0].lower()
-            extension = ALLOWED_CONTENT_TYPES.get(content_type)
-            if extension is None:
-                raise HTTPException(
-                    status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                    detail=f"Unsupported media type for {kind}",
-                )
-            stored = await storage.save_upload(
-                interview_id,
-                recording.id,
-                kind,
-                upload,
-                extension,
-            )
-            saved_keys.append(stored.storage_key)
-            if stored.size_bytes == 0:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"{kind} is empty",
-                )
-            asset = db.query(InterviewMediaAssetDB).filter(
-                InterviewMediaAssetDB.recording_id == recording.id,
-                InterviewMediaAssetDB.kind == kind,
-            ).first()
-            if asset is None:
-                asset = InterviewMediaAssetDB(recording_id=recording.id, kind=kind)
-                db.add(asset)
-            asset.storage_key = stored.storage_key
-            asset.content_type = content_type
-            asset.size_bytes = stored.size_bytes
-            asset.duration_ms = source_duration
-            asset.sha256 = stored.sha256
-            asset.status = "ready"
-            logger.info(
-                "recording_storage_event interview_id=%s recording_id=%s event=asset_saved "
-                "kind=%s size_bytes=%s duration_ms=%s content_type=%s",
-                interview_id,
-                recording.id,
-                kind,
-                stored.size_bytes,
-                source_duration,
-                content_type,
-            )
-
-        available_count = sum(1 for upload in uploads.values() if upload is not None)
-        recording.duration_ms = duration_ms
-        recording.ended_at = datetime.now(timezone.utc)
-        recording.capture_config = {
-            **parsed_capture_config,
-            # Seed the observable lifecycle before the pipeline picks it up. The
-            # stage name matches the pipeline's initial STAGE_QUEUED so the
-            # vocabulary is consistent from finalize through processing.
-            "observation_processing": {"status": "queued", "stage": "queued"},
-        }
-        recording.failure_code = None
-        recording.status = _status_for_asset_count(available_count).value
-        if available_count == 0:
-            recording.failure_code = "no-media-files"
-        db.commit()
-        db.refresh(recording)
-        response = _recording_response(recording)
-        logger.info(
-            "performance_event component=recording operation=finalize phase=complete "
-            "interview_id=%s recording_id=%s status=%s asset_count=%s "
-            "recording_duration_ms=%s request_duration_ms=%.3f api_pid=%s api_rss_mb=%s",
-            interview_id,
-            recording.id,
-            recording.status,
-            available_count,
-            duration_ms,
-            (perf_counter() - finalize_started_at) * 1000,
-            process_id(),
-            current_rss_mb(),
-        )
-        # The router only schedules the staged multimodal pipeline; it performs
-        # no extraction, preprocessing, thresholding, or labeling inline
-        # (Requirement 19.6). The pipeline owns its own DB session and updates
-        # the observation_processing lifecycle as it advances.
-        background_tasks.add_task(
-            process_multimodal_interview_isolated,
-            interview_id,
-            recording.id,
-        )
-        return response
-    except HTTPException as error:
-        logger.warning(
-            "performance_event component=recording operation=finalize phase=validation_failed "
-            "interview_id=%s recording_id=%s status_code=%s detail=%s request_duration_ms=%.3f",
-            interview_id,
-            recording.id,
-            error.status_code,
-            error.detail,
-            (perf_counter() - finalize_started_at) * 1000,
-        )
-        db.rollback()
-        for storage_key in saved_keys:
-            storage.delete(storage_key)
-        recording = db.query(InterviewRecordingDB).filter(InterviewRecordingDB.id == recording.id).first()
-        if recording:
-            recording.status = RecordingStatus.FAILED.value
-            recording.failure_code = "media-validation-failed"
-            db.commit()
-        raise
-    except Exception as error:
-        logger.exception(
-            "recording_storage_event interview_id=%s recording_id=%s event=storage_failed "
-            "error_type=%s",
-            interview_id,
-            recording.id,
-            type(error).__name__,
-        )
-        db.rollback()
-        for storage_key in saved_keys:
-            storage.delete(storage_key)
-        recording = db.query(InterviewRecordingDB).filter(InterviewRecordingDB.id == recording.id).first()
-        if recording:
-            recording.status = RecordingStatus.FAILED.value
-            recording.failure_code = "media-storage-failed"
-            db.commit()
-        raise HTTPException(status_code=status.HTTP_507_INSUFFICIENT_STORAGE, detail="Unable to store interview media") from error
-
-
-@router.post("/{interview_id}/recording/unavailable", response_model=RecordingStateResponse)
-def mark_recording_unavailable(
-    interview_id: int,
-    payload: RecordingUnavailableRequest,
     user: UserDB = Depends(_current_media_user),
     db: Session = Depends(get_db),
 ):
+    if user.role != UserRole.SUPERUSER:
+        raise HTTPException(status_code=403, detail="Superuser research access required")
     interview = _get_interview(db, interview_id)
-    _require_owner(interview, user)
-    recording = db.query(InterviewRecordingDB).filter(
-        InterviewRecordingDB.medical_interview_id == interview_id
-    ).first()
-    if recording is None:
-        recording = InterviewRecordingDB(
-            medical_interview_id=interview_id,
-            status=RecordingStatus.UNAVAILABLE.value,
-            started_at=interview.start_time,
-            capture_config={},
-            consent_basis="institutional",
-            consent_policy_version=MEDIA_CONSENT_POLICY_VERSION,
-        )
-        db.add(recording)
-    failure_code = (
-        payload.failure_code
-        if payload.failure_code in KNOWN_FAILURE_CODES
-        else "capture-unavailable"
+    _require_replay_access(interview, user)
+    if getattr(interview.status, "value", interview.status) != "completed":
+        raise HTTPException(status_code=409, detail="Matched controls require a completed interview")
+    from app.multimodal.matched_control import evaluate_matched_text_control
+    from app.agents.evaluation_agent import EvaluationAgent
+    from app.controllers.medical_interview_controller import MedicalInterviewController
+    from app.utils.language import convert_language_code_to_name
+    source = MedicalInterviewController(db)
+    data = source.get_interview_evaluation_data(interview_id)
+    agent = EvaluationAgent(target_language=convert_language_code_to_name(interview.user.preferred_language or "en"), patient_gender=interview.patient_gender)
+    run_id, results = await evaluate_matched_text_control(db, interview_id, agent, source.format_messages_for_evaluation(data["messages"]))
+    return {"run_id": run_id, "condition": "MATCHED_TEXT_CONTROL", "evaluation_results": results}
+
+
+@router.get("/{interview_id}/evaluation/runs")
+def read_evaluation_runs(
+    interview_id: int,
+    user: UserDB = Depends(_current_media_user),
+    db: Session = Depends(get_db),
+):
+    from app.models.medical_interview.interview_evaluation import InterviewEvaluationRunDB
+    interview = _get_interview(db, interview_id)
+    _require_replay_access(interview, user)
+    require_assessments(db, interview, user)
+    runs = db.query(InterviewEvaluationRunDB).filter(
+        InterviewEvaluationRunDB.medical_interview_id == interview_id,
     )
-    recording.status = (
-        RecordingStatus.FAILED.value
-        if failure_code
-        in {"recording-upload-failed", "temporary-storage-failed", "media-recorder-failed"}
-        else RecordingStatus.UNAVAILABLE.value
-    )
-    recording.duration_ms = payload.duration_ms
-    recording.ended_at = datetime.now(timezone.utc)
-    recording.failure_code = failure_code
-    db.commit()
-    db.refresh(recording)
-    logger.warning(
-        "recording_storage_event interview_id=%s recording_id=%s event=unavailable "
-        "status=%s failure_code=%s duration_ms=%s",
-        interview_id,
-        recording.id,
-        recording.status,
-        failure_code,
-        recording.duration_ms,
-    )
-    return _recording_response(recording)
+    if user.role != UserRole.SUPERUSER:
+        runs = runs.filter(InterviewEvaluationRunDB.evaluation_condition == "TEXT_PLUS_MULTIMODAL")
+    runs = runs.order_by(InterviewEvaluationRunDB.created_at, InterviewEvaluationRunDB.id).all()
+    return [{"id": run.id, "condition": run.evaluation_condition,
+             "created_at": run.created_at, "snapshot": run.snapshot} for run in runs]
 
 
 @router.get("/{interview_id}/recap", response_model=InterviewRecapResponse)
@@ -604,69 +271,62 @@ def get_recap(
 ):
     interview = _get_interview(db, interview_id)
     _require_replay_access(interview, user)
-    _require_completed_for_replay(interview)
+    _require_completed_for_replay(interview, allow_processing=True)
     recording = db.query(InterviewRecordingDB).filter(
         InterviewRecordingDB.medical_interview_id == interview_id
     ).first()
     turns = _recap_turns(db, interview)
+    visible = can_read_assessments(db, interview, user)
+    if not visible or user.role != UserRole.SUPERUSER:
+        for turn in turns:
+            turn.paraverbal = None
+            turn.nonverbal_features = None
+    duration_ms = (recording.duration_ms if recording is not None and recording.status in {"ready", "partial"}
+                   and recording.ended_at is not None else None)
+    if duration_ms is None:
+        duration_ms = max((turn.end_ms for turn in turns if turn.end_ms is not None), default=None)
     if recording is None:
         return InterviewRecapResponse(
             interview_id=interview_id,
             recording_status=RecordingStatus.UNAVAILABLE,
+            duration_ms=duration_ms,
             observation_processing={"status": "unavailable"},
             turns=turns,
         )
-    assets = {}
-    for asset in recording.assets:
-        if asset.status != "ready":
-            continue
-        try:
-            storage.resolve(asset.storage_key)
-        except (FileNotFoundError, ValueError):
-            continue
-        assets[asset.kind] = asset
-    sources = {
-        f"{kind.value}_source": (
-            f"/medical-interviews/{interview_id}/recording/assets/{kind.value}"
-            if kind.value in assets
-            else None
-        )
-        for kind in MediaAssetKind
-    }
-    recording_status = RecordingStatus(recording.status)
-    if recording_status in {RecordingStatus.READY, RecordingStatus.PARTIAL}:
-        recording_status = _status_for_asset_count(len(assets))
-    return InterviewRecapResponse(
-        interview_id=interview_id,
-        recording_status=recording_status,
-        duration_ms=recording.duration_ms,
-        observation_processing=(recording.capture_config or {}).get(
-            "observation_processing", {"status": "unavailable"}
-        ),
-        turns=turns,
-        **sources,
-    )
+    if (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1':
+        from app.routers.recording_blocks import list_blocks
+        manifest = list_blocks(interview_id, user, db, storage)
+        return InterviewRecapResponse(interview_id=interview_id, recording_status=recording.status,
+            duration_ms=manifest['duration_ms'], blocks=manifest['blocks'], turns=turns,
+            observation_processing=(recording.capture_config or {}).get('observation_processing', {}) if visible else {},
+            evaluation_processing=(recording.capture_config or {}).get('evaluation_processing', {}) if visible else {})
+    return InterviewRecapResponse(interview_id=interview_id, recording_status=RecordingStatus.UNAVAILABLE,
+        duration_ms=duration_ms, turns=turns, observation_processing={'status': 'unavailable'},
+        evaluation_processing=(recording.capture_config or {}).get('evaluation_processing', {}) if visible else {})
 
 
 @router.post("/{interview_id}/recording/reprocess", response_model=RecordingStateResponse)
 def reprocess_recording(
     interview_id: int,
-    background_tasks: BackgroundTasks,
     user: UserDB = Depends(_current_media_user),
     db: Session = Depends(get_db),
 ):
-    """Re-run the whole analysis for a completed interview from the review screen.
+    return _queue_review_refresh(interview_id, user, db, observations=True)
 
-    The regeneration runs the two operations in order: first the full multimodal
-    pipeline (paraverbal + non-verbal extraction and per-turn integrated
-    labels), then the final textual communication evaluation. Only the owner can
-    trigger it, and only once the interview is completed and its recording has
-    durable media to re-analyze. The interview lifecycle status is left
-    unchanged (``completed``) so the review and its recap stay reachable while
-    the work runs; the UI tracks progress through ``observation_processing``.
-    """
+
+@router.post("/{interview_id}/evaluation/regenerate", response_model=RecordingStateResponse)
+def regenerate_evaluation(
+    interview_id: int,
+    user: UserDB = Depends(_current_media_user),
+    db: Session = Depends(get_db),
+):
+    return _queue_review_refresh(interview_id, user, db, observations=False)
+
+
+def _queue_review_refresh(interview_id, user, db, *, observations):
+    """Queue evaluation, optionally preceded by fresh observation extraction."""
     interview = _get_interview(db, interview_id)
-    _require_owner(interview, user)
+    _require_analysis_admin(interview, user)
     if getattr(interview.status, "value", interview.status) != "completed":
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -674,7 +334,7 @@ def reprocess_recording(
         )
     recording = db.query(InterviewRecordingDB).filter(
         InterviewRecordingDB.medical_interview_id == interview_id
-    ).first()
+    ).with_for_update().first()
     if recording is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -683,7 +343,12 @@ def reprocess_recording(
     # A run already in flight must not be duplicated: the pipeline overwrites the
     # same per-turn columns, so two concurrent runs could interleave writes.
     current = (recording.capture_config or {}).get("observation_processing", {})
-    if current.get("status") in _PENDING_OBSERVATION_STATUSES:
+    capture = recording.capture_config or {}
+    if (
+        current.get("status") in _PENDING_OBSERVATION_STATUSES
+        or capture.get("evaluation_processing", {}).get("status") in _PENDING_OBSERVATION_STATUSES
+        or capture.get("learning_moments", {}).get("status") in {"pending", "processing"}
+    ):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Analysis is already being regenerated",
@@ -692,9 +357,11 @@ def reprocess_recording(
     # Re-seed the observable lifecycle before the pipeline picks it up, mirroring
     # the seed written at finalize so the vocabulary stays consistent.
     recording.capture_config = {
-        **(recording.capture_config or {}),
-        "observation_processing": {"status": "queued", "stage": "queued"},
+        **capture,
+        "evaluation_processing": {"status": "queued"},
+        **({"observation_processing": {"status": "queued", "stage": "queued"}} if observations else {}),
     }
+    stage_processing_job(db, interview_id, "observations" if observations else "evaluation", {"recording_id": recording.id})
     db.commit()
     db.refresh(recording)
     logger.info(
@@ -702,126 +369,54 @@ def reprocess_recording(
         interview_id,
         recording.id,
     )
-    background_tasks.add_task(
-        reprocess_interview_evaluation,
-        interview_id,
-        recording.id,
-    )
     return _recording_response(recording)
 
 
-@router.get("/{interview_id}/recording/assets/{asset_kind}")
-async def stream_recording_asset(
-    interview_id: int,
-    asset_kind: MediaAssetKind,
-    request: Request,
-    user: UserDB = Depends(_current_media_user),
-    db: Session = Depends(get_db),
-    storage: LocalMediaStorage = Depends(get_media_storage),
-):
+def _calibration_media_available(capture):
+    expiration = min(capture.retention_expires_at, media_retention_deadline(capture.created_at, MEDIA_RETENTION_MONTHS))
+    return expiration > datetime.now(timezone.utc)
+
+
+@router.get("/{interview_id}/calibration/captures")
+def get_calibration_captures(interview_id: int, user: UserDB = Depends(_current_media_user),
+    db: Session = Depends(get_db), storage: LocalMediaStorage = Depends(get_media_storage)):
     interview = _get_interview(db, interview_id)
-    _require_replay_access(interview, user)
-    _require_completed_for_replay(interview)
-    asset = db.query(InterviewMediaAssetDB).join(InterviewRecordingDB).filter(
-        InterviewRecordingDB.medical_interview_id == interview_id,
-        InterviewMediaAssetDB.kind == asset_kind.value,
-        InterviewMediaAssetDB.status == "ready",
-    ).first()
-    if asset is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording asset not found")
+    _require_analysis_admin(interview, user)
+    calibration = (interview.interview_metadata or {}).get("calibration", {})
+    selected = calibration.get("capture_ids", {})
+    captures = db.query(CalibrationCaptureDB).filter_by(medical_interview_id=interview_id).order_by(CalibrationCaptureDB.created_at).all()
+    entries = []
+    for capture in captures:
+        available = _calibration_media_available(capture)
+        if available:
+            try:
+                storage.resolve(capture.storage_key)
+            except FileNotFoundError:
+                available = False
+        entries.append({"id": capture.id, "stage": capture.stage, "created_at": capture.created_at,
+            "duration_ms": capture.duration_ms, "metadata": capture.capture_metadata, "result": capture.result,
+            "used_for": [stage for stage, identifier in selected.items() if identifier == capture.id],
+            "media_url": f"/medical-interviews/{interview_id}/calibration/captures/{capture.id}/video" if available else None,
+            "retention_expires_at": min(capture.retention_expires_at, media_retention_deadline(capture.created_at, MEDIA_RETENTION_MONTHS))})
+    return {"calibration": calibration or None, "captures": entries}
+
+
+@router.get("/{interview_id}/calibration/captures/{capture_id}/video")
+def stream_calibration_capture(interview_id: int, capture_id: str, request: Request,
+    user: UserDB = Depends(_current_media_user), db: Session = Depends(get_db),
+    storage: LocalMediaStorage = Depends(get_media_storage)):
+    interview = _get_interview(db, interview_id)
+    _require_analysis_admin(interview, user)
+    capture = db.query(CalibrationCaptureDB).filter_by(id=capture_id, medical_interview_id=interview_id).first()
+    if capture is None:
+        raise HTTPException(404, "Calibration capture not found")
+    if not _calibration_media_available(capture):
+        raise HTTPException(410, "Calibration media retention has expired")
     try:
-        path = storage.resolve(asset.storage_key)
+        path = storage.resolve(capture.storage_key)
     except FileNotFoundError as error:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Recording asset unavailable") from error
-
-    file_size = path.stat().st_size
-    range_header = request.headers.get("range")
-    start, end, response_status = _parse_range(range_header, file_size)
-    headers = {
-        "Accept-Ranges": "bytes",
-        "Content-Length": str(end - start + 1),
-        "Cache-Control": "private, no-store",
-    }
-    if response_status == status.HTTP_206_PARTIAL_CONTENT:
-        headers["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-    return StreamingResponse(
-        storage.iter_range(path, start, end),
-        status_code=response_status,
-        media_type=asset.content_type or mimetypes.guess_type(path.name)[0],
-        headers=headers,
-    )
-
-
-def _parse_range(range_header: Optional[str], file_size: int) -> tuple[int, int, int]:
-    if file_size <= 0:
-        return 0, -1, status.HTTP_200_OK
-    if not range_header:
-        return 0, file_size - 1, status.HTTP_200_OK
-    match = RANGE_PATTERN.match(range_header.strip())
-    if match is None:
-        raise HTTPException(
-            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            headers={"Content-Range": f"bytes */{file_size}"},
-        )
-    start_text, end_text = match.groups()
-    if not start_text and not end_text:
-        raise HTTPException(status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE)
-    if start_text:
-        start = int(start_text)
-        end = int(end_text) if end_text else file_size - 1
-    else:
-        suffix_length = int(end_text)
-        start = max(file_size - suffix_length, 0)
-        end = file_size - 1
-    if start >= file_size or start > end:
-        raise HTTPException(
-            status_code=status.HTTP_416_REQUESTED_RANGE_NOT_SATISFIABLE,
-            headers={"Content-Range": f"bytes */{file_size}"},
-        )
-    return start, min(end, file_size - 1), status.HTTP_206_PARTIAL_CONTENT
-
-
-def _validate_source_durations(
-    durations: Dict[str, int],
-    uploads: Dict[str, Optional[UploadFile]],
-    common_duration_ms: int,
-) -> Dict[str, int]:
-    validated: Dict[str, int] = {}
-    for kind, upload in uploads.items():
-        if upload is None:
-            continue
-        if kind not in durations:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Missing duration for {kind}",
-            )
-        try:
-            source_duration = int(durations[kind])
-        except (TypeError, ValueError) as error:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid duration for {kind}",
-            ) from error
-        if source_duration < 0:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid duration for {kind}",
-            )
-        if abs(source_duration - common_duration_ms) > MEDIA_DURATION_TOLERANCE_MS:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"{kind} duration differs from the common timeline",
-            )
-        validated[kind] = source_duration
-    return validated
-
-
-def _status_for_asset_count(available_count: int) -> RecordingStatus:
-    if available_count >= len(MediaAssetKind):
-        return RecordingStatus.READY
-    if available_count > 0:
-        return RecordingStatus.PARTIAL
-    return RecordingStatus.UNAVAILABLE
+        raise HTTPException(404, "Calibration media unavailable") from error
+    return _stream_private_media(storage, path, request, capture.content_type)
 
 
 def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
@@ -829,8 +424,8 @@ def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
         turn_id=turn.id,
         message_id=turn.message_id,
         speaker=turn.speaker,
-        start_ms=turn.start_ms,
-        end_ms=turn.end_ms,
+        start_ms=turn.start_ms if turn.timing_quality != 'unavailable' else None,
+        end_ms=turn.end_ms if turn.timing_quality != 'unavailable' else None,
         transcript=turn.transcript,
         input_source=turn.input_source,
         timing_source=turn.timing_source,

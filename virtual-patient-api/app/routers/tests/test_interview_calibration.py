@@ -19,8 +19,6 @@ from app.routers.medical_interviews import CalibrationResultRequest
 
 
 _VALID_BASELINE = {
-    "baseline_f0_semitones": 4.5,
-    "baseline_loudness": 0.6,
     "neutral_head_yaw": 0.1,
     "neutral_head_pitch": 0.2,
     "neutral_head_roll": 0.0,
@@ -64,7 +62,7 @@ class CalibrationContractTests(unittest.TestCase):
         result = CalibrationResultRequest.model_validate(calibration_payload())
         self.assertEqual(result.status, "passed")
         self.assertIsNotNone(result.personal_baseline)
-        self.assertEqual(result.personal_baseline.baseline_f0_semitones, 4.5)
+        self.assertEqual(result.personal_baseline.neutral_head_yaw, 0.1)
 
     def test_failed_result_can_omit_baseline_and_profile(self):
         result = CalibrationResultRequest.model_validate(
@@ -86,6 +84,15 @@ class Query:
         self.interview = interview
 
     def filter(self, *args):
+        if len(args) > 1:
+            return Query(None)
+        return self
+
+    def populate_existing(self):
+        return self
+
+    def with_for_update(self, **kwargs):
+        assert kwargs == {"nowait": True}
         return self
 
     def first(self):
@@ -157,7 +164,7 @@ class InterviewStartTests(unittest.TestCase):
         with patch(
             "app.controllers.medical_interview_controller.MedicalInterview.from_orm",
             return_value=response,
-        ):
+        ), patch.object(controller.message_service, "create_patient_message") as opening:
             controller.start_interview(7)
             first_start = interview.start_time
             controller.start_interview(7)
@@ -165,3 +172,4 @@ class InterviewStartTests(unittest.TestCase):
         self.assertIsNotNone(first_start)
         self.assertEqual(interview.start_time, first_start)
         self.assertEqual(database.commit_count, 1)
+        opening.assert_called_once_with(7, "Hello, nice to meet you.", message_metadata={"opening": True}, commit=False)

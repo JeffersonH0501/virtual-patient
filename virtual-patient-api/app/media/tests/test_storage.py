@@ -1,17 +1,36 @@
 """Unit tests for private interview media storage."""
 
 from io import BytesIO
+import asyncio
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest.mock import AsyncMock, patch
 
-from fastapi import UploadFile
+from fastapi import HTTPException, UploadFile
 from starlette.datastructures import Headers
 
 from app.media.storage import LocalMediaStorage
 
 
 class LocalMediaStorageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_upload_leaves_no_file(self) -> None:
+        for error in (asyncio.CancelledError(), HTTPException(status_code=413)):
+            with self.subTest(error=error), TemporaryDirectory() as directory:
+                storage = LocalMediaStorage(Path(directory))
+                upload = UploadFile(file=BytesIO(), filename="capture.webm")
+                if isinstance(error, HTTPException):
+                    read = AsyncMock(side_effect=[b"1234", b"5678"])
+                else:
+                    read = AsyncMock(side_effect=[b"1234", error])
+                with patch.object(upload, "read", read), patch("app.media.storage.TURN_VIDEO_MAX_BYTES", 5):
+                    with self.assertRaises(type(error)) as raised:
+                        await storage.save_turn_video_upload(14, "recording", "turn", upload, ".webm")
+                if isinstance(error, HTTPException):
+                    self.assertEqual(raised.exception.status_code, 413)
+                self.assertTrue(upload.file.closed)
+                self.assertFalse(any(path.is_file() for path in storage.root.rglob("*")))
+
     async def test_upload_is_saved_atomically_with_checksum(self) -> None:
         with TemporaryDirectory() as temporary_directory:
             storage = LocalMediaStorage(Path(temporary_directory))

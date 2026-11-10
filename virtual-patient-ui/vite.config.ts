@@ -5,6 +5,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
+    proxy: {
+      '/api/': {
+        target: 'http://api:8000',
+        changeOrigin: true,
+        rewrite: (path) => path.slice('/api'.length),
+      },
+    },
     // Docker Desktop bind mounts on Windows do not reliably forward native
     // filesystem events into Linux containers. Polling keeps Vite HMR working
     // without restarting the UI service after every source edit.

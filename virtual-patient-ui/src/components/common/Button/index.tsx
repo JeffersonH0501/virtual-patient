@@ -1,35 +1,17 @@
-import { FC, ReactNode } from 'react';
+import {ButtonHTMLAttributes, forwardRef} from 'react';
 
-type ButtonVariant = 'primary' | 'secondary' | 'outline' | 'ghost';
-type ButtonSize = 'sm' | 'md' | 'lg';
-
-type ButtonProps = {
-  children: ReactNode;
-  onClick?: () => void;
-  variant?: ButtonVariant;
-  size?: ButtonSize;
-  disabled?: boolean;
-  className?: string;
-  type?: 'button' | 'submit' | 'reset';
+type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'secondary' | 'text' | 'danger';
 };
 
-export const Button: FC<ButtonProps> = ({
-  children,
-  onClick,
-  variant = 'primary',
-  size = 'md',
-  disabled = false,
-  className = '',
-  type = 'button',
-}) => {
-  return (
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  ({variant = 'primary', className = '', type = 'button', ...props}, ref) => (
     <button
+      {...props}
+      ref={ref}
       type={type}
-      onClick={onClick}
-      disabled={disabled}
-      className={`ui-button ui-button--${variant} ui-button--${size} ${className}`}
-    >
-      {children}
-    </button>
-  );
-};
+      className={['ui-button', 'ui-button--' + variant, className].join(' ')}
+    />
+  ),
+);
+Button.displayName = 'Button';

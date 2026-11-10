@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import List, Optional
-from .medical_interview import MedicalInterview
+from .medical_interview import MedicalInterview, InterviewLifecycle
 from .interview_message import InterviewMessage
 from .user_hypothesis import UserHypothesis
 from .medical_session_note import MedicalSessionNote
@@ -22,10 +22,13 @@ class MedicalInterviewWithSummary(MedicalInterview):
     progress_summary: Optional[ProgressSummary] = None
 
 class MedicalInterviewComplete(MedicalInterview):
+    lifecycle: InterviewLifecycle | None = None
     messages: List[InterviewMessage] = []
     hypotheses: List[UserHypothesis] = []
     session_notes: List[MedicalSessionNote] = []
     progress_summary: Optional[ProgressSummary] = None
     interview_evaluation: Optional[InterviewEvaluation] = None
+    multimodal_interview_evaluation: Optional[InterviewEvaluation] = None
     clinical_case: Optional[ClinicalCase] = None
-    isOwner: Optional[bool] = None 
+    isOwner: Optional[bool] = None
+    review_access: dict = {}

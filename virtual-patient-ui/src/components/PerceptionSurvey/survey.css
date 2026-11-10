@@ -1,0 +1,28 @@
+.survey-page { width: 100%; max-width: var(--content-max-width); margin: 0 auto; }
+.survey-actions { display: flex; flex-wrap: wrap; }
+.survey-actions { justify-content: center; }
+.survey-table-scroll { width: 100%; overflow-x: auto; border: 1px solid #dbe3ed; border-radius: .75rem; background: white; }
+.survey-table { width: 100%; min-width: 720px; border-collapse: collapse; table-layout: fixed; }
+.survey-table th, .survey-table td { padding: .7rem .45rem; border-bottom: 1px solid #e5ebf2; }
+.survey-table thead th { background: var(--color-brand-50); color: #52647b; text-align: center; font-size: .75rem; font-weight: 600; line-height: 1.25; }
+.survey-table thead th:first-child { width: 44%; text-align: left; padding-left: 1rem; }
+.survey-table thead th span { display: block; color: #1e3a5f; font-size: .95rem; }
+.survey-table tbody th { padding-left: 1rem; text-align: left; font-size: .875rem; font-weight: 500; line-height: 1.4; }
+.survey-table tbody .survey-id { color: inherit; font-size: inherit; font-weight: 600; }
+.survey-table tbody .survey-statement { font-weight: 600; }
+.survey-table tbody .survey-caption { display: block; }
+.survey-table tbody .survey-caption { margin: .2rem 0 0; font-size: .78rem; font-weight: 400; }
+.survey-table tbody tr:last-child th, .survey-table tbody tr:last-child td { border-bottom: 0; }
+.survey-table td { text-align: center; }
+.survey-table tfoot td { padding: var(--layout-inset); border-top: 1px solid #e5ebf2; border-bottom: 0; text-align: left; }
+.survey-table-choice { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
+.survey-table-choice input { width: 1.1rem; height: 1.1rem; accent-color: #2563eb; cursor: pointer; }
+.survey-id { color: #52647b; font-size: .8rem; }
+.survey-caption { color: #52647b; font-size: .875rem; margin: .2rem 0 .6rem; }
+.survey-criteria { margin-top: .4rem; font-size: .875rem; font-weight: 400; }
+.survey-criteria summary { cursor: pointer; }
+.survey-criteria ul { list-style: disc; padding-left: 1.5rem; }
+.survey-comment { display: grid; gap: var(--layout-gap); }
+.survey-comment-label { text-align: left; }
+.survey-comment textarea { width: 100%; padding: .6rem; background: white; border: 1px solid #aab8c8; border-radius: .5rem; }
+.survey-pending { position: absolute; right: .1rem; top: .1rem; width: .45rem; height: .45rem; border-radius: 50%; background: #e35b24; }

@@ -11,7 +11,7 @@ class MessageController:
     def __init__(self, db: Session):
         self.db = db
 
-    def create_message(self, interview_id: int, message_data: InterviewMessageCreate) -> InterviewMessage:
+    def create_message(self, interview_id: int, message_data: InterviewMessageCreate, *, commit: bool = True) -> InterviewMessage:
         """Create a new message"""
         message = InterviewMessageDB(
             interview_id=interview_id,
@@ -22,17 +22,15 @@ class MessageController:
         )
         
         self.db.add(message)
-        self.db.commit()
+        if commit:
+            self.db.commit()
+        else:
+            self.db.flush()
         self.db.refresh(message)
         
-        # Use model_validate for Pydantic v2, fallback to from_orm for v1
-        try:
-            return InterviewMessage.model_validate(message)
-        except AttributeError:
-            # Fallback for Pydantic v1
-            return InterviewMessage.from_orm(message)
+        return InterviewMessage.model_validate(message)
     
-    def create_user_message(self, interview_id: int, content: str, message_metadata: Optional[Dict[str, Any]] = None) -> InterviewMessage:
+    def create_user_message(self, interview_id: int, content: str, message_metadata: Optional[Dict[str, Any]] = None, *, commit: bool = True) -> InterviewMessage:
         """Create a user message"""
         return self.create_message(
             interview_id,
@@ -40,10 +38,10 @@ class MessageController:
                 content=content,
                 sender_type=SenderType.USER,
                 message_metadata=message_metadata
-            )
+            ), commit=commit,
         )
     
-    def create_patient_message(self, interview_id: int, content: str, message_metadata: Optional[Dict[str, Any]] = None, audio_url: Optional[str] = None) -> InterviewMessage:
+    def create_patient_message(self, interview_id: int, content: str, message_metadata: Optional[Dict[str, Any]] = None, audio_url: Optional[str] = None, *, commit: bool = True) -> InterviewMessage:
         """Create a patient message (AI response)"""
         return self.create_message(
             interview_id,
@@ -52,36 +50,28 @@ class MessageController:
                 sender_type=SenderType.PATIENT,
                 message_metadata=message_metadata,
                 audio_url=audio_url
-            )
+            ), commit=commit,
         )
     
-    def get_interview_messages(self, interview_id: int, limit: Optional[int] = None) -> List[InterviewMessage]:
+    def get_interview_messages(self, interview_id: int, limit: Optional[int] = None, *, offset: int = 0) -> List[InterviewMessage]:
         """Get all messages for an interview"""
         query = self.db.query(InterviewMessageDB).filter(
             InterviewMessageDB.interview_id == interview_id
-        ).order_by(InterviewMessageDB.created_at)
+        ).order_by(InterviewMessageDB.created_at, InterviewMessageDB.id)
         
+        if offset:
+            query = query.offset(offset)
         if limit:
             query = query.limit(limit)
         
         messages = query.all()
-        # Use model_validate for Pydantic v2, fallback to from_orm for v1
-        try:
-            return [InterviewMessage.model_validate(message) for message in messages]
-        except AttributeError:
-            # Fallback for Pydantic v1
-            return [InterviewMessage.from_orm(message) for message in messages]
+        return [InterviewMessage.model_validate(message) for message in messages]
     
     def get_message(self, message_id: int) -> Optional[InterviewMessage]:
         """Get a specific message by ID"""
         message = self.db.query(InterviewMessageDB).filter(InterviewMessageDB.id == message_id).first()
         if message:
-            # Use model_validate for Pydantic v2, fallback to from_orm for v1
-            try:
-                return InterviewMessage.model_validate(message)
-            except AttributeError:
-                # Fallback for Pydantic v1
-                return InterviewMessage.from_orm(message)
+            return InterviewMessage.model_validate(message)
         return None
     
     def get_conversation_history(self, interview_id: int, limit: Optional[int] = None) -> List[Dict[str, Any]]:
@@ -98,31 +88,8 @@ class MessageController:
         
         return history
     
-    def process_message_exchange(
-        self, 
-        interview_id: str, 
-        user_message: str,
-        chatbot_response: str,
-        summary_updates: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Process a complete message exchange (user message + chatbot response)"""
-        
-        # Create user message
-        user_msg = self.create_user_message(interview_id, user_message)
-        
-        # Create chatbot message
-        chatbot_msg = self.create_chatbot_message(
-            interview_id, 
-            chatbot_response,
-            message_metadata={"response_time_ms": summary_updates.get("response_time_ms") if summary_updates else None}
-        )
-        
-        return {
-            "messages": [user_msg, chatbot_msg],
-            "new_information": summary_updates.get("new_information", []) if summary_updates else []
-        }
     
     def validate_interview_exists(self, interview_id: str) -> bool:
         """Validate that the interview exists"""
         interview = self.db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id).first()
-        return interview is not None 
+        return interview is not None

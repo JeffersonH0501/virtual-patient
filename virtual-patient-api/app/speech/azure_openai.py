@@ -1,5 +1,8 @@
 """Azure OpenAI v1 implementations of the neutral speech contracts."""
 
+from collections.abc import Iterator
+from threading import Lock
+
 from openai import OpenAI, OpenAIError
 
 from app.core.azure_openai import create_azure_openai_client, create_openai_client
@@ -19,6 +22,28 @@ from app.speech.contracts import (
     VocalEnergy,
     VocalStyle,
 )
+
+
+_client_lock = Lock()
+_speech_clients: dict[str, OpenAI] = {}
+
+
+def _get_speech_client(kind: str) -> OpenAI:
+    # Reuse transports only; request audio, text and options stay request-local.
+    with _client_lock:
+        if kind not in _speech_clients:
+            factory = create_azure_openai_client if kind == "stt" else create_openai_client
+            _speech_clients[kind] = factory()
+        return _speech_clients[kind]
+
+
+def close_speech_clients() -> None:
+    """Release process-owned speech transports after requests have drained."""
+    with _client_lock:
+        clients = list(_speech_clients.values())
+        _speech_clients.clear()
+    for client in clients:
+        client.close()
 
 
 def render_vocal_instructions(style: VocalStyle) -> str:
@@ -93,8 +118,7 @@ class AzureOpenAITextToSpeechProvider:
             deployment_name or configuration.azure_openai_tts_deployment_name
         )
 
-    def synthesize(self, request: SpeechSynthesisRequest) -> SynthesizedAudio:
-        """Generate audio with the configured Azure deployment."""
+    def _synthesis_arguments(self, request: SpeechSynthesisRequest) -> dict[str, str]:
         if not request.text.strip():
             raise SpeechProviderError("Speech synthesis text cannot be empty")
         if not self.deployment_name:
@@ -102,17 +126,26 @@ class AzureOpenAITextToSpeechProvider:
                 "AZURE_OPENAI_TTS_DEPLOYMENT_NAME is required"
             )
 
-        client = self.client or create_openai_client()
         arguments = {
             "model": self.deployment_name,
             "input": request.text,
             "voice": request.voice,
             "response_format": request.response_format,
         }
-        instructions = None
         if request.vocal_style:
-            instructions = render_vocal_instructions(request.vocal_style)
-            arguments["instructions"] = instructions
+            arguments["instructions"] = render_vocal_instructions(request.vocal_style)
+        return arguments
+
+    def stream(self, request: SpeechSynthesisRequest) -> Iterator[bytes]:
+        arguments = self._synthesis_arguments(request)
+        client = self.client or _get_speech_client("tts")
+        with client.audio.speech.with_streaming_response.create(**arguments) as response:
+            yield from response.iter_bytes()
+
+    def synthesize(self, request: SpeechSynthesisRequest) -> SynthesizedAudio:
+        """Generate audio with the configured Azure deployment."""
+        arguments = self._synthesis_arguments(request)
+        client = self.client or _get_speech_client("tts")
         try:
             response = client.audio.speech.create(**arguments)
         except (OpenAIError, RuntimeError) as error:
@@ -129,7 +162,7 @@ class AzureOpenAITextToSpeechProvider:
             style_policy_version=(
                 request.vocal_style.policy_version if request.vocal_style else None
             ),
-            synthesis_instructions=instructions,
+            synthesis_instructions=arguments.get("instructions"),
         )
 
 
@@ -158,7 +191,7 @@ class AzureOpenAISpeechToTextProvider:
                 "AZURE_OPENAI_STT_DEPLOYMENT_NAME is required"
             )
 
-        client = self.client or create_azure_openai_client()
+        client = self.client or _get_speech_client("stt")
         arguments = {
             "model": self.deployment_name,
             "file": (

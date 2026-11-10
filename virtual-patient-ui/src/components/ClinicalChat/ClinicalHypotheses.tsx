@@ -1,5 +1,8 @@
-import {FC, FormEvent, useState} from 'react';
+import {DialogShell} from '../common/Dialog';
+import {FC, FormEvent, useRef, useState} from 'react';
+import {FormInput} from '../common/FormInput';
 import {useTranslation} from 'react-i18next';
+import {LoaderCircle} from 'lucide-react';
 import {useParams} from 'react-router-dom';
 import {createHypothesis} from '../../services/hypotheses';
 import {completeInterview} from '../../services/interviews';
@@ -10,17 +13,32 @@ type SubmissionPhase = 'editing' | 'saving' | 'error';
 
 type ClinicalHypothesesProps = {
   onCancel: () => void;
+  canCancel?: boolean;
+  preparingCapture?: boolean;
+  captureSegmentId?: string | null;
+  recordingError?: string;
   beforeComplete?: () => Promise<boolean>;
-  onCompleted: (evaluationData: InterviewEvaluationResponse) => void | Promise<void>;
-};
+  waitingForTurn?: boolean;
+} & (
+  | {onCompleted: (evaluationData: InterviewEvaluationResponse) => void | Promise<void>; onDemoSubmit?: never}
+  | {onDemoSubmit: () => void; onCompleted?: never}
+);
 
 export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
   onCancel,
+  canCancel = true,
+  preparingCapture = false,
+  captureSegmentId,
+  recordingError,
   beforeComplete,
+  waitingForTurn = false,
   onCompleted,
+  onDemoSubmit,
 }) => {
   const {t} = useTranslation();
   const [phase, setPhase] = useState<SubmissionPhase>('editing');
+  const submittingRef = useRef(false);
+  const hypothesesSavedRef = useRef(false);
   const [hypotheses, setHypotheses] = useState({hypothesis1: '', hypothesis2: '', hypothesis3: ''});
   const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
   const interviewId = interviewIdParam ? parseInt(interviewIdParam, 10) : null;
@@ -38,19 +56,30 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
   };
 
   const submitHypotheses = async () => {
-    if (!interviewId) return;
+    if (submittingRef.current || waitingForTurn || preparingCapture) return;
     const request = hypothesesToSubmit();
     if (request.length === 0) return;
+    if (onDemoSubmit) {
+      onDemoSubmit();
+      return;
+    }
+    if (!interviewId || !onCompleted) return;
+    submittingRef.current = true;
     setPhase('saving');
     try {
-      await createHypothesis(interviewId.toString(), request);
+      if (!hypothesesSavedRef.current) {
+        await createHypothesis(interviewId.toString(), request, captureSegmentId);
+        hypothesesSavedRef.current = true;
+      }
       const recordingSaved = await beforeComplete?.();
       if (recordingSaved === false) throw new Error('Interview recording was not saved');
-      const nextEvaluationData = await completeInterview(interviewId.toString());
+      const nextEvaluationData = await completeInterview(interviewId.toString(), 'user_completed', captureSegmentId);
       await onCompleted(nextEvaluationData);
     } catch (error) {
       console.error('Failed to finish interview:', error);
       setPhase('error');
+    } finally {
+      submittingRef.current = false;
     }
   };
 
@@ -59,6 +88,10 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
     void submitHypotheses();
   };
   const hasHypothesis = Object.values(hypotheses).some((value) => value.trim());
+  const cancel = () => {
+    if (canCancel && !submittingRef.current) onCancel();
+  };
+  const busy = phase === 'saving';
   const hypothesisFields = [
     {key: 'hypothesis1', placeholder: t('clinicalChat.enterHypothesis1')},
     {key: 'hypothesis2', placeholder: t('clinicalChat.enterHypothesis2')},
@@ -66,47 +99,73 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
   ] as const;
 
   return (
-    <form onSubmit={handleSubmit} className="flex max-h-dialog min-h-0 w-full flex-col overflow-hidden rounded-panel bg-surface text-left">
-      <header className="shrink-0 border-b border-border bg-surface px-5 py-3.5">
-        <h2 className="dialog-title">{t('clinicalChat.clinicalHypotheses')}</h2>
-      </header>
-      <div className="flex-1 overflow-y-auto bg-surface p-4 sm:p-5">
-        <p className="dialog-copy mb-4">{t('clinicalChat.hypothesesDescription')}</p>
-        <div className="grid gap-3">
-          {hypothesisFields.map((field) => (
-            <textarea
-              key={field.key}
-              id={field.key}
-              aria-label={field.placeholder}
-              value={hypotheses[field.key]}
-              onChange={(event) => handleHypothesisChange(field.key, event.target.value)}
-              placeholder={field.placeholder}
-              rows={4}
-              disabled={phase === 'saving'}
-              className="w-full resize-none rounded-control border border-border bg-surface px-3 py-2.5 text-sm leading-5 text-slate-700 placeholder:text-slate-400 hover:border-neutral-400 disabled:cursor-not-allowed disabled:bg-neutral-100"
-            />
-          ))}
-        </div>
-        {phase === 'saving' && (
-          <div className="mt-4 flex items-center gap-3 rounded-lg bg-blue-50 px-4 py-3 text-left text-sm text-blue-700" role="status" aria-live="polite">
-            <span className="h-4 w-4 shrink-0 animate-spin rounded-full border-2 border-blue-200 border-t-blue-600" aria-hidden="true" />
-            <span>{t('clinicalChat.finalization.savingDescription')}</span>
-          </div>
-        )}
-        {phase === 'error' && (
-          <div className="mt-4 rounded-lg bg-red-50 px-4 py-3 text-left text-sm text-red-700" role="alert">
-            {t('clinicalChat.finalization.errorDescription')}
-          </div>
-        )}
-      </div>
-      <footer className="flex shrink-0 justify-end bg-surface px-5 py-3.5">
-        <div className="dialog-actions">
-          <button type="button" onClick={onCancel} disabled={phase === 'saving'} className="dialog-action dialog-action--secondary">{t('common.cancel')}</button>
-          <button type="submit" disabled={!hasHypothesis || phase === 'saving'} className="dialog-action dialog-action--primary">
-            {phase === 'error' ? t('common.retry') : phase === 'saving' ? t('clinicalChat.saving') : t('clinicalChat.submit')}
+    <DialogShell
+      title={t('clinicalChat.clinicalHypotheses')}
+      onClose={cancel}
+      busy={busy}
+      onSubmit={handleSubmit}
+      hasDismissAction
+      actions={
+        <>
+          <button
+            type="button"
+            onClick={cancel}
+            disabled={!canCancel || busy}
+            className="ui-button ui-button--secondary"
+          >
+            {t('common.cancel')}
           </button>
+          <button
+            type="submit"
+            disabled={!hasHypothesis || busy || preparingCapture || waitingForTurn}
+            className="ui-button ui-button--primary"
+          >
+            {phase === 'error'
+              ? t('common.retry')
+              : phase === 'saving'
+                ? t('clinicalChat.saving')
+                : t('clinicalChat.submit')}
+          </button>
+        </>
+      }
+    >
+      <p className="dialog-copy mb-layout">{t('clinicalChat.hypothesesDescription')}</p>
+      <div className="grid gap-layout pb-[calc(var(--focus-outline-width)+var(--focus-outline-offset))]">
+        {hypothesisFields.map((field) => (
+          <FormInput
+            label=""
+            type="textarea"
+            key={field.key}
+            id={field.key}
+            aria-label={field.placeholder}
+            value={hypotheses[field.key]}
+            onChange={(event) => handleHypothesisChange(field.key, event.target.value)}
+            placeholder={field.placeholder}
+            rows={2}
+            resizable
+            disabled={hypothesesSavedRef.current || busy}
+          />
+        ))}
+      </div>
+      {phase === 'saving' && (
+        <div
+          className="ui-notice mt-layout flex items-center gap-layout text-left"
+          role="status"
+          aria-live="polite"
+        >
+          <LoaderCircle className="h-4 w-4 shrink-0 motion-safe:animate-spin" />
+          <span>{t('clinicalChat.finalization.savingDescription')}</span>
         </div>
-      </footer>
-    </form>
+      )}
+      {phase === 'error' && (
+        <div
+          className="ui-notice ui-notice--danger mt-layout text-left"
+          role="alert"
+        >
+          <p>{t('clinicalChat.finalization.errorDescription')}</p>
+        </div>
+      )}
+      {recordingError && <p role="alert" className="mt-layout text-danger-700 default-text">{recordingError}</p>}
+    </DialogShell>
   );
 };

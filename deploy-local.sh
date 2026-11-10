@@ -1,21 +1,28 @@
 #!/usr/bin/env bash
 
+set +x
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT_DIR/docker-compose.local.yml"
-ENV_FILE="${ENV_FILE:-$ROOT_DIR/.env.local}"
+if [[ -z "${ENV_FILE:-}" ]]; then
+  ENV_FILE="$ROOT_DIR/.env.local"
+  if [[ ! -f "$ENV_FILE" ]]; then
+    ENV_FILE="$ROOT_DIR/.env.local.example"
+    echo "No .env.local found; using reproducible non-secret defaults."
+  fi
+fi
+
+if [[ ! -f "$ENV_FILE" || ! -r "$ENV_FILE" ]]; then
+  echo "Missing or unreadable environment file: $ENV_FILE" >&2
+  exit 1
+fi
 
 # Enable BuildKit so the Dockerfile pip/apt cache mounts are reused across
 # rebuilds. This keeps a rebuild fast (only changed layers run) even when the
 # heavy Py-Feat / PyTorch dependency layer must be revisited.
 export DOCKER_BUILDKIT="${DOCKER_BUILDKIT:-1}"
 export COMPOSE_DOCKER_CLI_BUILD="${COMPOSE_DOCKER_CLI_BUILD:-1}"
-
-if [[ ! -f "$ENV_FILE" ]]; then
-  ENV_FILE="$ROOT_DIR/.env.local.example"
-  echo "No .env.local found; using reproducible non-secret defaults."
-fi
 
 # ---------------------------------------------------------------------------
 # Automatic rebuild detection.
@@ -39,6 +46,7 @@ mkdir -p "$STATE_DIR"
 # COPY/RUN steps of the respective Dockerfile.
 API_DEP_FILES=(
   "$ROOT_DIR/virtual-patient-api/requirements.txt"
+  "$ROOT_DIR/virtual-patient-api/requirements.constraints.txt"
   "$ROOT_DIR/virtual-patient-api/Dockerfile"
   "$ROOT_DIR/virtual-patient-api/.dockerignore"
 )
@@ -172,7 +180,7 @@ case "$action" in
     compose --profile tools run --rm setup
 
     # Start application using the already-built images.
-    compose up -d --no-build api ui
+    compose up -d --no-build api video-processing-worker ui
 
     verify
     ;;
@@ -183,7 +191,7 @@ case "$action" in
     # is a fast start in the common case.
     echo "Starting local development environment..."
     build_if_needed
-    compose up -d --no-build api ui
+    compose up -d --no-build api video-processing-worker ui
     ;;
 
   build)
@@ -197,7 +205,7 @@ case "$action" in
 
     compose build "${@:2}" api ui
     record_all_hashes
-    compose up -d --force-recreate api ui
+    compose up -d --force-recreate api video-processing-worker ui
 
     verify
     ;;
@@ -205,7 +213,8 @@ case "$action" in
   restart)
     echo "Restarting application containers without rebuilding..."
 
-    compose restart api ui
+    compose up -d --no-build api video-processing-worker ui
+    compose restart api video-processing-worker ui
 
     verify
     ;;

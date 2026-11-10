@@ -6,7 +6,7 @@ import { TeacherFeedback, UpdateTeacherFeedbackRequest } from '../../types/teach
 export const updateTeacherFeedback = async (
   interviewId: number,
   feedbackId: string,
-  feedback: UpdateTeacherFeedbackRequest
+  feedback: UpdateTeacherFeedbackRequest,
 ): Promise<TeacherFeedback> => {
   const authHeaders = getAuthHeaders();
   const response = await fetch(`${API_URL}/medical-interviews/${interviewId}/teacher-feedback/${feedbackId}`, {

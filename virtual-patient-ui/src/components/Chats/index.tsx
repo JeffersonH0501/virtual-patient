@@ -1,20 +1,23 @@
 import {ConversationTable} from './ConversationTable';
-import {PersonalStatisticsCards} from './PersonalStatisticsCards';
-import {Navigate} from 'react-router-dom';
+import {useTranslation} from 'react-i18next';
 import {useUser} from '../../hooks';
-import {ROUTES} from '../../utils/routes';
+import {Students} from '../Students';
+import {PageHeader} from '../common/PageHeader';
 
 export const Chats = () => {
   const {user} = useUser();
+  const {t} = useTranslation();
 
   if (user?.role === 'superuser') {
-    return <Navigate to={ROUTES.students} replace />;
+    return <Students />;
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-content flex-col gap-2 px-4 py-0">
-      <PersonalStatisticsCards />
-      <ConversationTable />
-    </main>
+    <section className="ui-page">
+      <PageHeader eyebrow={t('interviewsPage.eyebrow')} title={t('interviewsPage.title')} titleId="interviews-title" />
+      <div className="ui-form-stack">
+        <ConversationTable />
+      </div>
+    </section>
   );
 };

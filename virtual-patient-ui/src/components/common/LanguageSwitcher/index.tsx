@@ -8,11 +8,10 @@ export const LanguageSwitcher: FC = () => {
   const {i18n} = useTranslation();
   const {updateUserLanguage, user} = useUser();
   const [currentLanguage, setCurrentLanguage] = useState(getStoredLanguage());
-  
+
   // Initialize language from user data if available
   useEffect(() => {
     if (user?.preferredLanguage) {
-      console.log('Initializing language from user data:', user.preferredLanguage);
       setCurrentLanguage(user.preferredLanguage);
     }
   }, [user?.preferredLanguage]);
@@ -20,12 +19,10 @@ export const LanguageSwitcher: FC = () => {
   // Update current language when i18n language changes
   useEffect(() => {
     const handleLanguageChange = (lng: string) => {
-      console.log('Language changed event received:', lng);
       setCurrentLanguage(lng);
     };
 
     i18n.on('languageChanged', handleLanguageChange);
-    console.log('Current language state:', currentLanguage, 'i18n language:', i18n.language);
 
     return () => {
       i18n.off('languageChanged', handleLanguageChange);
@@ -37,18 +34,18 @@ export const LanguageSwitcher: FC = () => {
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="ui-button-group flex items-center">
       <Button
         onClick={() => changeLanguage('en')}
         variant={currentLanguage === 'en' ? 'primary' : 'secondary'}
-        size="sm"
+        aria-pressed={currentLanguage === 'en'}
       >
         EN
       </Button>
       <Button
         onClick={() => changeLanguage('es')}
         variant={currentLanguage === 'es' ? 'primary' : 'secondary'}
-        size="sm"
+        aria-pressed={currentLanguage === 'es'}
       >
         ES
       </Button>

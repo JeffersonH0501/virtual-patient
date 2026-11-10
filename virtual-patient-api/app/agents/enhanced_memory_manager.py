@@ -138,8 +138,6 @@ class EnhancedMemoryManager:
         else:
             self.background_memory_manager = None
         
-        print(f"Enhanced Memory Manager initialized for interview: {interview_id}")
-        print(f"Memory namespaces: procedural, background")
     
     
     def get_contextual_memory(self, current_question: str, timeout: float = 1.0, limit: int = 2) -> Dict[str, Any]:
@@ -152,7 +150,6 @@ class EnhancedMemoryManager:
         """
         import time as time_module
         
-        print(f"🔍 MEMORY DEBUG: Searching memories for interview_id: {self.interview_id}")
         
         # If no semantic facts found, try background memories
         # Reduce limit for faster search (especially important for vector search)
@@ -166,12 +163,11 @@ class EnhancedMemoryManager:
                 
                 # If search took longer than timeout, log warning
                 if search_time > timeout:
-                    print(f"⚠️ Memory search took {search_time:.3f}s (target: <{timeout}s)")
+                    pass
                 
                 background_memories = [r.value for r in background_results if hasattr(r, 'value')]
-                print(f"🔍 Found {len(background_memories)} background memories for: {current_question[:30]}... ({search_time:.3f}s)")
             except Exception as e:
-                print(f"⚠️ Error searching background memories: {e}")
+                pass
                 # Continue without background memories - don't fail the whole request
         
         # Get procedural guidance (should be fast as it's local)
@@ -223,9 +219,8 @@ class EnhancedMemoryManager:
             try:
                 to_process = {"messages": [{"role": "user", "content": doctor_question}] + [patient_response]}
                 await self.background_memory_manager.ainvoke(to_process)
-                print(f"✅ Background memory processed")
             except Exception as e:
-                print(f"❌ Error processing background memory: {e}")
+                pass
         else:
-            print("⚠️ Background memory manager not initialized (no LLM provided)")
-    
+            pass
+

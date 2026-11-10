@@ -1,5 +1,4 @@
 from types import SimpleNamespace
-from threading import enumerate as enumerate_threads
 
 import numpy as np
 import pytest
@@ -39,79 +38,49 @@ def test_partial_feature_availability_is_preserved_per_turn():
         window,
     )
     assert raw.frame_timestamps_ms == [10, 20]
-    assert len(raw.au12_samples) == 1
+    assert len(raw.smile_activation_samples) == 1
     assert raw.gaze_observations[0]["valid"] is True
     assert raw.gaze_observations[1]["valid"] is False
 
 
-def test_full_video_fans_out_each_shared_observation_without_second_detector(monkeypatch):
-    shared = [
-        SharedFrameObservation(0, np.zeros((2, 2, 3)), False),
-        SharedFrameObservation(100, np.zeros((2, 2, 3)), True, [], {}),
-    ]
-    calls = {"video": 0, "smile": 0, "gaze": 0}
-
-    def fake_video(*args, **kwargs):
-        calls["video"] += 1
-        yield from shared
-
-    monkeypatch.setattr("app.nonverbal.video_observations.extract_video", fake_video)
-    monkeypatch.setattr("app.nonverbal.video_observations.extract_smile", lambda item: calls.__setitem__("smile", calls["smile"] + 1))
-    monkeypatch.setattr("app.nonverbal.video_observations.extract_gaze", lambda item, tracker: (calls.__setitem__("gaze", calls["gaze"] + 1) or GazeObservation(item.timestamp_ms, False, "test")))
-    result = extract_nonverbal_video_observations(SimpleNamespace(), tracker=object())
-    assert len(result) == 2
-    assert calls == {"video": 1, "smile": 2, "gaze": 2}
-
-
-def test_parallel_video_preserves_order_and_cleans_up_producer(monkeypatch):
-    shared = [
-        SharedFrameObservation(index * 100, np.zeros((2, 2, 3)), False)
-        for index in range(40)
-    ]
-
-    monkeypatch.setattr(
-        "app.nonverbal.video_observations.extract_video",
-        lambda *args, **kwargs: iter(shared),
+def test_invalid_historical_roi_leaves_alignment_unavailable_without_losing_smile():
+    snapshots = [None]
+    raw = build_turn_raw_features(
+        [enriched(100)],
+        TurnWindow("a", 0, 1000, "student"),
+        calibration_profile={"camera_reference_center": [0.9, 0.9]},
+        patient_roi_snapshots=snapshots,
+        roi_duration_ms=1000,
     )
-    monkeypatch.setattr(
-        "app.nonverbal.video_observations.extract_gaze_batch",
-        lambda items, tracker, **kwargs: [
-            GazeObservation(item.timestamp_ms, False, "test") for item in items
-        ],
-    )
-    monkeypatch.setattr(
-        "app.nonverbal.video_observations.extract_smile", lambda item: None
-    )
+    assert raw.gaze_semantic_observations == [{"timestamp_ms": 100, "state": "UNAVAILABLE"}]
+    assert raw.smile_detected_samples == [True]
+    assert snapshots == [None]
 
-    result = extract_nonverbal_video_observations_parallel(
-        SimpleNamespace(), tracker=object(), queue_capacity=16
-    )
 
-    assert [item.shared.timestamp_ms for item in result] == [
-        item.timestamp_ms for item in shared
-    ]
+def test_future_roi_is_not_assigned_to_an_earlier_observation():
+    raw = build_turn_raw_features([enriched(100)], TurnWindow("a", 0, 1000, "student"),
+        calibration_profile={"camera_reference_center": [.9, .9]},
+        patient_roi_snapshots=[{"timestampMs": 500, "xNormalized": 0, "yNormalized": 0,
+                                "widthNormalized": .5, "heightNormalized": .5}], roi_duration_ms=1000)
+    assert raw.gaze_semantic_observations == [{"timestamp_ms": 100, "state": "UNAVAILABLE"}]
+
+
+def test_video_preserves_order_and_marks_uncalibrated_gaze_unavailable(monkeypatch):
+    from app.nonverbal import video_observations as module
+    shared = [enriched(timestamp).shared for timestamp in (0, 100, 200)]
+    monkeypatch.setattr(module, "extract_video", lambda *args, **kwargs: iter(shared))
+    monkeypatch.setattr(module, "extract_smile", lambda item: None)
+    result = module.extract_nonverbal_video_observations_parallel(None)
+    assert [item.shared.timestamp_ms for item in result] == [0, 100, 200]
+    assert all(item.gaze.state == "gaze_calibration_pending" for item in result)
     assert all(item.shared.frame is None for item in result)
-    assert not any(thread.name == "mediapipe-producer" for thread in enumerate_threads())
 
 
-def test_parallel_video_propagates_producer_error_without_orphan_thread(monkeypatch):
-    def failing_video(*args, **kwargs):
-        yield SharedFrameObservation(0, np.zeros((2, 2, 3)), False)
-        raise RuntimeError("producer failed")
-
-    monkeypatch.setattr("app.nonverbal.video_observations.extract_video", failing_video)
-    monkeypatch.setattr(
-        "app.nonverbal.video_observations.extract_gaze_batch",
-        lambda items, tracker, **kwargs: [
-            GazeObservation(item.timestamp_ms, False, "test") for item in items
-        ],
-    )
-    monkeypatch.setattr(
-        "app.nonverbal.video_observations.extract_smile", lambda item: None
-    )
-
-    with pytest.raises(RuntimeError, match="producer failed"):
-        extract_nonverbal_video_observations_parallel(
-            SimpleNamespace(), tracker=object(), queue_capacity=1
-        )
-    assert not any(thread.name == "mediapipe-producer" for thread in enumerate_threads())
+def test_video_propagates_extraction_error(monkeypatch):
+    from app.nonverbal import video_observations as module
+    def failing(*args, **kwargs):
+        raise RuntimeError("extraction failed")
+        yield
+    monkeypatch.setattr(module, "extract_video", failing)
+    with pytest.raises(RuntimeError, match="extraction failed"):
+        module.extract_nonverbal_video_observations_parallel(None)

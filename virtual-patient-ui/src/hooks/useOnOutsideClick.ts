@@ -2,9 +2,6 @@ import {useEffect} from 'react';
 
 type InsideElement = HTMLElement | null;
 
-export const REACT_SELECT_CLASS_NAME_PREFIX = 'rscnp';
-export const REACT_SELECT_PORTAL_CLASS_NAME = `${REACT_SELECT_CLASS_NAME_PREFIX}__menu-portal`;
-
 export const useOnOutsideClick = (
   onOutsideClick?: (event: MouseEvent) => void,
   insideElement?: InsideElement | InsideElement[],
@@ -14,14 +11,15 @@ export const useOnOutsideClick = (
     if (!insideElement || !onOutsideClick || disableHandler) return () => null;
 
     const handleMouseUp = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
+      const target = event.target as Node | null;
       if (!target) return;
 
       const insideElementArray = Array.isArray(insideElement)
         ? [...insideElement]
         : [insideElement];
-      insideElementArray.push(document.querySelector(`.${REACT_SELECT_PORTAL_CLASS_NAME}`));
-      if (!insideElementArray.some((element) => element && element.contains(target))) {
+      const ownerId = target instanceof Element ? target.closest('[data-ui-select-owner]')?.getAttribute('data-ui-select-owner') : null;
+      const owner = ownerId ? document.getElementById(ownerId) : null;
+      if (!insideElementArray.some((element) => element && (element.contains(target) || (owner && element.contains(owner))))) {
         onOutsideClick(event);
       }
     };

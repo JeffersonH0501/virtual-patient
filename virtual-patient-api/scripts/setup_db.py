@@ -7,18 +7,20 @@ import sys
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import inspect, select
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
+from sqlalchemy import inspect, select, text
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT_ROOT))
 
-from app.core.database import Base, SessionLocal, engine  # noqa: E402
+from app.core.database import SessionLocal, engine  # noqa: E402
 from app.core.langgraph_schema import ensure_langgraph_schema  # noqa: E402
 from app.core.superuser import synchronize_superuser  # noqa: E402
-import app.models  # noqa: E402,F401 - register all model metadata
 from app.models.clinical_case import CaseType, ClinicalCaseDB  # noqa: E402
 from app.models.organization import OrganizationDB  # noqa: E402
 from app.models.personality import PersonalityDB  # noqa: E402
+from scripts.adopt_release_baseline import PREVIOUS_HEAD, adopt_release_baseline  # noqa: E402
 from scripts.seed_clinical_cases import seed_clinical_cases  # noqa: E402
 from scripts.seed_personalities import main as seed_personalities  # noqa: E402
 
@@ -30,30 +32,30 @@ def alembic_config() -> Config:
 
 
 def ensure_schema() -> str:
-    """Create a blank schema or migrate a schema already tracked by Alembic."""
-    initial_tables = set(inspect(engine).get_table_names())
-    application_tables = initial_tables - {"alembic_version"}
-
-    if application_tables and "alembic_version" not in initial_tables:
-        names = ", ".join(sorted(application_tables))
-        raise RuntimeError(
-            "Existing application tables have no Alembic version. Refusing to "
-            "guess their schema or overwrite data. Back up and migrate this "
-            f"database explicitly. Tables found: {names}"
-        )
-
+    """Upgrade a fresh or known database without rewriting existing rows."""
     config = alembic_config()
-    if application_tables:
+    with engine.begin() as connection:
+        connection.execute(text("SELECT pg_advisory_xact_lock(145129873, 1)"))
+        config.attributes["connection"] = connection
+        schema = connection.scalar(text("SELECT current_schema()"))
+        tables = set(inspect(connection).get_table_names(schema=schema))
+        heads = MigrationContext.configure(connection).get_current_heads()
+        if not heads and tables - {"alembic_version"}:
+            raise RuntimeError(
+                "Existing tables have no Alembic revision. Back up the database and "
+                "verify its schema and revision using the previous deployment."
+            )
+        if heads == (PREVIOUS_HEAD,):
+            adopt_release_baseline(connection, config)
+        else:
+            known_revisions = {revision.revision for revision in ScriptDirectory.from_config(config).walk_revisions()}
+            if set(heads) - known_revisions:
+                raise RuntimeError(
+                    f"Unsupported database revision: {', '.join(heads)}. Back up the database "
+                    f"and upgrade it to {PREVIOUS_HEAD} using the previous deployment before retrying."
+                )
         command.upgrade(config, "head")
-        Base.metadata.create_all(bind=engine)
-        return "Migrated the existing database to the current revision"
-
-    # The inherited migration history is incremental and cannot construct the
-    # original schema from zero. Current models are therefore authoritative for
-    # a blank database; stamping records the matching migration baseline.
-    Base.metadata.create_all(bind=engine)
-    command.stamp(config, "head")
-    return "Created a new database from the current models and stamped it at head"
+    return "Prepared the application schema at the current Alembic revision"
 
 
 def count_rows(model: type) -> int:

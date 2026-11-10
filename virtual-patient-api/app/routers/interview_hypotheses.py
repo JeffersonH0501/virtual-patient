@@ -1,5 +1,5 @@
 from typing import List, Dict, Any
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 from app.core.database import get_db
@@ -10,6 +10,8 @@ from app.models.medical_interview import (
 )
 from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.controllers.hypothesis_controller import HypothesisController
+from app.controllers.interview_lifecycle import lock_row
+from app.models.medical_interview import MedicalInterviewDB
 
 router = APIRouter(
     prefix="/medical-interviews", 
@@ -19,16 +21,17 @@ router = APIRouter(
 
 class HypothesisStatusResponse(BaseModel):
     submitted_count: int
-    required_count: int = 3
+    required_count: int = 1
     is_complete: bool
     hypotheses: List[UserHypothesis]
 
 @router.post("/{interview_id}/hypotheses", response_model=List[UserHypothesis])
-async def submit_hypotheses(
+def submit_hypotheses(
     interview_id: int,
     hypotheses_data: List[UserHypothesisCreate],
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    capture_segment_id: str | None = Header(default=None, alias="X-Capture-Segment"),
 ):
     """
     Submit or update diagnostic hypotheses for an interview.
@@ -42,29 +45,27 @@ async def submit_hypotheses(
     
     Returns the created or updated hypotheses.
     """
+    db.info['capture_wait'] = True
     interview_service = MedicalInterviewController(db)
     hypothesis_service = HypothesisController(db)
 
-    print(f"Submitting/updating hypotheses for interview {interview_id}")
     
     # Validate access
-    if not interview_service.validate_interview_access(interview_id, current_user.id):
+    if not interview_service.validate_interview_ownership(interview_id, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this interview"
         )
 
-    print(f"Validating access for interview {interview_id}")
     
     # Validate interview exists and is active
-    interview = interview_service.get_interview(interview_id)
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Interview not found"
         )
 
-    print(f"Interview found: {interview}")
     
     if interview.status != "in_progress":
         raise HTTPException(
@@ -76,6 +77,8 @@ async def submit_hypotheses(
             status_code=status.HTTP_409_CONFLICT,
             detail="The interview has not started",
         )
+    from app.controllers.recording_segments import require_capture_epoch
+    require_capture_epoch(db, interview_id, capture_segment_id)
     
     try:
         hypotheses = hypothesis_service.create_hypotheses_batch(
@@ -122,7 +125,7 @@ async def get_hypotheses(
     hypotheses = hypothesis_service.get_interview_hypotheses(interview_id)
     return hypotheses
 
-@router.get("/{interview_id}/hypotheses/{hypothesis_id}", response_model=UserHypothesis)
+@router.get("/{interview_id}/hypotheses/{hypothesis_id:int}", response_model=UserHypothesis)
 async def get_hypothesis(
     interview_id: int,
     hypothesis_id: int,
@@ -163,13 +166,14 @@ async def get_hypothesis(
     
     return hypothesis
 
-@router.post("/{interview_id}/hypotheses/{hypothesis_id}", response_model=UserHypothesis)
+@router.post("/{interview_id}/hypotheses/{hypothesis_id:int}", response_model=UserHypothesis)
 async def update_hypothesis(
     interview_id: int,
     hypothesis_id: int,
     update_data: UserHypothesisUpdate,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    capture_segment_id: str | None = Header(default=None, alias="X-Capture-Segment"),
 ):
     """
     Update a specific hypothesis.
@@ -184,12 +188,18 @@ async def update_hypothesis(
     hypothesis_service = HypothesisController(db)
     
     # Validate access
-    if not interview_service.validate_interview_access(interview_id, current_user.id):
+    if not interview_service.validate_interview_ownership(interview_id, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this interview"
         )
     
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
+    if not interview or interview.status != 'in_progress':
+        raise HTTPException(status_code=409, detail='Interview hypotheses are closed')
+    from app.controllers.recording_segments import require_capture_epoch
+    require_capture_epoch(db, interview_id, capture_segment_id)
+
     # Validate hypothesis exists and belongs to interview
     hypothesis = hypothesis_service.get_hypothesis(hypothesis_id)
     if not hypothesis or hypothesis.interview_id != interview_id:
@@ -207,12 +217,13 @@ async def update_hypothesis(
     
     return updated_hypothesis
 
-@router.delete("/{interview_id}/hypotheses/{hypothesis_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{interview_id}/hypotheses/{hypothesis_id:int}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_hypothesis(
     interview_id: int,
     hypothesis_id: int,
     current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    capture_segment_id: str | None = Header(default=None, alias="X-Capture-Segment"),
 ):
     """
     Delete a specific hypothesis.
@@ -226,12 +237,18 @@ async def delete_hypothesis(
     hypothesis_service = HypothesisController(db)
     
     # Validate access
-    if not interview_service.validate_interview_access(interview_id, current_user.id):
+    if not interview_service.validate_interview_ownership(interview_id, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this interview"
         )
     
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
+    if not interview or interview.status != 'in_progress':
+        raise HTTPException(status_code=409, detail='Interview hypotheses are closed')
+    from app.controllers.recording_segments import require_capture_epoch
+    require_capture_epoch(db, interview_id, capture_segment_id)
+
     # Validate hypothesis exists and belongs to interview
     hypothesis = hypothesis_service.get_hypothesis(hypothesis_id)
     if not hypothesis or hypothesis.interview_id != interview_id:
@@ -281,11 +298,10 @@ async def get_hypothesis_status(
     
     hypotheses = hypothesis_service.get_interview_hypotheses(interview_id)
     submitted_count = len(hypotheses)
-    is_complete = submitted_count >= 3
+    is_complete = submitted_count >= 1
     
     return HypothesisStatusResponse(
         submitted_count=submitted_count,
-        required_count=3,
         is_complete=is_complete,
         hypotheses=hypotheses
     )

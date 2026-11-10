@@ -1,17 +1,20 @@
 import {FormEvent, useRef, useState} from 'react';
-import {Link, useNavigate} from 'react-router-dom';
+import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import ReCAPTCHA from 'react-google-recaptcha';
 import Cookies from 'js-cookie';
 import {AuthField} from './AuthField';
+import {Button} from '../common/Button';
+import {Select} from '../common/Select';
+import {MotionContent, MotionHeight} from '../common/Motion';
 import {ROUTES} from '../../utils/routes';
 import {signIn} from '../../services/auth/signIn';
-import {createUser} from '../../services/users/createUser';
+import {createUser, type CreateUserPayload} from '../../services/users/createUser';
 import {getUser} from '../../services/users/getUser';
 import {getAuthCookieOptions} from '../../services/auth/authCookie';
 import {useUser} from '../../hooks/useUser';
 
-export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
+export const AuthForm = ({mode, onSwitchMode}: {mode: 'signin' | 'signup'; onSwitchMode: () => void}) => {
   const registering = mode === 'signup';
   const {t} = useTranslation();
   const {setUser} = useUser();
@@ -19,30 +22,39 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
   const [email, setEmail] = useState('');
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState<'student' | 'teacher'>('student');
+  const [role, setRole] = useState<CreateUserPayload['role'] | ''>('');
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const captchaRef = useRef<ReCAPTCHA>(null);
   const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const valid = email.trim() && password.trim() && captcha
-    && (!registering || name.trim());
+    && (!registering || (name.trim() && role));
+
+  const switchMode = () => {
+    setEmail('');
+    setName('');
+    setPassword('');
+    setRole('');
+    setError('');
+    onSwitchMode();
+  };
 
   const submit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!valid || busy) return;
+    if (!valid || !captcha || busy || (registering && !role)) return;
     setBusy(true);
     setError('');
     try {
-      const result = registering
-        ? await createUser({email: email.trim(), name: name.trim(), password, role})
-        : await signIn({email: email.trim(), password});
-      if (!result.access_token) throw new Error(t('errors.noAccessToken'));
-      Cookies.set('access_token', result.access_token, getAuthCookieOptions());
+      const result = registering && role
+        ? await createUser({email: email.trim(), name: name.trim(), password, role, captcha})
+        : await signIn({email: email.trim(), password, captcha});
+      if (!result.access_token) throw new Error('errors.noAccessToken');
+      Cookies.set('access_token', result.access_token, getAuthCookieOptions(result.expires_in));
       await setUser(await getUser());
       navigate(ROUTES.clinicalCases);
     } catch (failure: unknown) {
-      setError(failure instanceof Error ? failure.message : t('errors.generic'));
+      setError(failure instanceof Error ? failure.message : 'errors.generic');
       captchaRef.current?.reset();
       setCaptcha(null);
     } finally {
@@ -52,36 +64,45 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
 
   return (
     <div className="auth-form-container">
-      <header className="auth-form-heading">
-        <h2>{t(registering ? 'auth.createAccount' : 'auth.welcome')}</h2>
-        <p>{t(registering ? 'auth.signupMessage' : 'auth.loginMessage')}</p>
-      </header>
+      <MotionContent changeKey={mode}>
+        <header className="auth-form-heading">
+          <h2>{t(registering ? 'auth.createAccount' : 'auth.welcome')}</h2>
+          <p>{t(registering ? 'auth.signupMessage' : 'auth.loginMessage')}</p>
+        </header>
+      </MotionContent>
       <form className="auth-form" onSubmit={submit} aria-busy={busy}>
-        <div className="auth-fields-stack">
-          {registering && (
-            <>
+        <div>
+          <MotionHeight expanded={registering} fade={false}>
+            {registering && <div className="pb-inset">
               <AuthField label={t('auth.name')} id="name" name="name" autoComplete="name"
                 value={name} onChange={(event) => setName(event.target.value)} required />
-              <div className="auth-field">
-                <label htmlFor="role">{t('auth.role')}</label>
-                <select id="role" value={role} onChange={(event) => setRole(event.target.value as 'student' | 'teacher')}>
-                  <option value="student">{t('auth.student')}</option>
-                  <option value="teacher">{t('auth.teacher')}</option>
-                </select>
-              </div>
-            </>
-          )}
-          <div className="auth-field-wide">
+            </div>}
+          </MotionHeight>
+          <div className="mb-inset">
             <AuthField label={t('auth.email')} id="email" name="email" type="email" autoComplete="email"
               autoCapitalize="none" spellCheck={false}
               value={email} onChange={(event) => setEmail(event.target.value)} required />
           </div>
+          <MotionHeight expanded={registering} fade={false}>
+            {registering && <div className="pb-inset">
+              <div className="ui-field">
+                <label htmlFor="signup-role">{t('auth.role')}</label>
+                <Select id="signup-role" label={t('auth.role')} placeholder={t('users.selectRole')}
+                  value={role} onValueChange={(value) => {
+                    if (value === 'student' || value === 'teacher') setRole(value);
+                  }}
+                  options={[
+                    {value: 'student', label: t('auth.student')},
+                    {value: 'teacher', label: t('auth.teacher')},
+                  ]} />
+              </div>
+            </div>}
+          </MotionHeight>
           <AuthField label={t('auth.password')} id="password" name="password" type="password"
             autoComplete={registering ? 'new-password' : 'current-password'}
             value={password} onChange={(event) => setPassword(event.target.value)} required />
         </div>
-        {!registering && <Link className="auth-forgot" to={ROUTES.resetPassword}>{t('auth.forgotPassword')}</Link>}
-        {error && <p className="auth-error" role="alert">{error}</p>}
+        {error && <p className="auth-error" role="alert">{t(error, {defaultValue: t('errors.generic')})}</p>}
         {siteKey ? (
           <div className="auth-captcha">
             {/* @ts-expect-error: The installed reCAPTCHA types target an older React version. */}
@@ -89,19 +110,19 @@ export const AuthForm = ({mode}: {mode: 'signin' | 'signup'}) => {
               onExpired={() => setCaptcha(null)}
               onErrored={() => {
                 setCaptcha(null);
-                setError(t('errors.captchaVerification'));
+                setError('errors.captchaVerification');
               }}
               size="normal" theme="light" />
           </div>
         ) : <p className="auth-notice" role="status">{t('auth.verificationUnavailable')}</p>}
-        <button className="auth-submit" type="submit" disabled={!valid || busy}>
+        <Button type="submit" disabled={!valid || busy}>
           {t(busy ? (registering ? 'auth.creatingAccount' : 'auth.signingIn') : (registering ? 'auth.signup' : 'auth.login'))}
-        </button>
+        </Button>
         <p className="auth-switch">
           {t(registering ? 'auth.alreadyHaveAccount' : 'auth.noAccount')}{' '}
-          <Link to={registering ? ROUTES.signIn : ROUTES.signUp}>
+          <button type="button" onClick={switchMode} disabled={busy}>
             {t(registering ? 'auth.signIn' : 'auth.signup')}
-          </Link>
+          </button>
         </p>
       </form>
     </div>

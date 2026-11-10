@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from app.multimodal import turn_video_queue
 from app.multimodal.constants import NONVERBAL_GAZE_QUEUE_CAPACITY
+from app.multimodal.config_loader import load_methodology_config
 from app.models.medical_interview import TurnVideoAnalysisStatus
 
 
@@ -58,6 +59,15 @@ def _job(status=TurnVideoAnalysisStatus.QUEUED.value):
     )
 
 
+def test_interruption_keeps_raw_clip_for_later_recovery():
+    job = _job()
+    session = _FakeSession([job])
+    assert turn_video_queue.fail_pending_turn_video_jobs(session, 1, "interview_interrupted") == 1
+    assert job.status == TurnVideoAnalysisStatus.FAILED.value
+    assert job.storage_key == "turn.webm"
+    assert job.error == "interview_interrupted"
+
+
 def test_job_transitions_from_queued_through_processing_to_completed(monkeypatch):
     job = _job()
     session = _FakeSession([job])
@@ -66,7 +76,6 @@ def test_job_transitions_from_queued_through_processing_to_completed(monkeypatch
     monkeypatch.setattr(turn_video_queue, "SessionLocal", lambda: session)
     monkeypatch.setattr(turn_video_queue, "get_media_storage", lambda: storage)
     monkeypatch.setattr(turn_video_queue, "read_calibration_profile", lambda interview: None)
-    monkeypatch.setattr(turn_video_queue, "create_tracker", lambda **kwargs: object())
     monkeypatch.setattr(
         turn_video_queue,
         "extract_nonverbal_video_observations_parallel",
@@ -77,19 +86,20 @@ def test_job_transitions_from_queued_through_processing_to_completed(monkeypatch
         "analyze_nods",
         lambda observations: SimpleNamespace(),
     )
-    monkeypatch.setattr(
-        turn_video_queue,
-        "build_turn_raw_features",
-        lambda *args, **kwargs: SimpleNamespace(model_dump=lambda **options: {"ok": True}),
-    )
+    raw = SimpleNamespace(extractor={})
+    raw.model_dump = lambda **options: {"ok": True, "extractor": raw.extractor}
+    monkeypatch.setattr(turn_video_queue, "build_turn_raw_features", lambda *args, **kwargs: raw)
 
     turn_video_queue._process_job(job.id)
+
+    assert job.storage_key == "turn.webm"
 
     assert session.committed_statuses == [
         TurnVideoAnalysisStatus.PROCESSING.value,
         TurnVideoAnalysisStatus.COMPLETED.value,
     ]
     assert observed_queue_capacities == [NONVERBAL_GAZE_QUEUE_CAPACITY]
+    assert job.result["extractor"]["extraction_manifest"]["methodology"]["versions"]["thresholds"] == load_methodology_config().versions.thresholds
 
 
 def test_job_transitions_from_processing_to_failed_on_error(monkeypatch):
@@ -99,7 +109,6 @@ def test_job_transitions_from_processing_to_failed_on_error(monkeypatch):
     monkeypatch.setattr(turn_video_queue, "SessionLocal", lambda: session)
     monkeypatch.setattr(turn_video_queue, "get_media_storage", lambda: storage)
     monkeypatch.setattr(turn_video_queue, "read_calibration_profile", lambda interview: None)
-    monkeypatch.setattr(turn_video_queue, "create_tracker", lambda **kwargs: object())
 
     turn_video_queue._process_job(job.id)
 

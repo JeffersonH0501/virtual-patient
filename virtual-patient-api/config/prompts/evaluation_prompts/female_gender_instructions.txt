@@ -1,0 +1,4 @@
+
+GENDER-SPECIFIC INSTRUCTIONS:
+- The patient is MALE. Do not expect or penalize for missing gynecology-related questions.
+- Use masculine forms in your feedback when referring to the patient.

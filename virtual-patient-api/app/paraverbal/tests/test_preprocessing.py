@@ -36,6 +36,7 @@ def _raw(
     loudness_samples: list[float] | None = None,
     pause_segments_ms: list[float] | None = None,
     turn_duration_ms: int = 0,
+    vad_speech_intervals_ms: list[tuple[float, float]] | None = None,
 ) -> ParaverbalRawFeatures:
     """Build a raw-features instance with neutral defaults for unused fields.
 
@@ -49,6 +50,7 @@ def _raw(
         loudness_samples=loudness_samples or [],
         pause_segments_ms=pause_segments_ms or [],
         turn_duration_ms=turn_duration_ms,
+        vad_speech_intervals_ms=vad_speech_intervals_ms,
         extractor={},
         audio_quality={},
     )
@@ -59,9 +61,9 @@ def _raw(
 # ---------------------------------------------------------------------------
 
 
-def test_speech_rate_wpm_uses_full_turn_duration():
+def test_speech_rate_wpm_uses_vad_bounded_duration():
     # 45 words over a 30_000 ms (0.5 min) turn -> 45 / 0.5 = 90 wpm.
-    raw = _raw(word_count=45, turn_duration_ms=30_000)
+    raw = _raw(word_count=45, turn_duration_ms=32_000, vad_speech_intervals_ms=[(1000, 31000)])
 
     result = preprocess_paraverbal(raw, min_pause_ms=250)
 
@@ -83,7 +85,8 @@ def test_speech_rate_wpm_none_when_turn_duration_zero():
 
 def test_articulation_rate_wpm_uses_voiced_duration_denominator():
     # 30 words over 20_000 ms voiced time (~0.3333 min) -> 30 / (20000/60000) = 90.
-    raw = _raw(word_count=30, voiced_duration_ms=20_000, turn_duration_ms=40_000)
+    raw = _raw(word_count=30, voiced_duration_ms=20_000, turn_duration_ms=40_000,
+               vad_speech_intervals_ms=[(0, 10000), (30000, 40000)])
 
     result = preprocess_paraverbal(raw, min_pause_ms=250)
 
@@ -112,6 +115,7 @@ def test_pause_filter_is_inclusive_at_exactly_min_pause_ms():
     raw = _raw(
         pause_segments_ms=[100.0, 249.0, 250.0, 400.0],
         turn_duration_ms=60_000,
+        vad_speech_intervals_ms=[(0, 1000), (1100, 2100), (2349, 3349), (3599, 4599), (4999, 60000)],
     )
 
     result = preprocess_paraverbal(raw, min_pause_ms=250)
@@ -123,7 +127,8 @@ def test_pause_filter_is_inclusive_at_exactly_min_pause_ms():
 
 
 def test_pause_median_single_valid_pause():
-    raw = _raw(pause_segments_ms=[120.0, 300.0], turn_duration_ms=60_000)
+    raw = _raw(pause_segments_ms=[120.0, 300.0], turn_duration_ms=60_000,
+               vad_speech_intervals_ms=[(0, 1000), (1120, 2120), (2420, 60000)])
 
     result = preprocess_paraverbal(raw, min_pause_ms=250)
 
@@ -133,7 +138,8 @@ def test_pause_median_single_valid_pause():
 
 
 def test_pause_count_zero_when_no_segment_meets_threshold():
-    raw = _raw(pause_segments_ms=[100.0, 200.0, 249.0], turn_duration_ms=60_000)
+    raw = _raw(pause_segments_ms=[100.0, 200.0, 249.0], turn_duration_ms=60_000,
+               vad_speech_intervals_ms=[(0, 1000), (1100, 2100), (2300, 3300), (3549, 60000)])
 
     result = preprocess_paraverbal(raw, min_pause_ms=250)
 
@@ -153,6 +159,7 @@ def test_pause_frequency_per_min_and_pause_time_ratio():
     raw = _raw(
         pause_segments_ms=[300.0, 500.0, 700.0],
         turn_duration_ms=60_000,
+        vad_speech_intervals_ms=[(0, 1000), (1300, 2300), (2800, 3800), (4500, 60000)],
     )
 
     result = preprocess_paraverbal(raw, min_pause_ms=250)
@@ -219,8 +226,6 @@ def test_f0_values_are_treated_as_semitones_not_hz():
 
 def _baseline(f0_semitones: float) -> PersonalBaseline:
     return PersonalBaseline(
-        baseline_f0_semitones=f0_semitones,
-        baseline_loudness=0.0,
         neutral_head_yaw=0.0,
         neutral_head_pitch=0.0,
         neutral_head_roll=0.0,
@@ -229,42 +234,10 @@ def _baseline(f0_semitones: float) -> PersonalBaseline:
     )
 
 
-def test_relative_pitch_shift_uses_baseline_when_present():
-    # f0 median = 30 semitones; baseline = 24 semitones -> shift = +6.
-    raw = _raw(
-        f0_samples_semitones=[10.0, 20.0, 30.0, 40.0, 50.0],
-        turn_duration_ms=60_000,
-    )
-
-    result = preprocess_paraverbal(
-        raw, min_pause_ms=250, baseline=_baseline(24.0)
-    )
-
-    assert result.f0_median_semitones == pytest.approx(30.0)
-    assert result.relative_pitch_shift_st == pytest.approx(6.0)
 
 
-def test_relative_pitch_shift_none_when_baseline_missing():
-    raw = _raw(
-        f0_samples_semitones=[10.0, 20.0, 30.0, 40.0, 50.0],
-        turn_duration_ms=60_000,
-    )
-
-    result = preprocess_paraverbal(raw, min_pause_ms=250, baseline=None)
-
-    assert result.relative_pitch_shift_st is None
 
 
-def test_relative_pitch_shift_none_when_f0_unavailable_even_with_baseline():
-    # No F0 samples -> f0_median is None -> shift is None despite a baseline.
-    raw = _raw(f0_samples_semitones=[], turn_duration_ms=60_000)
-
-    result = preprocess_paraverbal(
-        raw, min_pause_ms=250, baseline=_baseline(24.0)
-    )
-
-    assert result.f0_median_semitones is None
-    assert result.relative_pitch_shift_st is None
 
 
 # ---------------------------------------------------------------------------

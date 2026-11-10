@@ -6,10 +6,8 @@ const resolveApiHost = (): string | undefined => {
   try {
     const configured = new URL(API_HOST);
     const loopbackHosts = new Set(['localhost', '127.0.0.1']);
-    if (
-      loopbackHosts.has(configured.hostname)
-      && loopbackHosts.has(window.location.hostname)
-    ) {
+    if (loopbackHosts.has(configured.hostname)) {
+      if (!loopbackHosts.has(window.location.hostname)) return undefined;
       configured.hostname = window.location.hostname;
       return configured.toString().replace(/\/$/, '');
     }

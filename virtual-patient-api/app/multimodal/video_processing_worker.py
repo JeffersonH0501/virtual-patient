@@ -11,7 +11,7 @@ from concurrent.futures import Future
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from queue import Empty, PriorityQueue
+from queue import Empty, Full, PriorityQueue
 from threading import Event, Lock, Thread
 from time import perf_counter
 from typing import Annotated, Literal
@@ -22,9 +22,9 @@ from sqlalchemy import text
 from app.core.config import settings
 from app.core.database import SessionLocal, engine
 from app.models.calibration import (
+    UnifiedCalibrationMetadata, GuidedOnlyMetadata,
     CameraCalibrationMetadata,
-    CalibrationCaptureMetadata,
-    GazeCalibrationMetadata,
+    GazeCalibrationMetadata, LiveGazeMetadata,
 )
 from app.models.medical_interview import TurnVideoAnalysisDB, TurnVideoAnalysisStatus
 from app.multimodal.constants import TURN_VIDEO_WORKER_IDLE_TIMEOUT_SECONDS
@@ -37,13 +37,15 @@ UPLOAD_CHUNK_BYTES = 1024 * 1024
 TURN_JOB_POLL_SECONDS = 0.5
 ADVISORY_LOCK_ID = 8_642_091_731
 INTERACTIVE_PRIORITY = 0
-BACKGROUND_PRIORITY = 1
+WARMUP_PRIORITY = 1
+BACKGROUND_PRIORITY = 2
+CALIBRATION_QUEUE_RESERVE = 4
 
 
 @dataclass(frozen=True)
 class CalibrationJob:
     request_id: str
-    mode: Literal["video", "gaze", "camera"]
+    mode: Literal["gaze", "camera", "unified", "guided", "live-gaze"]
     media_path: Path
     metadata: dict
     future: Future[dict]
@@ -57,10 +59,11 @@ class WarmupJob:
     queued_at: float
 
 
-_jobs: PriorityQueue[tuple[int, int, CalibrationJob | WarmupJob | str | None]] = PriorityQueue()
+_jobs: PriorityQueue[tuple[int, int, CalibrationJob | WarmupJob | str | None]] = PriorityQueue(maxsize=32)
 _sequence = itertools.count()
 _scheduled_turn_ids: set[str] = set()
 _scheduled_lock = Lock()
+_admission_lock = Lock()
 _stop_event = Event()
 _processor_thread: Thread | None = None
 _poller_thread: Thread | None = None
@@ -68,7 +71,19 @@ _advisory_connection = None
 
 
 def _enqueue(priority: int, payload: CalibrationJob | WarmupJob | str | None) -> None:
-    _jobs.put((priority, next(_sequence), payload))
+    try:
+        with _admission_lock:
+            if (
+                priority in (WARMUP_PRIORITY, BACKGROUND_PRIORITY)
+                and _jobs.maxsize > 0
+                and _jobs.qsize() >= _jobs.maxsize - CALIBRATION_QUEUE_RESERVE
+            ):
+                raise Full
+            _jobs.put_nowait((priority, next(_sequence), payload))
+    except Full as error:
+        if isinstance(payload, CalibrationJob):
+            _delete_temp(payload.media_path)
+        raise HTTPException(status_code=503, detail="Visual processing queue is full; retry later") from error
 
 
 def _recover_jobs() -> None:
@@ -109,8 +124,11 @@ def _poll_turn_jobs() -> None:
             for job_id in job_ids:
                 if job_id in _scheduled_turn_ids:
                     continue
+                try:
+                    _enqueue(BACKGROUND_PRIORITY, job_id)
+                except HTTPException:
+                    break  # Durable rows remain queued for the next poll.
                 _scheduled_turn_ids.add(job_id)
-                _enqueue(BACKGROUND_PRIORITY, job_id)
         _stop_event.wait(TURN_JOB_POLL_SECONDS)
 
 
@@ -143,6 +161,8 @@ def _processor_loop() -> None:
         try:
             if payload is None:
                 return
+            if isinstance(payload, (CalibrationJob, WarmupJob)) and not payload.future.set_running_or_notify_cancel():
+                continue
             reused_worker = native_worker is not None
             if native_worker is None:
                 native_worker = _PersistentTurnVideoWorker()
@@ -307,16 +327,17 @@ async def health() -> dict:
 
 @app.post("/internal/calibration/{mode}")
 async def process_calibration(
-    mode: Literal["video", "gaze", "camera"],
+    mode: Literal["gaze", "camera", "unified", "guided", "live-gaze"],
     media: Annotated[UploadFile, File()],
     metadata_json: Annotated[str, Form()],
     worker_token: Annotated[str | None, Header(alias="X-Video-Worker-Token")] = None,
 ) -> dict:
     _authorize(worker_token)
     metadata_type = {
-        "video": CalibrationCaptureMetadata,
+        "unified": UnifiedCalibrationMetadata, "guided": GuidedOnlyMetadata,
         "gaze": GazeCalibrationMetadata,
         "camera": CameraCalibrationMetadata,
+        "live-gaze": LiveGazeMetadata,
     }[mode]
     try:
         metadata = metadata_type.model_validate_json(metadata_json)
@@ -361,7 +382,7 @@ async def process_calibration(
     request_id = os.urandom(16).hex()
     future: Future[dict] = Future()
     _enqueue(
-        INTERACTIVE_PRIORITY,
+        WARMUP_PRIORITY if mode == "live-gaze" else INTERACTIVE_PRIORITY,
         CalibrationJob(
             request_id=request_id,
             mode=mode,
@@ -377,6 +398,7 @@ async def process_calibration(
             timeout=settings.video_processing_worker_timeout_seconds,
         )
     except TimeoutError as error:
+        future.cancel()
         raise HTTPException(status_code=504, detail="Visual calibration timed out") from error
     return {"request_id": request_id, "result": result}
 
@@ -389,7 +411,7 @@ async def warmup(
     _authorize(worker_token)
     future: Future[None] = Future()
     _enqueue(
-        INTERACTIVE_PRIORITY,
+        WARMUP_PRIORITY,
         WarmupJob(
             request_id=os.urandom(12).hex(),
             future=future,
@@ -402,5 +424,6 @@ async def warmup(
             timeout=settings.video_processing_worker_timeout_seconds,
         )
     except TimeoutError as error:
+        future.cancel()
         raise HTTPException(status_code=504, detail="Visual worker warmup timed out") from error
     return {"status": "ready"}

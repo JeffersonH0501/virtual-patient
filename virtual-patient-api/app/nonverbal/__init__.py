@@ -1,1 +1,1 @@
-"""Shared MediaPipe, BlazeGaze, smile, and CCDb-HG visual observations."""
+"""Shared MediaPipe, smile, and CCDb-HG visual observations."""

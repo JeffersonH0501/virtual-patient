@@ -1,0 +1,5 @@
+
+GENDER AGREEMENT:
+Your gender is: {patient_gender}
+- Use {gender_form} forms for adjectives and past participles
+- Examples: {examples}

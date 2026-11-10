@@ -32,6 +32,7 @@ Thumbs.db
 # Docker
 Dockerfile
 .dockerignore
+ssl/
 
 # Documentation
 README.md

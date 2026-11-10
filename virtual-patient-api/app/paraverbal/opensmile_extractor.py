@@ -22,6 +22,7 @@ extractor emits every contiguous unvoiced segment as a raw pause duration.
 from __future__ import annotations
 
 import math
+import hashlib
 import logging
 import subprocess
 import tempfile
@@ -56,6 +57,7 @@ class StudentTurnAudio:
     start_ms: int
     end_ms: int
     transcript: str
+    message_id: int | None = None
 
 
 def analyze_student_turns(
@@ -77,8 +79,8 @@ def analyze_student_turns(
     """
     try:
         import opensmile
-    except ImportError:
-        return {}
+    except ImportError as error:
+        raise RuntimeError("OpenSMILE runtime dependencies are unavailable") from error
 
     # Constructing the eGeMAPS processing graph has a measurable fixed cost.
     # One instance can process every sequential turn in this analysis call while
@@ -130,14 +132,18 @@ def _analyze_turn(
             turn.transcript,
             smile=smile,
             min_voiced_duration_ms=min_voiced_duration_ms,
+            turn_start_ms=turn.start_ms,
         )
+        if result is not None:
+            result.transcript_ref = {"turn_id": turn.turn_id, "message_id": turn.message_id,
+                                     "sha256": hashlib.sha256(turn.transcript.encode('utf-8')).hexdigest()}
         logger.info(
             "performance_event component=paraverbal operation=turn_extraction phase=complete "
             "turn_id=%s segment_duration_ms=%s duration_ms=%.3f voiced_duration_ms=%s "
-            "valid_ratio=%s issues=%s worker_pid=%s worker_rss_mb=%s",
+            "vad_speech_ms=%s issues=%s worker_pid=%s worker_rss_mb=%s",
             turn.turn_id, duration_ms, (perf_counter() - started_at) * 1000,
             result.voiced_duration_ms if result else None,
-            result.audio_quality.get("valid_ratio") if result else None,
+            result.audio_quality.get("vad_speech_duration_ms") if result else None,
             result.audio_quality.get("issues") if result else ["features_unavailable"],
             process_id(), current_rss_mb(),
         )
@@ -202,48 +208,80 @@ def _extract_raw_features(
     *,
     smile: object,
     min_voiced_duration_ms: int,
+    turn_start_ms: int = 0,
 ) -> ParaverbalRawFeatures | None:
     """Run OpenSMILE once and assemble raw signals plus a quality summary.
 
-    Emits raw F0 samples (voiced frames, in semitones), loudness samples, and
-    every contiguous unvoiced segment as a raw pause duration. No derivation and
-    no labels are produced here.
+    Emit timestamped F0 and loudness samples inside Silero speech intervals.
     """
-    frame = smile.process_file(str(wav_path))
-    pitch_column = _find_column(frame.columns, "F0semitoneFrom27.5Hz")
-    loudness_column = _find_column(frame.columns, "loudness")
-    if pitch_column is None or loudness_column is None or frame.empty:
-        return None
+    try:
+        frame = smile.process_file(str(wav_path))
+    except Exception:  # noqa: BLE001 - VAD remains independently usable.
+        logger.exception("OpenSMILE extraction failed")
+        frame = None
+    pitch_column = _find_column(frame.columns, "F0semitoneFrom27.5Hz") if frame is not None else None
+    loudness_column = _find_column(frame.columns, "loudness") if frame is not None else None
 
-    pitch_values = _finite_values(frame[pitch_column].tolist())
-    loudness_values = _finite_values(frame[loudness_column].tolist())
-    voiced_values = [value for value in pitch_values if value > 0]
-    frame_duration_ms = turn_duration_ms / max(len(frame.index), 1)
-    voiced_duration_ms = round(len(voiced_values) * frame_duration_ms)
+    from app.paraverbal.silero_vad import detect_speech, MODEL_VERSION, MODEL_SHA256, THRESHOLD, MIN_GAP_MS
+    intervals, probabilities = detect_speech(samples[:round(turn_duration_ms * 16)])
+    # Use decoded signal length, not the requested window, which can exceed
+    # the available bytes when media is truncated.
+    with wave.open(str(wav_path), "rb") as decoded:
+        decoded_duration_ms = decoded.getnframes() * 1000 / decoded.getframerate()
+    voiced_duration_ms = round(sum(end - start for start, end in intervals))
+    timestamps = ([(start.total_seconds() + end.total_seconds()) * 500
+                  for start, end in zip(frame.index.get_level_values('start'), frame.index.get_level_values('end'))]
+                  if frame is not None and not frame.empty else [])
+    speech_rows = [index for index, timestamp in enumerate(timestamps)
+                   if any(start <= timestamp < end for start, end in intervals)]
+    pitch_pairs = [(timestamps[index], float(frame[pitch_column].iloc[index])) for index in speech_rows
+                   if pitch_column is not None and math.isfinite(float(frame[pitch_column].iloc[index])) and float(frame[pitch_column].iloc[index]) > 0]
+    loudness_pairs = [(timestamps[index], float(frame[loudness_column].iloc[index])) for index in speech_rows
+                      if loudness_column is not None and math.isfinite(float(frame[loudness_column].iloc[index]))]
 
     issues: list[str] = []
+    if pitch_column is None:
+        issues.append("f0_unavailable")
+    if loudness_column is None:
+        issues.append("loudness_unavailable")
+    if abs(decoded_duration_ms - turn_duration_ms) > 500:
+        issues.append("truncated_audio")
     if voiced_duration_ms < min_voiced_duration_ms:
         issues.append("insufficient_voiced_duration")
-    if max((abs(sample) for sample in samples), default=0) >= 0.999:
+    clipped_samples = sum(abs(sample) >= 0.999 for sample in samples)
+    if clipped_samples:
         issues.append("clipping_detected")
+    if samples and clipped_samples == len(samples):
+        issues.append("clipping_unusable")
 
-    pause_segments_ms = _raw_pause_segments_ms(pitch_values, frame_duration_ms)
-    word_count = len([word for word in transcript.split() if word.strip(".,;:!?¿¡()[]{}\"'")])
+    pause_segments_ms = [right[0] - left[1] for left, right in zip(intervals, intervals[1:])]
+    words = [word for word in transcript.split() if word.strip(".,;:!?¿¡()[]{}\"'")]
+    word_count = len(words) if words else None
 
     return ParaverbalRawFeatures(
         word_count=word_count,
         voiced_duration_ms=voiced_duration_ms,
-        f0_samples_semitones=voiced_values,
-        loudness_samples=loudness_values,
+        f0_samples_semitones=[value for _, value in pitch_pairs],
+        loudness_samples=[value for _, value in loudness_pairs],
         pause_segments_ms=pause_segments_ms,
         turn_duration_ms=turn_duration_ms,
+        vad_speech_intervals_ms=intervals,
+        vad_probabilities=probabilities,
+        vad_model={'version': MODEL_VERSION, 'sha256': MODEL_SHA256, 'threshold': THRESHOLD, 'min_gap_ms': MIN_GAP_MS, 'padding_ms': 0},
+        audio_start_ms=turn_start_ms,
+        f0_timestamps_ms=[time + turn_start_ms for time, _ in pitch_pairs],
+        loudness_timestamps_ms=[time + turn_start_ms for time, _ in loudness_pairs],
         extractor={
             "name": EXTRACTOR_NAME,
             "version": EXTRACTOR_VERSION,
             "feature_set": FEATURE_SET,
         },
         audio_quality={
-            "valid_ratio": _round(len(voiced_values) / max(len(pitch_values), 1)),
+            "decoded_duration_ms": round(decoded_duration_ms),
+            "requested_duration_ms": turn_duration_ms,
+            "vad_speech_duration_ms": voiced_duration_ms,
+            "clipped_samples": clipped_samples,
+            "clipped_ratio": clipped_samples / len(samples) if samples else None,
             "issues": issues,
         },
     )
@@ -251,31 +289,3 @@ def _extract_raw_features(
 
 def _find_column(columns: Iterable[str], fragment: str) -> str | None:
     return next((column for column in columns if fragment.lower() in column.lower()), None)
-
-
-def _finite_values(values: Iterable[object]) -> list[float]:
-    return [float(value) for value in values if isinstance(value, (int, float)) and math.isfinite(float(value))]
-
-
-def _raw_pause_segments_ms(pitch_values: list[float], frame_duration_ms: float) -> list[float]:
-    """Return every contiguous unvoiced segment duration, unfiltered.
-
-    Pause filtering by ``min_pause_ms`` is a derivation step and is applied
-    downstream in preprocessing, not here.
-    """
-    segments: list[float] = []
-    current_frames = 0
-    for value in pitch_values:
-        if value <= 0:
-            current_frames += 1
-            continue
-        if current_frames:
-            segments.append(current_frames * frame_duration_ms)
-            current_frames = 0
-    if current_frames:
-        segments.append(current_frames * frame_duration_ms)
-    return segments
-
-
-def _round(value: float | None) -> float | None:
-    return round(value, 3) if value is not None and math.isfinite(value) else None

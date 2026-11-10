@@ -6,15 +6,15 @@ const LANGUAGE_STORAGE_KEY = 'virtual-patient-language';
 
 /**
  * Get the stored language preference from localStorage
- * Returns 'en' as default if no preference is stored
+ * Returns 'es' as default if no preference is stored
  */
 export const getStoredLanguage = (): string => {
   try {
     const stored = localStorage.getItem(LANGUAGE_STORAGE_KEY);
-    return stored || 'en';
+    return stored || 'es';
   } catch (error) {
     console.warn('Failed to read language from localStorage:', error);
-    return 'en';
+    return 'es';
   }
 };
 

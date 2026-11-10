@@ -5,7 +5,7 @@ import { TeacherFeedback, CreateTeacherFeedbackRequest } from '../../types/teach
 
 export const createTeacherFeedback = async (
   interviewId: number,
-  feedback: CreateTeacherFeedbackRequest
+  feedback: CreateTeacherFeedbackRequest,
 ): Promise<TeacherFeedback> => {
   const authHeaders = getAuthHeaders();
   const response = await fetch(`${API_URL}/medical-interviews/${interviewId}/teacher-feedback`, {

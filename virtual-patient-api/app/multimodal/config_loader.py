@@ -5,7 +5,7 @@ Responsibilities:
 * Load the two methodology YAML files (``thresholds.yaml``, ``label_rules.yaml``)
   once and cache the result for reuse (Requirement 5.1). These two files are the
   only methodology configuration; technical derivation parameters (pause
-  segmentation, gaze tolerance, AU12 activation, nod detector tuning) are fixed
+  segmentation, gaze tolerance, smile activation, nod detector tuning) are fixed
   constants in the preprocessing modules, not configuration.
 * Validate each file structurally against a minimal Pydantic config-shape
   schema and, on any failure, raise a :class:`ConfigError` that names the
@@ -38,11 +38,13 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from app.core.functional_config import CONFIG_ROOT
 
 # Default directory holding the methodology YAML files, resolved relative to
 # this module so packaging and working-directory changes do not break loading.
-DEFAULT_CONFIG_DIR = Path(__file__).parent / "config"
+DEFAULT_CONFIG_DIR = CONFIG_ROOT
 
 _THRESHOLDS_FILE = "thresholds.yaml"
 _LABEL_RULES_FILE = "label_rules.yaml"
@@ -112,6 +114,7 @@ class Versions(BaseModel):
 
     thresholds: str
     label_rules: str
+    glossary_sha256: str | None = None
 
 
 class MethodologyConfig(BaseModel):
@@ -132,6 +135,7 @@ class MethodologyConfig(BaseModel):
     label_rules: dict[str, Any]
     versions: Versions
     config_hash: str
+    source_documents: dict[str, bytes] = Field(exclude=True)
 
 
 # ---------------------------------------------------------------------------
@@ -139,15 +143,15 @@ class MethodologyConfig(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _read_yaml(config_dir: Path, filename: str) -> dict[str, Any]:
+def _read_yaml(path: Path) -> tuple[dict[str, Any], bytes]:
     """Read and parse one YAML file, raising a clear ConfigError on failure."""
 
-    path = config_dir / filename
     if not path.is_file():
         raise ConfigError(f"missing config file: {path}")
     try:
-        raw_text = path.read_text(encoding="utf-8")
-    except OSError as exc:  # pragma: no cover - filesystem-dependent
+        raw_bytes = path.read_bytes()
+        raw_text = raw_bytes.decode("utf-8")
+    except (OSError, UnicodeError) as exc:
         raise ConfigError(f"unable to read config file {path}: {exc}") from exc
     try:
         parsed = yaml.safe_load(raw_text)
@@ -158,7 +162,7 @@ def _read_yaml(config_dir: Path, filename: str) -> dict[str, Any]:
             f"invalid config file {path}: expected a mapping at the top level, "
             f"got {type(parsed).__name__}"
         )
-    return parsed
+    return parsed, raw_bytes
 
 
 def _validate(model: type[BaseModel], data: dict[str, Any], path: Path) -> None:
@@ -194,6 +198,7 @@ def _canonical_json(data: Any) -> str:
 def _compute_config_hash(
     thresholds: dict[str, Any],
     label_rules: dict[str, Any],
+    glossary: dict[str, Any] | None = None,
 ) -> str:
     """Compute the deterministic SHA-256 config hash over the merged config.
 
@@ -205,6 +210,7 @@ def _compute_config_hash(
     effective = {
         "thresholds": thresholds,
         "label_rules": label_rules,
+        "glossary": glossary,
     }
     canonical = _canonical_json(effective)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
@@ -213,11 +219,19 @@ def _compute_config_hash(
 def _load_methodology_config(config_dir: Path) -> MethodologyConfig:
     """Load, validate, and assemble the methodology config from ``config_dir``."""
 
-    thresholds_path = config_dir / _THRESHOLDS_FILE
-    label_rules_path = config_dir / _LABEL_RULES_FILE
+    if config_dir == DEFAULT_CONFIG_DIR:
+        thresholds_path = config_dir / "thresholds" / _THRESHOLDS_FILE
+        label_rules_path = config_dir / "labels" / _LABEL_RULES_FILE
+    else:
+        thresholds_path = config_dir / _THRESHOLDS_FILE
+        label_rules_path = config_dir / _LABEL_RULES_FILE
 
-    thresholds = _read_yaml(config_dir, _THRESHOLDS_FILE)
-    label_rules = _read_yaml(config_dir, _LABEL_RULES_FILE)
+    thresholds, threshold_bytes = _read_yaml(thresholds_path)
+    label_rules, label_rule_bytes = _read_yaml(label_rules_path)
+    glossary_path = config_dir / "labels" / "glossary.yaml" if config_dir == DEFAULT_CONFIG_DIR else config_dir / "glossary.yaml"
+    glossary, glossary_bytes = _read_yaml(glossary_path) if glossary_path.is_file() else (None, None)
+    if config_dir == DEFAULT_CONFIG_DIR and glossary is None:
+        raise ConfigError(f"missing config file: {glossary_path}")
 
     _validate(_ThresholdsConfig, thresholds, thresholds_path)
     _validate(_LabelRulesConfig, label_rules, label_rules_path)
@@ -225,14 +239,17 @@ def _load_methodology_config(config_dir: Path) -> MethodologyConfig:
     versions = Versions(
         thresholds=thresholds["version"],
         label_rules=label_rules["version"],
+        glossary_sha256=hashlib.sha256(glossary_bytes).hexdigest() if glossary_bytes is not None else None,
     )
-    config_hash = _compute_config_hash(thresholds, label_rules)
+    config_hash = _compute_config_hash(thresholds, label_rules, glossary)
 
     return MethodologyConfig(
         thresholds=thresholds,
         label_rules=label_rules,
         versions=versions,
         config_hash=config_hash,
+        source_documents={_THRESHOLDS_FILE: threshold_bytes, _LABEL_RULES_FILE: label_rule_bytes,
+                          **({"glossary.yaml": glossary_bytes} if glossary_bytes is not None else {})},
     )
 
 
@@ -253,7 +270,7 @@ def load_methodology_config(config_dir: Path | str | None = None) -> Methodology
 
     Args:
         config_dir: Optional override for the config directory (used by tests).
-            Defaults to the ``config/`` directory beside this module.
+            Defaults to the central backend configuration directory.
 
     Raises:
         ConfigError: If any config file is missing, unloadable, or invalid.
