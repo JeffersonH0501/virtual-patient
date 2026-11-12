@@ -59,6 +59,7 @@ class StudentTurnAudio:
     end_ms: int
     transcript: str
     message_id: int | None = None
+    medical_interview_id: int | None = None
 
 
 def analyze_student_turns(

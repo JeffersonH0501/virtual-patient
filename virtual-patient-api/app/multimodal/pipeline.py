@@ -145,11 +145,11 @@ async def process_multimodal_interview(
             STAGE_QUEUED,
         )
 
-        if (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1':
-            from app.multimodal.block_turns import stage_block_turns
-            stage_block_turns(db, recording, validate_cache=True)
+        if (recording.capture_config or {}).get('mediaTransport') == 'per_turn_v1':
+            from app.multimodal.turn_staging import stage_turn_media
+            stage_turn_media(db, recording, validate_cache=True)
             db.commit()
-        if not use_full_video or any((segment.capture_config or {}).get('mediaTransport') in {'indexed_chunks_v1', 'reusable_blocks_v1'}
+        if not use_full_video or any((segment.capture_config or {}).get('mediaTransport') == 'per_turn_v1'
                                      for segment in getattr(recording, 'segments', ())):
             await _wait_for_turn_video_jobs(db, interview_id, recording_id)
         _run_pipeline(
@@ -267,11 +267,11 @@ def _run_pipeline(
     paraverbal_raw: dict[str, ParaverbalRawFeatures] = {}
     cached_visual: dict[str, NonverbalRawFeatures] = {}
     for segment in segments:
-        from app.multimodal.block_turns import valid_block_job
+        from app.multimodal.turn_staging import valid_turn_job
         segment_turns = {turn.id: turn for turn in turns_by_segment.get(segment.id, ())}
         for job in db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.recording_id == recording_id).all():
             turn = segment_turns.get(job.turn_id)
-            if turn is None or not valid_block_job(job, turn, segment):
+            if turn is None or not valid_turn_job(job, turn, segment):
                 continue
             try:
                 cached_visual[turn.id] = NonverbalRawFeatures.model_validate(job.result)

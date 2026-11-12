@@ -239,11 +239,11 @@ def get_recap(
             observation_processing={"status": "unavailable"},
             turns=turns,
         )
-    if (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1':
-        from app.routers.recording_blocks import list_blocks
-        manifest = list_blocks(interview_id, user, db, storage)
+    if (recording.capture_config or {}).get('mediaTransport') == 'per_turn_v1':
+        from app.routers.recording_turns import list_turn_media
+        manifest = list_turn_media(interview_id, user, db, storage)
         return InterviewRecapResponse(interview_id=interview_id, recording_status=recording.status,
-            duration_ms=manifest['duration_ms'], blocks=manifest['blocks'], turns=turns,
+            duration_ms=manifest['duration_ms'], blocks=manifest['turns'], turns=turns,
             observation_processing=(recording.capture_config or {}).get('observation_processing', {}) if visible else {},
             evaluation_processing=(recording.capture_config or {}).get('evaluation_processing', {}) if visible else {})
     return InterviewRecapResponse(interview_id=interview_id, recording_status=RecordingStatus.UNAVAILABLE,

@@ -16,7 +16,7 @@ SOURCE_FILES = (
     "nonverbal/ccdbhg.py", "nonverbal/smile.py", "nonverbal/video_observations.py",
     "nonverbal/preprocessing.py", "paraverbal/opensmile_extractor.py", "paraverbal/preprocessing.py", "paraverbal/silero_vad.py",
     "multimodal/turn_video_queue.py", "multimodal/isolated_worker.py", "multimodal/calibration.py",
-    "multimodal/config_loader.py", "multimodal/schemas.py", "multimodal/block_turns.py",
+    "multimodal/config_loader.py", "multimodal/schemas.py", "multimodal/turn_staging.py",
     "media/patient_roi.py", "nonverbal/iris.py", "nonverbal/gaze_calibration.py",
     "nonverbal/mediapipe_calibration.py", "nonverbal/guided_eye_geometry.py",
 )

@@ -150,8 +150,8 @@ app.include_router(evaluations.router, tags=["evaluations"])
 app.include_router(speech.router, tags=["speech"])
 app.include_router(interview_recordings.router, tags=["interview-recordings"])
 app.include_router(recording_segments.router, tags=["interview-recordings"])
-from app.routers import recording_blocks
-app.include_router(recording_blocks.router, tags=["interview-recordings"])
+from app.routers import recording_turns
+app.include_router(recording_turns.router, tags=["interview-recordings"])
 app.include_router(calibration.router)
 
 # Health check endpoint for Docker

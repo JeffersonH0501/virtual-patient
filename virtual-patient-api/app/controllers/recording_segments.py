@@ -86,9 +86,12 @@ def pending_patient_message(db, interview_id):
 
 def seal_segment(db, segment, pending_patient_message_id=None):
     if segment.sealed_at is None:
-        if (segment.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1':
-            from app.models.recording_block import InterviewRecordingBlockDB
-            segment.duration_ms = db.query(func.sum(InterviewRecordingBlockDB.duration_ms)).filter_by(capture_attempt_id=segment.id).scalar() or 0
+        if (segment.capture_config or {}).get('mediaTransport') == 'per_turn_v1':
+            from app.models.turn_media import InterviewTurnMediaDB
+            ends = db.query(func.max(
+                InterviewTurnMediaDB.session_clock_ms + func.coalesce(InterviewTurnMediaDB.duration_ms, 0)
+            )).filter_by(capture_attempt_id=segment.id).scalar()
+            segment.duration_ms = ends or 0
             segment.sealed_at = datetime.now(timezone.utc)
             return segment.duration_ms
         end = db.query(func.max(InterviewTurnDB.end_ms)).filter_by(segment_id=segment.id)

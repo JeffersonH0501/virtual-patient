@@ -39,5 +39,5 @@ from .self_rating import SelfRatingDB
 from .perception_survey import PerceptionSurveyDB
 from .calibration_capture import CalibrationCaptureDB
 from .capture_operation import CaptureOperationDB
-from .recording_block import InterviewRecordingBlockDB
+from .turn_media import InterviewTurnMediaDB
 from .interview_performance_event import InterviewPerformanceEventDB

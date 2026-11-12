@@ -217,12 +217,12 @@ def test_new_conversation_is_rejected_once_media_is_frozen(lifecycle_api, exchan
 
 
 def start_capture(state):
-    from app.routers import recording_segments, recording_blocks
+    from app.routers import recording_segments, recording_turns
     state.client.app.include_router(recording_segments.router)
-    state.client.app.include_router(recording_blocks.router)
+    state.client.app.include_router(recording_turns.router)
     with Session(state.engine) as db:
         interview = db.get(MedicalInterviewDB, state.id)
-        interview.interview_metadata = {**interview.interview_metadata, 'recording_transport': 'reusable_blocks_v1'}
+        interview.interview_metadata = {**interview.interview_metadata, 'recording_transport': 'per_turn_v1'}
         db.commit()
     assert state.client.post(f"/medical-interviews/{state.id}/start").status_code == 200
     state.segment_id = str(uuid4())
@@ -230,25 +230,35 @@ def start_capture(state):
         'request_id': state.segment_id, 'capture_config': {}})
     assert response.status_code == 200
     state.client.headers['X-Capture-Segment'] = state.segment_id
-    state.block_id = str(uuid4())
+    state.turn_media_id = str(uuid4())
     with Session(state.engine) as db:
         return db.query(InterviewRecordingDB).filter_by(medical_interview_id=state.id).one().id
 
 
 def media_upload(state, *, capture_config=None, preserve_only=False, **overrides):
-    root = f'/medical-interviews/{state.id}/recording/blocks'
+    from app.models.medical_interview.interview_message import InterviewMessageDB
+    root = f'/medical-interviews/{state.id}/recording/turns'
     messages = state.client.get(f'/medical-interviews/{state.id}/messages').json()['messages']
-    patient = next(item for item in reversed(messages) if item['sender_type'] == 'patient')
     student = next((item for item in reversed(messages) if item['sender_type'] == 'user'), None)
+    if student is None:
+        # The patient greeting is text-to-speech and carries no captured media.
+        # A meaningful per-turn capture needs at least one student turn, so add a
+        # student message and capture it.
+        with Session(state.engine) as db:
+            message = InterviewMessageDB(interview_id=state.id, sender_type='user', content='Synthetic speech')
+            db.add(message)
+            db.commit()
+            student = {'id': message.id, 'sender_type': 'user'}
+        messages = state.client.get(f'/medical-interviews/{state.id}/messages').json()['messages']
     metadata = {'capture_attempt_id': state.segment_id, 'order': 0, 'duration_ms': 1000,
-        'patient_message_id': patient['id'], 'patient_audio_missing': True,
-        **({'student_message_id': student['id'], 'student_speech': {'start_ms': 0, 'end_ms': 400}} if student else {})}
-    response = state.client.put(root + '/' + state.block_id, data={'metadata': json.dumps(metadata)},
-        files={'file': ('synthetic.webm', b'synthetic original', 'video/webm')})
+        'message_id': student['id'], 'speaker': 'student', 'session_clock_ms': 0,
+        'interaction_area_snapshots': []}
+    response = state.client.put(root + '/' + state.turn_media_id + '/video', data={'metadata': json.dumps(metadata)},
+        files={'video': ('synthetic.webm', b'synthetic original', 'video/webm')})
     assert response.status_code == 200, response.text
-    covered = {patient['id'], student['id'] if student else None}
-    return state.client.post(root + '/finalize', json={'block_ids': [state.block_id],
-        'missing_message_ids': [item['id'] for item in messages if item['id'] not in covered]})
+    covered = {student['id']}
+    return state.client.post(root + '/finalize', json={'turn_media_ids': [state.turn_media_id],
+        'missing_message_ids': [item['id'] for item in messages if item['sender_type'] == 'user' and item['id'] not in covered]})
 
 
 
@@ -278,7 +288,7 @@ def test_completion_requires_finalized_media_not_just_a_recording_row(lifecycle_
 def test_completion_retry_is_idempotent_and_keeps_the_capture_clock(lifecycle_api, monkeypatch):
     state = lifecycle_api
     start_capture(state)
-    monkeypatch.setattr(__import__("app.routers.recording_blocks", fromlist=["probe_media_timing"]), "probe_media_timing", lambda _: {"duration_ms": 1000, "start_pts_ms": 0, "end_pts_ms": 1000})
+    monkeypatch.setattr(__import__("app.routers.recording_turns", fromlist=["probe_media_timing"]), "probe_media_timing", lambda _: {"duration_ms": 1000, "start_pts_ms": 0, "end_pts_ms": 1000})
     assert media_upload(state).status_code == 200
     first = state.client.post(f"/medical-interviews/{state.id}/complete")
     repeated = state.client.post(f"/medical-interviews/{state.id}/complete")
@@ -346,7 +356,7 @@ def test_durable_completion_retry_preserves_control_snapshot_and_frozen_media(li
     state = lifecycle_api
     start_capture(state)
     assert state.client.post(f"/medical-interviews/{state.id}/messages", json={"content": "Synthetic frozen transcript", "segment_id": state.segment_id}).status_code == 200
-    monkeypatch.setattr(__import__("app.routers.recording_blocks", fromlist=["probe_media_timing"]), "probe_media_timing", lambda _: {"duration_ms": 1000, "start_pts_ms": 0, "end_pts_ms": 1000})
+    monkeypatch.setattr(__import__("app.routers.recording_turns", fromlist=["probe_media_timing"]), "probe_media_timing", lambda _: {"duration_ms": 1000, "start_pts_ms": 0, "end_pts_ms": 1000})
     assert media_upload(state).status_code == 200
     factory = sessionmaker(bind=state.engine)
     monkeypatch.setattr(interviews, "SessionLocal", factory)

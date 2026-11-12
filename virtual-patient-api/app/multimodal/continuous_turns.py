@@ -36,6 +36,6 @@ if __name__ == '__main__':
     request = json.load(sys.stdin)
     raw = analyze_student_turns(Path(request['path']), [StudentTurnAudio(
         turn_id=request['id'], start_ms=request['start'], end_ms=request['end'], transcript=request['transcript'],
-        message_id=request.get('message_id'))])
+        message_id=request.get('message_id'), medical_interview_id=request.get('medical_interview_id'))])
     result = raw.get(request['id'])
     print(json.dumps(result.model_dump(mode='json') if result else None))

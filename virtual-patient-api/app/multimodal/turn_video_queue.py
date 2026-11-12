@@ -11,11 +11,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from time import monotonic, perf_counter
-from tempfile import TemporaryDirectory
-
 from app.core.database import SessionLocal
 from app.media.storage import get_media_storage
-from app.media.patient_roi import slice_patient_roi_snapshots
 from app.multimodal.constants import (
     CALIBRATION_VISUAL_JOB_TIMEOUT_SECONDS,
     NONVERBAL_GAZE_QUEUE_CAPACITY,
@@ -194,6 +191,11 @@ def build_turn_raw_features(*args, **kwargs):
     return implementation(*args, **kwargs)
 
 
+def extract_turn_paraverbal(*args, **kwargs):
+    from app.multimodal.turn_staging import extract_turn_paraverbal as implementation
+    return implementation(*args, **kwargs)
+
+
 def _mark_job_failed(job_id: str, error: str) -> None:
     """Persist a native child-process failure without risking the API worker."""
     db = SessionLocal()
@@ -220,13 +222,12 @@ def _process_job(
     from app.nonverbal.video_observations import TurnWindow
 
     processing_started = perf_counter()
-    block_source = None
+    turn_source = None
     phase_started = processing_started
     timings_ms: dict[str, float] = {}
     db = SessionLocal()
     storage = get_media_storage()
     storage_key: str | None = None
-    temporary = None
     try:
         job = db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.id == job_id).first()
         if job is None or job.status == TurnVideoAnalysisStatus.COMPLETED.value:
@@ -242,8 +243,8 @@ def _process_job(
         db.commit()
         timings_ms["job_claim"] = (perf_counter() - phase_started) * 1000
         storage_key = job.storage_key
-        block_source = (job.result or {}).get('block_source')
-        if not storage_key and not block_source:
+        turn_source = (job.result or {}).get('turn_source')
+        if not storage_key:
             raise FileNotFoundError("Turn video segment is unavailable")
 
         interview = db.query(MedicalInterviewDB).filter(
@@ -253,6 +254,7 @@ def _process_job(
         turn = db.query(InterviewTurnDB).filter(InterviewTurnDB.id == job.turn_id).first()
         segment_id = getattr(turn, "segment_id", None)
         if segment_id is None:
+            segment = None
             profile = read_calibration_profile(interview)
         else:
             segment = db.query(InterviewRecordingSegmentDB).filter(
@@ -262,21 +264,18 @@ def _process_job(
             if segment is None:
                 raise ValueError("Turn video recording segment is unavailable")
             profile = read_calibration_profile(interview, segment=segment)
-        audio_raw = None
+        # The media file is the whole turn: no window offset, and its duration
+        # comes from the stored turn media, not a block-relative window.
+        duration_ms = max(1, job.end_ms - job.start_ms)
         window_start = 0
-        roi_duration = max(1, job.end_ms - job.start_ms)
+        roi_duration = duration_ms
         roi_snapshots = job.roi_snapshots
-        if block_source:
-            from app.models.recording_block import InterviewRecordingBlockDB
-            from app.multimodal.block_turns import prepare_block_sources
-            block = db.get(InterviewRecordingBlockDB, block_source['block_id'])
-            temporary = TemporaryDirectory()
-            video_path, audio_raw, window_start, roi_duration, clip_start = prepare_block_sources(
-                storage, block, segment, turn, block_source, Path(temporary.name))
-            roi_snapshots = slice_patient_roi_snapshots(
-                block.block_metadata.get('interaction_area_snapshots', []), clip_start, roi_duration)
-        else:
-            video_path = storage.resolve(storage_key)
+        video_path = storage.resolve(storage_key)
+        # Student turns carry audio in their own file; extract paraverbal raw
+        # directly from it (no block window cut).
+        audio_raw = None
+        if turn is not None and turn.speaker == "student":
+            audio_raw = extract_turn_paraverbal(video_path, turn, job.medical_interview_id)
         timings_ms["model_setup"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         observations = extract_nonverbal_video_observations_parallel(
@@ -287,35 +286,34 @@ def _process_job(
         timings_ms["video_and_gaze_extraction"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         try:
-            nod_analysis = analyze_nods([item.shared for item in observations if window_start <= item.shared.timestamp_ms < window_start + max(1, job.end_ms - job.start_ms)])
+            nod_analysis = analyze_nods([item.shared for item in observations])
         except Exception:  # noqa: BLE001 - preserve gaze and smile for this turn.
             logger.exception("turn_video_analysis job_id=%s branch=ccdbhg result=failed", job_id)
             nod_analysis = NodAnalysis((), False, "extractor_failure")
         timings_ms["nod_analysis"] = (perf_counter() - phase_started) * 1000
 
-        duration_ms = max(1, job.end_ms - job.start_ms)
         window = TurnWindow(job.turn_id, window_start, window_start + duration_ms, job.speaker)
         phase_started = perf_counter()
         raw = build_turn_raw_features(
-            [item for item in observations if window.start_ms <= item.shared.timestamp_ms < window.end_ms] if block_source else observations,
+            observations,
             window,
             nod_analysis=nod_analysis,
             calibration_profile=profile,
-            interaction_area_snapshots=roi_snapshots if block_source else None,
+            interaction_area_snapshots=roi_snapshots or None,
             roi_duration_ms=roi_duration,
         )
         timings_ms["feature_assembly"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         from app.multimodal.extraction_provenance import build_extraction_manifest
         from app.multimodal.config_loader import load_methodology_config
+        from app.multimodal.continuous_turns import runtime_identity
         raw.extractor = {**raw.extractor, "extraction_manifest": build_extraction_manifest(
             load_methodology_config(), mode="turn_video", calibration={"profile": profile})}
-        if block_source:
-            from app.multimodal.continuous_turns import runtime_identity
-            raw.extractor.update({'block_capture': block_source, 'block_runtime': runtime_identity(), 'paraverbal_raw': audio_raw})
-        if block_source:
+        raw.extractor.update({'turn_source': turn_source, 'turn_runtime': runtime_identity(),
+                              'paraverbal_raw': audio_raw})
+        if turn_source:
             db.refresh(job)
-            if (job.result or {}).get('block_source') != block_source:
+            if (job.result or {}).get('turn_source') != turn_source:
                 return 'skipped'
         result = raw.model_dump(mode="json")
         for field in ("gaze_yaw_samples", "gaze_pitch_samples", "head_pitch_samples", "head_yaw_samples", "head_roll_samples"):
@@ -347,7 +345,7 @@ def _process_job(
         db.rollback()
         job = db.query(TurnVideoAnalysisDB).filter(TurnVideoAnalysisDB.id == job_id).first()
         if job is not None:
-            if block_source and (job.result or {}).get('block_source') != block_source:
+            if turn_source and (job.result or {}).get('turn_source') != turn_source:
                 return 'skipped'
             job.status = TurnVideoAnalysisStatus.FAILED.value
             job.error = str(error)[:2000]
@@ -365,8 +363,6 @@ def _process_job(
                        interview_id=job.medical_interview_id, turn_id=job.turn_id, job_id=job.id)
         return "failed"
     finally:
-        if temporary is not None:
-            temporary.cleanup()
         db.close()
 
 

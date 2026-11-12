@@ -41,7 +41,7 @@ def _ensure_recording(db, interview, recording):
         recording = InterviewRecordingDB(
             medical_interview_id=interview.id,
             started_at=interview.start_time,
-            capture_config={'mediaTransport': 'reusable_blocks_v1'},
+            capture_config={'mediaTransport': 'per_turn_v1'},
             retention_expires_at=media_retention_deadline(interview.start_time, MEDIA_RETENTION_MONTHS),
         )
         db.add(recording)
@@ -60,7 +60,7 @@ def resume_recording(
     user: UserDB = Depends(_current_media_user), db: Session = Depends(get_db),
 ):
     interview = _owned_interview(db, interview_id, user)
-    if (interview.interview_metadata or {}).get('recording_transport') != 'reusable_blocks_v1':
+    if (interview.interview_metadata or {}).get('recording_transport') != 'per_turn_v1':
         raise HTTPException(409, {'code': 'recording_transport_conflict'})
     recording = lock_recording(db, interview_id)
     config = dict(recording.capture_config or {}) if recording else {}
@@ -95,8 +95,8 @@ def resume_recording(
         config["resume_attempt"] = {**response, "id": request_id, "created_at": datetime.now(timezone.utc).isoformat()}
     recording = _ensure_recording(db, interview, recording)
     response["retention_expires_at"] = recording.retention_expires_at.isoformat() if recording.retention_expires_at else None
-    if (interview.interview_metadata or {}).get('recording_transport') == 'reusable_blocks_v1':
-        config['mediaTransport'] = 'reusable_blocks_v1'
+    if (interview.interview_metadata or {}).get('recording_transport') == 'per_turn_v1':
+        config['mediaTransport'] = 'per_turn_v1'
     requests[request_id] = response
     recording.capture_config = {**config, "resume_requests": requests}
     metadata = dict(interview.interview_metadata or {})
@@ -112,7 +112,7 @@ def start_segment(
     user: UserDB = Depends(_current_media_user), db: Session = Depends(get_db),
 ):
     interview = _owned_interview(db, interview_id, user)
-    if (interview.interview_metadata or {}).get('recording_transport') != 'reusable_blocks_v1':
+    if (interview.interview_metadata or {}).get('recording_transport') != 'per_turn_v1':
         raise HTTPException(409, {'code': 'recording_transport_conflict'})
     recording = lock_recording(db, interview_id)
     segment_id = str(payload.request_id)
@@ -155,11 +155,11 @@ def start_segment(
     _validate_patient_roi(payload.capture_config.get("patientRoiSnapshots", []))
     transport = (interview.interview_metadata or {}).get('recording_transport')
     expected_geometry = (calibration.get("profile") or {}).get("capture_geometry")
-    if transport == "reusable_blocks_v1" and expected_geometry:
+    if transport == "per_turn_v1" and expected_geometry:
         supplied_geometry = payload.capture_config.get("geometry") or {}
         if any(supplied_geometry.get(key) != value for key, value in expected_geometry.items()):
             raise HTTPException(409, {"code": "capture_geometry_changed"})
-    if payload.capture_config.get('mediaTransport') == 'reusable_blocks_v1' and transport != 'reusable_blocks_v1':
+    if payload.capture_config.get('mediaTransport') == 'per_turn_v1' and transport != 'per_turn_v1':
         raise HTTPException(409, 'An existing interview cannot change recording transport')
     recording = _ensure_recording(db, interview, recording)
     offset = previous.offset_ms + previous.duration_ms if previous is not None else 0
@@ -167,13 +167,13 @@ def start_segment(
         id=segment_id, recording_id=recording.id, offset_ms=offset,
         sequence=previous.sequence + 1 if previous is not None else 0,
         capture_config={**_capture_config(payload.capture_config),
-                        **({'mediaTransport': transport} if transport == 'reusable_blocks_v1' else {}), "_start_request": requested,
+                        **({'mediaTransport': transport} if transport == 'per_turn_v1' else {}), "_start_request": requested,
                         "_pending_patient_message_id": pending_message_id},
         calibration=calibration,
     ))
     config.pop("resume_attempt", None)
     transport = (interview.interview_metadata or {}).get('recording_transport')
-    if transport == 'reusable_blocks_v1':
+    if transport == 'per_turn_v1':
         if previous is not None and (previous.capture_config or {}).get('mediaTransport') != transport:
             raise HTTPException(409, 'An active interview cannot change recording transport')
         config['mediaTransport'] = transport

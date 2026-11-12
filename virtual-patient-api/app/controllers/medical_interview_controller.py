@@ -55,13 +55,19 @@ class MedicalInterviewController:
         ).group_by(MedicalInterviewDB.id, InterviewRecordingDB.status, InterviewRecordingDB.ended_at,
                    InterviewRecordingDB.duration_ms).all()
         result = {identifier: duration // 1000 if duration is not None else None for identifier, duration in rows}
-        from app.models.recording_block import InterviewRecordingBlockDB
-        block_durations = self.db.query(InterviewRecordingDB.medical_interview_id, func.sum(InterviewRecordingBlockDB.duration_ms)).outerjoin(
-            InterviewRecordingBlockDB, InterviewRecordingBlockDB.recording_id == InterviewRecordingDB.id).filter(
+        from app.models.turn_media import InterviewTurnMediaDB
+        # Per-turn transport: the recording spans up to the end of its last turn
+        # media on the common session clock (session_clock_ms + duration_ms).
+        turn_durations = self.db.query(
+            InterviewRecordingDB.medical_interview_id,
+            func.max(InterviewTurnMediaDB.session_clock_ms + func.coalesce(InterviewTurnMediaDB.duration_ms, 0)),
+        ).outerjoin(
+            InterviewTurnMediaDB, InterviewTurnMediaDB.recording_id == InterviewRecordingDB.id,
+        ).filter(
             InterviewRecordingDB.medical_interview_id.in_([interview.id for interview in interviews]),
-            InterviewRecordingDB.capture_config['mediaTransport'].as_string() == 'reusable_blocks_v1').group_by(
-            InterviewRecordingDB.medical_interview_id).all()
-        for identifier, duration in block_durations:
+            InterviewRecordingDB.capture_config['mediaTransport'].as_string() == 'per_turn_v1',
+        ).group_by(InterviewRecordingDB.medical_interview_id).all()
+        for identifier, duration in turn_durations:
             result[identifier] = int(duration // 1000) if duration is not None else None
         return result
     
@@ -391,19 +397,18 @@ class MedicalInterviewController:
         if interview.status != InterviewStatus.IN_PROGRESS:
             raise HTTPException(status_code=409, detail="A frozen interview cannot be abandoned")
         recording = interview.recording
-        if recording is not None and (recording.segments or (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1'):
+        if recording is not None and (recording.segments or (recording.capture_config or {}).get('mediaTransport') == 'per_turn_v1'):
             from app.controllers.recording_segments import pending_patient_message, seal_segment
             pending_message = pending_patient_message(self.db, interview.id)
             for segment in recording.segments:
                 seal_segment(self.db, segment, pending_message)
             recording.duration_ms = sum(segment.duration_ms for segment in recording.segments)
-            if (recording.capture_config or {}).get('mediaTransport') == 'reusable_blocks_v1':
-                from app.models.recording_block import InterviewRecordingBlockDB
-                blocks = self.db.query(InterviewRecordingBlockDB).filter_by(recording_id=recording.id).all()
-                confirmed = [block.duration_ms for block in blocks if block.duration_ms is not None]
-                recording.duration_ms = sum(confirmed) if confirmed else None
-                covered = {value for block in blocks for key in ('student_message_id', 'patient_message_id')
-                           if (value := block.block_metadata.get(key)) is not None}
+            if (recording.capture_config or {}).get('mediaTransport') == 'per_turn_v1':
+                from app.models.turn_media import InterviewTurnMediaDB
+                media = self.db.query(InterviewTurnMediaDB).filter_by(recording_id=recording.id).all()
+                ends = [item.session_clock_ms + item.duration_ms for item in media if item.duration_ms is not None]
+                recording.duration_ms = max(ends) if ends else None
+                covered = {item.message_id for item in media if item.message_id is not None}
                 messages = {item[0] for item in self.db.query(InterviewMessageDB.id).filter_by(interview_id=interview.id)}
                 previous_gaps = set((interview.interview_metadata or {}).get('missing_evidence_message_ids', []))
                 interview.interview_metadata = {**(interview.interview_metadata or {}), 'missing_evidence_message_ids': sorted(previous_gaps | (messages - covered))}

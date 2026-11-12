@@ -24,7 +24,7 @@ def capture(lifecycle_api):
     state.client.app.include_router(interview_hypotheses.router)
     with Session(state.engine) as db:
         interview = db.get(MedicalInterviewDB, state.id)
-        interview.interview_metadata = {**interview.interview_metadata, 'recording_transport': 'reusable_blocks_v1'}
+        interview.interview_metadata = {**interview.interview_metadata, 'recording_transport': 'per_turn_v1'}
         db.commit()
     assert state.client.post(f"/medical-interviews/{state.id}/start").status_code == 200
     state.root = f"/medical-interviews/{state.id}/recording"

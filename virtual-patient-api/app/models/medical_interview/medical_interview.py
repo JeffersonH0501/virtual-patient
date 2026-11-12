@@ -87,11 +87,11 @@ class MedicalInterviewCreate(MedicalInterviewBase):
     patient_response_language: Literal["en", "es"] = "en"
 
     @model_validator(mode='after')
-    def require_block_transport(self):
+    def require_per_turn_transport(self):
         metadata = dict(self.interview_metadata or {})
-        if metadata.get('recording_transport', 'reusable_blocks_v1') != 'reusable_blocks_v1':
-            raise ValueError('Only reusable_blocks_v1 recording transport is supported')
-        self.interview_metadata = {**metadata, 'recording_transport': 'reusable_blocks_v1'}
+        if metadata.get('recording_transport', 'per_turn_v1') != 'per_turn_v1':
+            raise ValueError('Only per_turn_v1 recording transport is supported')
+        self.interview_metadata = {**metadata, 'recording_transport': 'per_turn_v1'}
         return self
 
 class MedicalInterviewUpdate(BaseModel):

@@ -49,7 +49,7 @@ MAX_TRANSCRIPTION_BYTES = 25 * 1024 * 1024
 
 async def _block_patient_audio(interview_id, message_id, inputs, db):
     recording = db.query(InterviewRecordingDB).filter_by(medical_interview_id=interview_id).first()
-    if recording is None or (recording.capture_config or {}).get("mediaTransport") != "reusable_blocks_v1":
+    if recording is None or (recording.capture_config or {}).get("mediaTransport") != "per_turn_v1":
         return None
     from datetime import datetime, timezone
     from app.speech.preserved_audio import preserved_patient_audio

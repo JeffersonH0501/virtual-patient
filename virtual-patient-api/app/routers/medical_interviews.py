@@ -823,7 +823,7 @@ def complete_interview(
         from app.controllers.recording_segments import require_capture_epoch
         require_capture_epoch(db, int(interview_id), capture_segment_id)
     if (recording.status not in {"ready", "partial"}
-            or recording.ended_at is None or (recording.duration_ms is None and (recording.capture_config or {}).get('mediaTransport') != 'reusable_blocks_v1')
+            or recording.ended_at is None or (recording.duration_ms is None and (recording.capture_config or {}).get('mediaTransport') != 'per_turn_v1')
             or (not recording.segments and not any(asset.status == "ready" for asset in recording.assets))):
         raise HTTPException(status_code=409, detail="Interview media has not been finalized")
     try:
@@ -868,21 +868,21 @@ def complete_interview(
             ).all()
             for turn_job in failed_turns:
                 try:
-                    source = (turn_job.result or {}).get("block_source")
+                    source = (turn_job.result or {}).get("turn_source")
+                    import hashlib
+                    from app.models.turn_media import InterviewTurnMediaDB
+                    from app.models.medical_interview import InterviewRecordingSegmentDB
+                    from app.multimodal.turn_staging import source_identity
                     if source:
-                        import hashlib
-                        from app.models.recording_block import InterviewRecordingBlockDB
-                        from app.models.medical_interview import InterviewRecordingSegmentDB
-                        from app.multimodal.block_turns import source_identity
-                        block = db.get(InterviewRecordingBlockDB, source["block_id"])
-                        if block is None or block.recording_id != recording.id:
-                            raise ValueError("Block source does not belong to this recording")
-                        segment = db.get(InterviewRecordingSegmentDB, block.capture_attempt_id)
-                        if source_identity(block, segment, source["window"]) != source["identity"]:
-                            raise ValueError("Block source identity changed")
-                        with storage.resolve(block.storage_key).open("rb") as original:
-                            if hashlib.file_digest(original, "sha256").hexdigest() != block.sha256:
-                                raise ValueError("Block original changed")
+                        media = db.get(InterviewTurnMediaDB, source["turn_media_id"])
+                        if media is None or media.recording_id != recording.id:
+                            raise ValueError("Turn source does not belong to this recording")
+                        segment = db.get(InterviewRecordingSegmentDB, media.capture_attempt_id)
+                        if source_identity(media, segment) != source["identity"]:
+                            raise ValueError("Turn source identity changed")
+                        with storage.resolve(media.storage_key).open("rb") as original:
+                            if hashlib.file_digest(original, "sha256").hexdigest() != media.sha256:
+                                raise ValueError("Turn original changed")
                     else:
                         storage.resolve(turn_job.storage_key)
                 except (FileNotFoundError, ValueError, TypeError, KeyError) as error:

@@ -76,6 +76,7 @@ def test_job_transitions_from_queued_through_processing_to_completed(monkeypatch
     monkeypatch.setattr(turn_video_queue, "SessionLocal", lambda: session)
     monkeypatch.setattr(turn_video_queue, "get_media_storage", lambda: storage)
     monkeypatch.setattr(turn_video_queue, "read_calibration_profile", lambda interview: None)
+    monkeypatch.setattr(turn_video_queue, "extract_turn_paraverbal", lambda *args, **kwargs: None)
     monkeypatch.setattr(
         turn_video_queue,
         "extract_nonverbal_video_observations_parallel",
