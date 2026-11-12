@@ -13,7 +13,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
 vi.mock('../../services/recordings', () => ({
   resolveRecordingSource: (source: string) => source,
   getInterviewRecap: vi.fn(async () => ({interviewId: 7, recordingStatus: 'complete', durationMs: 60000,
-    blocks: [{blockId: 'one', offsetMs: 0, durationMs: 60000, studentVideoSource: '/student.webm', patientAudioSource: null, metadata: {patientMessageId: 1}}],
+    turnMedia: [{turnMediaId: 'one', sessionClockMs: 0, durationMs: 60000, studentVideoSource: '/student.webm', messageId: 2, metadata: {messageId: 2, sessionClockMs: 0}}],
     turns: [{turnId: 'real-uuid', speaker: 'patient', startMs: 16000, endMs: 18000, transcript: 'A concern', inputSource: 'audio', timingSource: 'recording', timingQuality: 'measured'}]})),
 }));
 afterEach(() => {
