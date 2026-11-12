@@ -1,6 +1,6 @@
 import { getAuthHeaders } from '../auth/authHeaders';
 import { CreateHypothesisRequest, UserHypothesis } from '../../types/hypothesis';
-import {blockFetch} from '../recordings/blocks';
+import {turnFetch} from '../recordings/turns';
 
 type Response = UserHypothesis[];
 
@@ -23,7 +23,7 @@ export const createHypothesis = async (
       ...(captureSegmentId ? {'X-Capture-Segment': captureSegmentId} : {}),
     },
   };
-  const response = await blockFetch(Number(interviewId), '/hypotheses', init);
+  const response = await turnFetch(Number(interviewId), '/hypotheses', init);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);

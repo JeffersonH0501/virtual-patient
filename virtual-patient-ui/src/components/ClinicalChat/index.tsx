@@ -31,7 +31,7 @@ import {InterviewEvaluationResponse} from '../../types/evaluation';
 import {getPatientImage, processMessagesWithAvatars, processSummaryData} from './helpers';
 import {useHandsFreeSpeech} from '../../hooks/useHandsFreeSpeech';
 import {useInterviewRecording} from '../../hooks/useInterviewRecording';
-import {resumeBlockInterview} from '../../services/recordings/blocks';
+import {resumeTurnInterview} from '../../services/recordings/turns';
 import {useUser} from '../../hooks/useUser';
 import {SpeechTiming, InterviewRecap as InterviewRecapData, StudentCaptureTiming} from '../../types/recording';
 import doctorImage from '../../assets/doctor.png';
@@ -462,7 +462,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         console.error('Failed to send message:', error);
         setPatientTurnActive(false);
         setMessageError(t('clinicalChat.messageSendError'));
-        if (interview?.interviewMetadata?.recordingTransport === 'reusable_blocks_v1' &&
+        if (interview?.interviewMetadata?.recordingTransport === 'per_turn_v1' &&
             error instanceof Error && 'status' in error && error.status === 409) {
           recordingRef.current?.pause();
           setSimulationAccepted(false);
@@ -552,7 +552,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       measureResponse('total-to-playing', response.submittedAt, response.requestId);
       response.startedAt = performance.now();
     }
-    recording.beginPatientTurn(messageId);
+    recording.beginPatientTurn();
   }, [recording.beginPatientTurn]);
 
   const handlePatientTurnEnd = useCallback((messageId: number, playbackComplete: boolean) => {
@@ -561,7 +561,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       measureResponse(playbackComplete ? 'audio-finished' : 'audio-interrupted', response.startedAt, response.requestId);
       responsePlaybackRef.current = null;
     }
-    recording.endPatientTurn(messageId, playbackComplete);
+    recording.endPatientTurn();
   }, [recording.endPatientTurn]);
 
   const handlePatientTurnComplete = useCallback((messageId: number, delivery?: 'played' | 'written') => {
@@ -573,7 +573,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     if (delivery === 'written') {
       const sequence = messages?.findIndex((message) => message.id === messageId) ?? -1;
       if (sequence >= 0 && messages) {
-        recording.recordWrittenPatientTurn(messageId);
+        recording.recordWrittenPatientTurn();
       }
     }
     setPatientTurnActive(false);
@@ -622,7 +622,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const prepareResumption = async (id: number) => {
     resumeRequestRef.current ??= crypto.randomUUID();
     await recording.stopForRecovery();
-    return resumeBlockInterview(id, resumeRequestRef.current);
+    return resumeTurnInterview(id, resumeRequestRef.current);
   };
 
   const handleResume = async () => {
@@ -653,7 +653,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       if (resumePromptOpen) {
         resumeRequestRef.current ??= crypto.randomUUID();
         await recording.stopForRecovery();
-        resumeAttemptId = (await resumeBlockInterview(interviewId, resumeRequestRef.current, true, forceSignal)).resumeAttemptId;
+        resumeAttemptId = (await resumeTurnInterview(interviewId, resumeRequestRef.current, true, forceSignal)).resumeAttemptId;
       } else if (!await recording.finalize(true)) {
         throw new Error('Recording preservation failed; retry before leaving the interview');
       }

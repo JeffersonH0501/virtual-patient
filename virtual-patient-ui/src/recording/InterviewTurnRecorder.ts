@@ -1,35 +1,35 @@
 import {selectVideoMimeType} from '../utils/mediaRecorder';
-import {InterviewBlockStore, type BlockMetadata, type LocalInterviewBlock} from './InterviewBlockStore';
+import {InterviewTurnStore, type TurnCaptureMetadata, type LocalInterviewTurn} from './InterviewTurnStore';
 
-/** A single muxed original spans student speech, technical wait and patient playback. */
-export class InterviewBlockRecorder {
+/** One muxed original per student turn (camera + microphone). */
+export class InterviewTurnRecorder {
   private recorder: MediaRecorder | null = null;
   private origin: number | null = null;
   private writes: Promise<void> = Promise.resolve();
   private failure: unknown;
-  private closing?: Promise<LocalInterviewBlock>;
+  private closing?: Promise<LocalInterviewTurn>;
   private pauses: {start: number; end: number | null}[] = [];
   private stoppedAt: number | null = null;
 
-  constructor(readonly store: InterviewBlockStore, readonly block: LocalInterviewBlock,
+  constructor(readonly store: InterviewTurnStore, readonly turn: LocalInterviewTurn,
     private onStorageFailure: (error: unknown) => void) {}
 
   async start(camera: MediaStream, microphone: MediaStream): Promise<void> {
-    if (this.recorder) throw new Error('Block recorder already started');
+    if (this.recorder) throw new Error('Turn recorder already started');
     const tracks = [...camera.getVideoTracks(), ...microphone.getAudioTracks()];
     if (!tracks.some((track) => track.kind === 'video') || !tracks.some((track) => track.kind === 'audio')) {
-      throw new Error('Block capture requires camera and microphone tracks');
+      throw new Error('Turn capture requires camera and microphone tracks');
     }
     const mimeType = selectVideoMimeType();
     if (!mimeType) throw new Error('A supported camera/microphone recording format is unavailable');
-    this.block.mimeType = mimeType;
-    await this.store.create(this.block);
+    this.turn.mimeType = mimeType;
+    await this.store.create(this.turn);
     const recorder = new MediaRecorder(new MediaStream(tracks), {mimeType});
     this.recorder = recorder;
     recorder.addEventListener('dataavailable', (event) => {
       if (!event.data.size) return;
       const endMs = this.elapsed();
-      this.writes = this.writes.then(() => this.store.append(this.block, event.data, endMs));
+      this.writes = this.writes.then(() => this.store.append(this.turn, event.data, endMs));
       void this.writes.catch((error) => {
         if (!this.failure) {
           this.failure = error;
@@ -39,7 +39,7 @@ export class InterviewBlockRecorder {
       });
     });
     recorder.addEventListener('error', (event) => {
-      this.failure = new Error(`Block recorder failed: ${event.type}`);
+      this.failure = new Error(`Turn recorder failed: ${event.type}`);
       this.onStorageFailure(this.failure);
     });
     await new Promise<void>((resolve, reject) => {
@@ -78,10 +78,10 @@ export class InterviewBlockRecorder {
     return !this.failure && this.recorder?.state === 'recording';
   }
 
-  async checkpoint(metadata: Partial<BlockMetadata>): Promise<void> {
-    if (this.block.state !== 'capturing' || this.closing) throw new Error('Closed block metadata is immutable');
+  async checkpoint(metadata: Partial<TurnCaptureMetadata>): Promise<void> {
+    if (this.turn.state !== 'capturing' || this.closing) throw new Error('Closed turn metadata is immutable');
     this.writes = this.writes.then(async () => {
-      Object.assign(this.block, await this.store.patch(this.block.id, {metadata}));
+      Object.assign(this.turn, await this.store.patch(this.turn.id, {metadata}));
     });
     await this.writes;
   }
@@ -90,15 +90,15 @@ export class InterviewBlockRecorder {
     await this.writes;
   }
 
-  close(metadata: BlockMetadata): Promise<LocalInterviewBlock> {
+  close(metadata: TurnCaptureMetadata): Promise<LocalInterviewTurn> {
     if (this.closing) return this.closing;
     this.closing = this.finish(metadata);
     return this.closing;
   }
 
-  private async finish(metadata: BlockMetadata): Promise<LocalInterviewBlock> {
+  private async finish(metadata: TurnCaptureMetadata): Promise<LocalInterviewTurn> {
     const recorder = this.recorder;
-    if (!recorder) throw new Error('Block capture has not started');
+    if (!recorder) throw new Error('Turn capture has not started');
     const durationMs = this.elapsed();
     this.stoppedAt ??= performance.now();
     if (recorder.state !== 'inactive') {
@@ -110,9 +110,9 @@ export class InterviewBlockRecorder {
     }
     await this.writes;
     if (this.failure) throw this.failure;
-    if (!this.block.chunks) throw new Error('No local original was confirmed');
-    Object.assign(this.block, await this.store.patch(this.block.id, {metadata: {...metadata, duration_ms: durationMs}, state: 'closed'}));
-    return this.block;
+    if (!this.turn.chunks) throw new Error('No local original was confirmed');
+    Object.assign(this.turn, await this.store.patch(this.turn.id, {metadata: {...metadata, duration_ms: durationMs}, state: 'closed'}));
+    return this.turn;
   }
 
   async stop(): Promise<void> {

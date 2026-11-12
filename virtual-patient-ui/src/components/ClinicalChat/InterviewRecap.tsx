@@ -4,7 +4,7 @@ import {getInterviewRecap} from '../../services/recordings';
 import type {InterviewRecap as InterviewRecapData, RecapTurn} from '../../types/recording';
 import type {Message} from '../../types/message';
 import {useUser} from '../../hooks/useUser';
-import {BlockInterviewRecap} from './BlockInterviewRecap';
+import {TurnInterviewRecap} from './TurnInterviewRecap';
 import {InterviewContentLoading} from './InterviewContentLoading';
 
 type Props = {
@@ -79,7 +79,7 @@ const InterviewRecapContent = ({interviewId, messages, patientName, patientAvata
       <p>{t('clinicalChat.recap.loadFailed')}</p>
       <button type="button" className="ui-button ui-button--secondary" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>{t('common.retry')}</button>
     </div>}
-    {!recap && !loadFailed ? <InterviewContentLoading /> : <BlockInterviewRecap
+    {!recap && !loadFailed ? <InterviewContentLoading /> : <TurnInterviewRecap
       recap={display.turns.length ? display : {...display, turns: transcriptTurns(messages)}} messages={messages} patientName={patientName} patientAvatar={patientAvatar}
       infoDisabled={infoDisabled} seekRequest={seekRequest} />}
   </>;

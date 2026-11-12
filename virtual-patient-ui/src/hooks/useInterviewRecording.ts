@@ -16,4 +16,4 @@ export type UseInterviewRecordingOptions = {
   initialOffsetMs?: number;
 };
 
-export {useBlockInterviewRecording as useInterviewRecording} from './useBlockInterviewRecording';
+export {useTurnInterviewRecording as useInterviewRecording} from './useTurnInterviewRecording';

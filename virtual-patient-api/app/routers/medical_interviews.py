@@ -816,7 +816,7 @@ def complete_interview(
 
     recording = interview_to_complete.recording
     if lifecycle_status == "in_progress" and not (
-        capture_segment_id is None and (recording.capture_config or {}).get("block_finalization") is not None
+        capture_segment_id is None and (recording.capture_config or {}).get("turn_finalization") is not None
         and recording.status in {"ready", "partial"} and recording.ended_at is not None
         and not (recording.capture_config or {}).get("resume_attempt")
     ):

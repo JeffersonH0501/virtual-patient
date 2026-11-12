@@ -25,7 +25,7 @@ const flow = vi.hoisted(() => ({
   regenerate: vi.fn(),
   reprocess: vi.fn(),
   resumeRecording: vi.fn(),
-  resumeBlock: vi.fn(),
+  resumeTurn: vi.fn(),
   recoverSegment: vi.fn(),
   toolbar: {} as ComponentProps<typeof CallToolbar>,
   transcript: {} as ComponentProps<typeof ConversationTranscript>,
@@ -207,7 +207,7 @@ vi.mock('../../services/recordings', () => ({
   resumeInterviewRecording: (...args: unknown[]) => flow.resumeRecording(...args),
   recoverInterviewSegment: (...args: unknown[]) => flow.recoverSegment(...args),
 }));
-vi.mock('../../services/recordings/blocks', () => ({resumeBlockInterview: (...args: unknown[]) => flow.resumeBlock(...args)}));
+vi.mock('../../services/recordings/turns', () => ({resumeTurnInterview: (...args: unknown[]) => flow.resumeTurn(...args)}));
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -224,7 +224,7 @@ beforeEach(() => {
   flow.speech.hasPendingUtterance = false;
   flow.route.state.justStarted = true;
   delete flow.route.state.resume;
-  flow.resumeBlock.mockResolvedValue({resumeAttemptId: 'resume-attempt', offsetMs: 60_000,
+  flow.resumeTurn.mockResolvedValue({resumeAttemptId: 'resume-attempt', offsetMs: 60_000,
     previousSegmentId: 'previous-segment', previousDurationMs: 60_000, pendingPatientMessageId: null});
   flow.recoverSegment.mockResolvedValue({status: 'partial'});
   flow.media.cameraState = 'ready';
@@ -302,18 +302,18 @@ it('holds a committed transcript during capture pause and sends it once capture 
 it('waits for the last local fragment before reconciling a live block capture', async () => {
   flow.route.state.justStarted = false;
   flow.interview.lifecycle = {phase: 'active', canComplete: false, canRetryCompletion: false,
-    canResumeCapture: true, recordingTransport: 'reusable_blocks_v1'};
+    canResumeCapture: true, recordingTransport: 'per_turn_v1'};
   let stopped!: () => void;
   flow.recording.stopForRecovery.mockReturnValue(new Promise<void>((resolve) => {
     stopped = resolve;
   }));
-  flow.resumeBlock.mockResolvedValue({resumeAttemptId: 'resume-attempt'});
+  flow.resumeTurn.mockResolvedValue({resumeAttemptId: 'resume-attempt'});
   render(<ClinicalChat mode="session" />);
   fireEvent.click(await screen.findByText('clinicalChat.resumeSession.resume'));
   await waitFor(() => expect(flow.recording.stopForRecovery).toHaveBeenCalledTimes(1));
-  expect(flow.resumeBlock).not.toHaveBeenCalled();
+  expect(flow.resumeTurn).not.toHaveBeenCalled();
   await act(async () => stopped());
-  await waitFor(() => expect(flow.resumeBlock).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(flow.resumeTurn).toHaveBeenCalledTimes(1));
 });
 
 it('does not play patient audio before capture has started successfully', async () => {
@@ -326,7 +326,7 @@ it('does not play patient audio before capture has started successfully', async 
 
 it('continues frozen media from the safe lifecycle even before automatic assessment is visible', async () => {
   flow.interview.lifecycle = {phase: 'capture_finalized', canComplete: true, canRetryCompletion: false,
-    canResumeCapture: false, recordingTransport: 'reusable_blocks_v1'};
+    canResumeCapture: false, recordingTransport: 'per_turn_v1'};
   flow.interview.reviewAccess = {canViewAssessments: false, assignmentId: null, selfAssessmentRequired: true};
   flow.complete.mockImplementation(async () => {
     flow.interview.status = 'processing'; return {};
@@ -609,8 +609,8 @@ it('resumes the same interview through calibration after recovering its previous
   await waitFor(() => expect(flow.navigate).toHaveBeenCalledWith('/interviews/calibration', {
     replace: true, state: {draftInterviewId: 7, resume: expect.objectContaining({offsetMs: 60_000})},
   }));
-  expect(flow.recording.stopForRecovery).toHaveBeenCalledBefore(flow.resumeBlock);
-  expect(flow.resumeBlock).toHaveBeenCalledWith(7, expect.any(String));
+  expect(flow.recording.stopForRecovery).toHaveBeenCalledBefore(flow.resumeTurn);
+  expect(flow.resumeTurn).toHaveBeenCalledWith(7, expect.any(String));
   expect(flow.captureOptions.enabled).toBe(false);
   expect(flow.start).not.toHaveBeenCalled();
 });
@@ -628,14 +628,14 @@ it('allows forced interruption after reload even when local media cannot be read
 
 it('retries recovery with the same resume request after a lost upload response', async () => {
   flow.route.state.justStarted = false;
-  flow.resumeBlock.mockRejectedValueOnce(new Error('Lost upload response')).mockResolvedValueOnce({resumeAttemptId: 'resume-attempt'});
+  flow.resumeTurn.mockRejectedValueOnce(new Error('Lost upload response')).mockResolvedValueOnce({resumeAttemptId: 'resume-attempt'});
   render(<ClinicalChat mode="session" />);
   fireEvent.click(await screen.findByRole('button', {name: 'clinicalChat.resumeSession.resume'}));
   await screen.findByRole('alert');
   expect(flow.navigate).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.resumeSession.resume'}));
   await waitFor(() => expect(flow.navigate).toHaveBeenCalledWith('/interviews/calibration', expect.any(Object)));
-  expect(flow.resumeBlock.mock.calls[0]).toEqual(flow.resumeBlock.mock.calls[1]);
+  expect(flow.resumeTurn.mock.calls[0]).toEqual(flow.resumeTurn.mock.calls[1]);
 });
 
 it('replays only the pending server patient message after recalibration', async () => {

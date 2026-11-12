@@ -3,7 +3,7 @@ let sequence = 0;
 const pending = new Map<number, {resolve: () => void; reject: (error: Error) => void}>();
 
 /** Older WebKit exposes durable OPFS writes through dedicated workers only. */
-export const writeBlockFragment = async (file: FileSystemFileHandle, chunk: Blob): Promise<void> => {
+export const writeTurnFragment = async (file: FileSystemFileHandle, chunk: Blob): Promise<void> => {
   if (typeof file.createWritable === 'function') {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -15,7 +15,7 @@ export const writeBlockFragment = async (file: FileSystemFileHandle, chunk: Blob
           void writer.abort().catch(() => undefined); throw error;
         }
       })(), new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error('Local block write timed out')), 10_000);
+        timer = setTimeout(() => reject(new Error('Local turn write timed out')), 10_000);
       })]);
     } finally {
       clearTimeout(timer);
@@ -23,15 +23,15 @@ export const writeBlockFragment = async (file: FileSystemFileHandle, chunk: Blob
     return;
   }
   if (!worker) {
-    worker = new Worker(new URL('./blockStorage.worker.ts', import.meta.url), {type: 'module'});
+    worker = new Worker(new URL('./turnStorage.worker.ts', import.meta.url), {type: 'module'});
     worker.onmessage = (event: MessageEvent<{id: number; ok: boolean}>) => {
       const request = pending.get(event.data.id);
       pending.delete(event.data.id);
       if (event.data.ok) request?.resolve();
-      else request?.reject(new Error('Local block storage could not confirm the fragment'));
+      else request?.reject(new Error('Local turn storage could not confirm the fragment'));
     };
     worker.onerror = () => {
-      for (const request of pending.values()) request.reject(new Error('Local block storage worker failed'));
+      for (const request of pending.values()) request.reject(new Error('Local turn storage worker failed'));
       pending.clear(); worker?.terminate(); worker = undefined;
     };
   }
@@ -39,7 +39,7 @@ export const writeBlockFragment = async (file: FileSystemFileHandle, chunk: Blob
   await new Promise<void>((resolve, reject) => {
     const id = sequence++;
     const timer = setTimeout(() => {
-      pending.delete(id); reject(new Error('Local block write timed out'));
+      pending.delete(id); reject(new Error('Local turn write timed out'));
     }, 10_000);
     pending.set(id, {resolve: () => {
       clearTimeout(timer); resolve();

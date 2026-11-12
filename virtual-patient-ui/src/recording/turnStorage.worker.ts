@@ -6,7 +6,7 @@ self.addEventListener('message', async (event: MessageEvent<{id: number; file: F
   let access: SyncFile | undefined;
   try {
     access = await (file as FileSystemFileHandle & {createSyncAccessHandle(): Promise<SyncFile>}).createSyncAccessHandle();
-    if (access.write(data, {at: 0}) !== data.byteLength) throw new Error('Local block write was incomplete');
+    if (access.write(data, {at: 0}) !== data.byteLength) throw new Error('Local turn write was incomplete');
     access.truncate(data.byteLength);
     await access.flush();
     await access.close();

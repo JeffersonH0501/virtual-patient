@@ -8,48 +8,43 @@ import {formatPlaybackTime} from '../../utils/duration';
 import {TurnEvidenceDetails} from './TurnEvidenceDetails';
 import {Dialog} from '../common/Dialog';
 import {useUser} from '../../hooks/useUser';
-import {useBlockPlayback} from './useBlockPlayback';
+import {useTurnPlayback} from './useTurnPlayback';
 
 type Props = {recap: InterviewRecap; messages?: Message[]; patientName?: string; patientAvatar?: string; infoDisabled: boolean; seekRequest?: {turnId: string; requestId: number} | null};
 
-export const BlockInterviewRecap = (props: Props) => {
+export const TurnInterviewRecap = (props: Props) => {
   const {user} = useUser();
-  return <BlockInterviewRecapContent key={`${user?.id}:${user?.role}:${props.recap.interviewId}`} {...props} />;
+  return <TurnInterviewRecapContent key={`${user?.id}:${user?.role}:${props.recap.interviewId}`} {...props} />;
 };
 
-const BlockInterviewRecapContent = ({recap, messages, patientName, patientAvatar, infoDisabled, seekRequest}: Props) => {
+const TurnInterviewRecapContent = ({recap, messages, patientName, patientAvatar, infoDisabled, seekRequest}: Props) => {
   const {t} = useTranslation();
   const {user} = useUser();
   const [detail, setDetail] = useState<RecapTurn | null>(null);
   useEffect(() => {
- if (infoDisabled) setDetail(null);
-}, [infoDisabled]);
+    if (infoDisabled) setDetail(null);
+  }, [infoDisabled]);
   const avatar = patientAvatar || messages?.find((item) => item.senderType !== 'user')?.senderAvatar;
-  const {togglePlayback, block, nextBlock, time, duration, playing, patientSpeaking, volume, setVolume, error, poster, video, audio, audioSource, patientActive, activeId, seek, videoEvents, audioEvents} = useBlockPlayback(recap, seekRequest);
+  const {togglePlayback, clip, time, duration, playing, volume, setVolume, error, poster, video, activeId, seek, videoEvents} = useTurnPlayback(recap, seekRequest);
 
   return <section className="ui-panel-body min-h-0 flex-1 overflow-x-hidden overflow-y-hidden" aria-label={t('clinicalChat.recap.title')}>
     <div className="recap-content mx-auto flex h-full min-h-0 w-full flex-col gap-layout">
     <div className="shrink-0 overflow-hidden rounded-xl border border-neutral-200 bg-neutral-950">
     <div className="grid grid-cols-2 bg-neutral-900">
       <div className="relative flex aspect-video min-w-0 items-center justify-center overflow-hidden">
-        <div className={`relative flex h-20 w-20 items-center justify-center rounded-full ring-4 motion-speaking ${patientSpeaking && patientActive ? 'ring-success-400 shadow-speaking' : 'ring-white/15'}`}>
+        <div className="relative flex h-20 w-20 items-center justify-center rounded-full ring-4 ring-white/15">
           {avatar && <img className="h-full w-full rounded-full object-cover" src={avatar} alt="" />}
         </div>
         <div className="absolute inset-x-0 bottom-0 px-inset py-inset text-center text-white secondary-text">{patientName || t('clinicalChat.call.patient')}</div>
       </div>
       <div className="relative aspect-video min-w-0 overflow-hidden">
-      {[block, nextBlock].flatMap((item) => item?.studentVideoSource ? [item] : []).map((item) => {
-        const active = item.blockId === block?.blockId;
-        return <video key={item.blockId} ref={active ? video : undefined} crossOrigin="use-credentials" playsInline preload="auto"
-          className={active ? 'aspect-video w-full object-contain' : 'hidden'}
-          aria-hidden={!active} src={resolveRecordingSource(item.studentVideoSource) ?? undefined}
-          {...videoEvents(active)} />;
-      })}
-      {!block?.studentVideoSource && <p role="status" className="p-layout text-white">{t('clinicalChat.recap.notAvailable')}</p>}
+      {clip?.studentVideoSource && <video key={clip.turnMediaId} ref={video} crossOrigin="use-credentials" playsInline preload="auto"
+        className="aspect-video w-full object-contain" src={resolveRecordingSource(clip.studentVideoSource) ?? undefined}
+        {...videoEvents(true)} />}
+      {!clip?.studentVideoSource && <p role="status" className="p-layout text-white">{t('clinicalChat.recap.notAvailable')}</p>}
       {poster && <img src={poster} alt="" className="pointer-events-none absolute inset-0 h-full w-full object-contain" />}
       </div>
     </div>
-    <audio key={block?.blockId} ref={audio} crossOrigin="use-credentials" preload="auto" src={audioSource} {...audioEvents} />
     <div className="flex items-center gap-layout bg-neutral-900 px-inset py-inset text-white">
       <button type="button" className="recap-playback-button [&_svg]:h-4 [&_svg]:w-4" disabled={!duration} onClick={togglePlayback} aria-label={playing ? t('clinicalChat.recap.pause') : t('clinicalChat.recap.play')}>{playing ? <Pause /> : <Play />}</button>
       <span className="w-10 text-right tabular-nums secondary-text">{formatPlaybackTime(time)}</span>

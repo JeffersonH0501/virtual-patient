@@ -302,5 +302,5 @@ class InterviewRecapResponse(BaseModel):
     duration_ms: Optional[int] = None
     observation_processing: Dict[str, Any] = Field(default_factory=dict)
     evaluation_processing: Dict[str, Any] = Field(default_factory=dict)
-    blocks: Optional[List[Dict[str, Any]]] = None
+    turn_media: Optional[List[Dict[str, Any]]] = None
     turns: List[RecapTurn] = Field(default_factory=list)

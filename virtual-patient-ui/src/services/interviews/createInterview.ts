@@ -23,7 +23,7 @@ export const createInterview = async (payload: CreateInterviewPayload) => {
   const response = await apiFetch(`${API_URL}/medical-interviews`, {
     method: 'POST',
     signal: AbortSignal.timeout(30_000),
-    body: JSON.stringify({...payload, interview_metadata: {recording_transport: 'reusable_blocks_v1'}}),
+    body: JSON.stringify({...payload, interview_metadata: {recording_transport: 'per_turn_v1'}}),
     headers: {
       'Content-Type': 'application/json',
       accept: 'application/json',

@@ -1,5 +1,5 @@
 import {getAuthHeaders} from '../auth/authHeaders';
-import {blockFetch} from '../recordings/blocks';
+import {turnFetch} from '../recordings/turns';
 
 /**
  * Mark an interview as interrupted. Used when the session did not finish its
@@ -21,7 +21,7 @@ export const interruptInterview = async (
       ...(capture?.resumeAttemptId ? {'X-Resume-Attempt': capture.resumeAttemptId} : {}),
     },
   };
-  const response = await blockFetch(Number(interviewId), '/abandon', init);
+  const response = await turnFetch(Number(interviewId), '/abandon', init);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);

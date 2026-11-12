@@ -1,9 +1,9 @@
 """Per-turn staging: each turn owns its immutable media; jobs read it directly.
 
-Replaces the former block-window model (``block_turns.py``). A student turn has
+Each student turn has
 its own captured video file (``InterviewTurnMediaDB``); the durable
 ``TurnVideoAnalysisDB`` job points at that file through ``storage_key``, with no
-``block_source`` window and no on-demand ffmpeg window cut. The patient turn is
+a per-turn media window (no on-demand ffmpeg window cut). The patient turn is
 text-to-speech and has no captured media.
 """
 import hashlib

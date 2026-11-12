@@ -1,6 +1,6 @@
 import {afterEach, expect, it, vi} from 'vitest';
-import {InterviewBlockRecorder} from './InterviewBlockRecorder';
-import {type BlockMetadata, type InterviewBlockStore, type LocalInterviewBlock} from './InterviewBlockStore';
+import {InterviewTurnRecorder} from './InterviewTurnRecorder';
+import {type TurnCaptureMetadata, type InterviewTurnStore, type LocalInterviewTurn} from './InterviewTurnStore';
 
 class Recorder extends EventTarget {
   static isTypeSupported = () => true;
@@ -30,26 +30,28 @@ afterEach(() => {
   vi.unstubAllGlobals(); vi.restoreAllMocks();
 });
 
-it('keeps a single recorder through patient playback and commits final delivered bytes before closing', async () => {
+const localTurn = () => ({id: 'turn', state: 'capturing', chunks: 0, metadata: {}} as LocalInterviewTurn);
+
+it('commits final delivered bytes before closing one student turn', async () => {
   vi.stubGlobal('MediaRecorder', Recorder);
   vi.stubGlobal('MediaStream', vi.fn(function () {
     return {};
   }));
   let now = 100;
   vi.spyOn(performance, 'now').mockImplementation(() => now);
-  const block = {id: 'block', state: 'capturing', chunks: 0, metadata: {}} as LocalInterviewBlock;
-  const store = {create: vi.fn(), put: vi.fn(), patch: vi.fn(async (_id: string, patch: Partial<LocalInterviewBlock>) => Object.assign(block, patch)), append: vi.fn(async (item: LocalInterviewBlock) => {
+  const turn = localTurn();
+  const store = {create: vi.fn(), put: vi.fn(), patch: vi.fn(async (_id: string, patch: Partial<LocalInterviewTurn>) => Object.assign(turn, patch)), append: vi.fn(async (item: LocalInterviewTurn) => {
     item.chunks++;
   })};
   const onFailure = vi.fn();
-  const recording = new InterviewBlockRecorder(store as unknown as InterviewBlockStore, block, onFailure);
+  const recording = new InterviewTurnRecorder(store as unknown as InterviewTurnStore, turn, onFailure);
   await recording.start({getVideoTracks: () => [{kind: 'video'}]} as unknown as MediaStream,
     {getAudioTracks: () => [{kind: 'audio'}]} as unknown as MediaStream);
   now = 1000;
   Recorder.current.chunk();
-  await recording.checkpoint({student_speech: {start_ms: 100, end_ms: 800}});
+  await recording.checkpoint({interaction_area_snapshots: []});
   now = 2100;
-  const final = await recording.close({patient_message_id: 2, duration_ms: 2000} as BlockMetadata);
+  const final = await recording.close({message_id: 2, duration_ms: 2000} as TurnCaptureMetadata);
   expect(final.chunks).toBe(2);
   expect(final.state).toBe('closed');
   expect(final.metadata.duration_ms).toBe(2000);
@@ -62,17 +64,17 @@ it('pauses on a local persistence failure and never publishes a closed original'
   vi.stubGlobal('MediaStream', vi.fn(function () {
     return {};
   }));
-  const block = {id: 'block', state: 'capturing', chunks: 0, metadata: {}} as LocalInterviewBlock;
+  const turn = localTurn();
   const store = {create: vi.fn(), put: vi.fn(), patch: vi.fn(), append: vi.fn().mockRejectedValue(new Error('Synthetic full storage'))};
   const onFailure = vi.fn();
-  const recording = new InterviewBlockRecorder(store as unknown as InterviewBlockStore, block, onFailure);
+  const recording = new InterviewTurnRecorder(store as unknown as InterviewTurnStore, turn, onFailure);
   await recording.start({getVideoTracks: () => [{kind: 'video'}]} as unknown as MediaStream,
     {getAudioTracks: () => [{kind: 'audio'}]} as unknown as MediaStream);
   Recorder.current.chunk();
   await vi.waitFor(() => expect(onFailure).toHaveBeenCalledTimes(1));
   expect(Recorder.current.state).toBe('paused');
-  await expect(recording.close({} as BlockMetadata)).rejects.toThrow('Synthetic full storage');
-  expect(block.state).toBe('capturing');
+  await expect(recording.close({} as TurnCaptureMetadata)).rejects.toThrow('Synthetic full storage');
+  expect(turn.state).toBe('capturing');
 });
 
 it('excludes seventeen paused minutes from one minute of active recording', async () => {
@@ -82,19 +84,19 @@ it('excludes seventeen paused minutes from one minute of active recording', asyn
   }));
   let now = 100;
   vi.spyOn(performance, 'now').mockImplementation(() => now);
-  const block = {id: 'block', state: 'capturing', chunks: 0, metadata: {}} as LocalInterviewBlock;
-  const store = {create: vi.fn(), patch: vi.fn(async (_id: string, patch: Partial<LocalInterviewBlock>) => Object.assign(block, patch)),
-    append: vi.fn(async (item: LocalInterviewBlock) => {
+  const turn = localTurn();
+  const store = {create: vi.fn(), patch: vi.fn(async (_id: string, patch: Partial<LocalInterviewTurn>) => Object.assign(turn, patch)),
+    append: vi.fn(async (item: LocalInterviewTurn) => {
       item.chunks++;
     })};
-  const recording = new InterviewBlockRecorder(store as unknown as InterviewBlockStore, block, vi.fn());
+  const recording = new InterviewTurnRecorder(store as unknown as InterviewTurnStore, turn, vi.fn());
   await recording.start({getVideoTracks: () => [{kind: 'video'}]} as unknown as MediaStream, {getAudioTracks: () => [{kind: 'audio'}]} as unknown as MediaStream);
   now += 60_000;
   recording.pause();
   now += 17 * 60_000;
   expect(recording.elapsed()).toBe(60_000);
   recording.resume();
-  const closed = await recording.close({patient_message_id: 1} as BlockMetadata);
+  const closed = await recording.close({message_id: 1} as TurnCaptureMetadata);
   expect(closed.metadata.duration_ms).toBe(60_000);
 });
 
@@ -105,9 +107,9 @@ it('keeps historical speech timestamps unchanged after a later network pause', a
   }));
   let now = 100;
   vi.spyOn(performance, 'now').mockImplementation(() => now);
-  const block = {id: 'block', state: 'capturing', chunks: 0, metadata: {}} as LocalInterviewBlock;
+  const turn = localTurn();
   const store = {create: vi.fn(), patch: vi.fn(), append: vi.fn()};
-  const recording = new InterviewBlockRecorder(store as unknown as InterviewBlockStore, block, vi.fn());
+  const recording = new InterviewTurnRecorder(store as unknown as InterviewTurnStore, turn, vi.fn());
   await recording.start({getVideoTracks: () => [{kind: 'video'}]} as unknown as MediaStream,
     {getAudioTracks: () => [{kind: 'audio'}]} as unknown as MediaStream);
   now = 2200;

@@ -1,16 +1,21 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {InterviewBlockRecorder} from '../recording/InterviewBlockRecorder';
-import {InterviewBlockStore, type BlockMetadata, type LocalInterviewBlock} from '../recording/InterviewBlockStore';
-import {blockJson, blockScope, blockUploadQueue, getBlockManifest, forgetBlockQueue, subscribeBlockConnection} from '../services/recordings/blocks';
+import {InterviewTurnRecorder} from '../recording/InterviewTurnRecorder';
+import {InterviewTurnStore, type TurnCaptureMetadata, type LocalInterviewTurn} from '../recording/InterviewTurnStore';
+import {turnJson, turnScope, turnUploadQueue, getTurnManifest, forgetTurnQueue, subscribeTurnConnection} from '../services/recordings/turns';
 import type {UseInterviewRecordingOptions} from './useInterviewRecording';
 import type {RecordingStatus, SpeechTiming, StudentCaptureTiming} from '../types/recording';
 
-export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions) => {
+/**
+ * Per-turn capture: one recorder spans a single student turn. The patient turn
+ * is text-to-speech and carries no captured media, so its lifecycle callbacks
+ * do not record. Each student turn uploads its own immutable media file.
+ */
+export const useTurnInterviewRecording = (options: UseInterviewRecordingOptions) => {
   const [status, setStatus] = useState<RecordingStatus>('idle');
   const [syncPending, setPending] = useState(false);
   const [errorCode, setError] = useState<string | null>(null);
   const [captureId, setCaptureId] = useState<string | null>(null);
-  const runtime = useRef<InterviewBlockRecorder | null>(null);
+  const runtime = useRef<InterviewTurnRecorder | null>(null);
   const writer = useRef<string | null>(null);
   const started = useRef(false);
   const disposed = useRef(false);
@@ -29,7 +34,9 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
   const starting = useRef(false);
   const startAbort = useRef<AbortController | null>(null);
   const roi = useRef<Record<string, number>[]>([]);
-  const closingBlock = useRef(false);
+  const closingTurn = useRef(false);
+  const turnClockMs = useRef(0);
+  const expiration = useRef<string | null>(null);
   const invalidate = useCallback((code: string) => {
     blocked.current = code;
     setError(code); setPending(true); runtime.current?.pause();
@@ -50,7 +57,7 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
 
   const sampleRegion = useCallback(() => {
     const rect = document.querySelector<HTMLElement>('[data-interaction-area]')?.getBoundingClientRect();
-    if (!rect || !runtime.current || sealed.current || closingBlock.current) return;
+    if (!rect || !runtime.current || sealed.current || closingTurn.current) return;
     const region = {xNormalized: Math.max(0, rect.x) / innerWidth, yNormalized: Math.max(0, rect.y) / innerHeight,
       widthNormalized: Math.max(0, Math.min(innerWidth, rect.right) - Math.max(0, rect.x)) / innerWidth,
       heightNormalized: Math.max(0, Math.min(innerHeight, rect.bottom) - Math.max(0, rect.y)) / innerHeight};
@@ -61,7 +68,9 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     void runtime.current.checkpoint({interaction_area_snapshots: [...roi.current]}).catch(failure);
   }, [failure]);
 
-  const newBlock = useCallback(async () => {
+  // Start recording one student turn. Its session-clock origin is the running
+  // offset of all preceding turns, so global ordering never sums block windows.
+  const newTurn = useCallback(async () => {
     const {interviewId, cameraStream, microphoneStream} = latest.current;
     if (!interviewId || !cameraStream || !microphoneStream || !writer.current) throw new Error('Capture devices are unavailable');
     if (!devicesMatch()) {
@@ -71,12 +80,13 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
       invalidate('capture-geometry-changed'); return;
     }
     setPending(true);
-    const store = new InterviewBlockStore(blockScope(interviewId));
+    const store = new InterviewTurnStore(turnScope(interviewId));
     await store.purgeExpired();
-    const block: LocalInterviewBlock = {id: crypto.randomUUID(), scope: store.scope, requestId: crypto.randomUUID(),
+    turnClockMs.current = completedMs.current;
+    const turn: LocalInterviewTurn = {id: crypto.randomUUID(), scope: store.scope, requestId: crypto.randomUUID(),
       mimeType: '', chunks: 0, confirmedEndMs: 0, expiresAt: expiration.current!, state: 'capturing',
-      metadata: {capture_attempt_id: writer.current, order: order.current++}};
-    const recorder = new InterviewBlockRecorder(store, block, failure);
+      metadata: {capture_attempt_id: writer.current, order: order.current++, session_clock_ms: turnClockMs.current, speaker: 'student'}};
+    const recorder = new InterviewTurnRecorder(store, turn, failure);
     runtime.current = recorder;
     roi.current = [];
     await recorder.start(cameraStream, microphoneStream);
@@ -88,7 +98,6 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     setStatus('recording');
     setPending(Boolean(blocked.current) || networkPaused.current || !navigator.onLine);
   }, [devicesMatch, geometryNow, invalidate, failure, sampleRegion]);
-  const expiration = useRef<string | null>(null);
 
   const start = useCallback(async () => {
     const current = latest.current;
@@ -103,12 +112,12 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
       blocked.current = null;
       setError(null);
       if (!writer.current) {
-        forgetBlockQueue(id);
+        forgetTurnQueue(id);
         startRequest.current ??= crypto.randomUUID();
         startBody.current ??= JSON.stringify({request_id: startRequest.current, resume_attempt_id: current.resumeAttemptId ?? undefined,
-          capture_config: {mediaTransport: 'reusable_blocks_v1', geometry: JSON.parse(geometryNow())}});
+          capture_config: {mediaTransport: 'per_turn_v1', geometry: JSON.parse(geometryNow())}});
         startAbort.current = new AbortController();
-        const segment = await blockJson<{segment_id: string; retention_expires_at: string; offset_ms: number}>(id, '/recording/segments', {
+        const segment = await turnJson<{segment_id: string; retention_expires_at: string; offset_ms: number}>(id, '/recording/segments', {
           method: 'POST', signal: startAbort.current.signal, headers: {'Content-Type': 'application/json'}, body: startBody.current});
         if (disposed.current) return;
         writer.current = segment.segment_id;
@@ -121,13 +130,9 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
           invalidate('capture-geometry-changed'); return;
         }
       }
-      if (runtime.current) {
-        await runtime.current.stop();
-        const existing = (await runtime.current.store.list()).find((item) => item.id === runtime.current?.block.id);
-        if (existing) await runtime.current.store.discardUnsent(existing);
-        runtime.current = null;
-      }
-      await newBlock();
+      // Capture is armed; a student turn opens its own recorder on demand.
+      setStatus('recording');
+      setPending(Boolean(blocked.current) || networkPaused.current || !navigator.onLine);
     } catch (error) {
       if (disposed.current || startAbort.current?.signal.aborted) return;
       setStatus('failed');
@@ -135,7 +140,8 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     } finally {
       starting.current = false;
     }
-  }, [geometryNow, invalidate, newBlock]);
+  }, [geometryNow, invalidate]);
+
   useEffect(() => {
     if (!options.enabled || !options.interviewId || !options.cameraStream || !options.microphoneStream || started.current) return;
     started.current = true;
@@ -151,16 +157,17 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     const online = () => {
       const id = latest.current.interviewId;
       if (!id || sealed.current || blocked.current) return;
-      void blockJson<{active_segment_id: string | null}>(id, '/capture/state').then((state) => {
+      void turnJson<{active_segment_id: string | null}>(id, '/capture/state').then((state) => {
         if (state.active_segment_id !== writer.current) throw new Error('stale_capture');
         if (sealed.current || blocked.current) return;
         networkPaused.current = false;
         if (runtime.current?.resume()) setPending(false);
+        else setPending(false);
       }).catch(failure);
     };
     window.addEventListener('offline', offline);
     window.addEventListener('online', online);
-    const unsubscribe = subscribeBlockConnection(options.interviewId!, (connected) => {
+    const unsubscribe = subscribeTurnConnection(options.interviewId!, (connected) => {
       if (connected) online(); else offline();
     });
     const timer = setInterval(sampleRegion, 200);
@@ -206,32 +213,27 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     };
   }, []);
 
-  const completeBlock = useCallback((patientId: number, written = false) => {
+  // Close the active student turn, bind it to its persisted message, upload it,
+  // and advance the common session clock by its duration.
+  const completeStudentTurn = useCallback((messageId: number) => {
     setPending(true);
     serial.current = serial.current.then(async () => {
       const current = runtime.current;
       const id = latest.current.interviewId;
-      if (!current || !id) throw new Error('Active block is unavailable');
+      if (!current || !id) return;
       await current.flush();
-      const persisted = (await current.store.list()).find((item) => item.id === current.block.id);
-      if (!persisted) throw new Error('Active block checkpoint is unavailable');
       const end = current.elapsed();
-      const playbackStart = persisted.metadata.patient_playback?.start_ms;
-      const metadata: BlockMetadata = {capture_attempt_id: writer.current!, order: current.block.metadata.order!,
-        student_message_id: persisted.metadata.student_message_id ?? null, patient_message_id: patientId,
-        student_speech: persisted.metadata.student_speech ?? null,
-        patient_playback: playbackStart == null ? null : {start_ms: playbackStart, end_ms: end},
-        patient_audio_missing: written, patient_playback_complete: true, recovery: Boolean(latest.current.resumeAttemptId && !persisted.metadata.student_message_id),
+      const metadata: TurnCaptureMetadata = {capture_attempt_id: writer.current!, order: current.turn.metadata.order!,
+        message_id: messageId, speaker: 'student', session_clock_ms: turnClockMs.current,
         interaction_area_snapshots: roi.current, duration_ms: end};
-      closingBlock.current = true;
+      closingTurn.current = true;
       const closed = await current.close(metadata);
-      completedMs.current += closed.metadata.duration_ms!;
+      completedMs.current = turnClockMs.current + (closed.metadata.duration_ms ?? end);
       runtime.current = null;
-      closingBlock.current = false;
-      void blockUploadQueue(id, () => writer.current).enqueue(closed).catch(failure);
-      if (!sealed.current) await newBlock();
+      closingTurn.current = false;
+      void turnUploadQueue(id, () => writer.current).enqueue(closed).catch(failure);
     }).catch(failure);
-  }, [newBlock, failure]);
+  }, [failure]);
 
   const sealForEnding = useCallback(async () => {
     sealed.current = true;
@@ -241,7 +243,7 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     if (current) {
       try {
         await current.stop();
-        await current.store.discardUnsent(current.block);
+        await current.store.discardUnsent(current.turn);
       } catch {
         failure(); return false;
       }
@@ -255,12 +257,12 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     try {
       if (!await sealForEnding()) return false;
       const id = latest.current.interviewId!;
-      const queue = blockUploadQueue(id, () => writer.current);
+      const queue = turnUploadQueue(id, () => writer.current);
       await queue.drain();
       if (!preserveOnly) {
-        const manifest = await getBlockManifest(id);
-        await blockJson(id, '/recording/blocks/finalize', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Capture-Segment': writer.current!},
-          body: JSON.stringify({block_ids: manifest.blocks.map((item) => item.block_id), missing_message_ids: latest.current.missingMessageIds ?? []})});
+        const manifest = await getTurnManifest(id);
+        await turnJson(id, '/recording/turns/finalize', {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Capture-Segment': writer.current!},
+          body: JSON.stringify({turn_media_ids: manifest.turns.map((item) => item.turn_media_id), missing_message_ids: latest.current.missingMessageIds ?? []})});
       }
       return true;
     } catch {
@@ -282,9 +284,9 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     setStatus('paused');
   }, [failure]);
   const prepareStudentTurn = (timing?: SpeechTiming): StudentCaptureTiming => ({
-    block_id: runtime.current?.block.id, block_scope: runtime.current?.store.scope,
-    start_ms: runtime.current?.elapsed(timing?.startedAt) ?? 0, end_ms: runtime.current?.elapsed(timing?.endedAt) ?? 0,
-    input_source: timing?.inputSource ?? 'microphone', timing_source: 'block_speech', timing_quality: 'provisional', patient_roi_snapshots: [],
+    turn_media_id: runtime.current?.turn.id, capture_scope: runtime.current?.store.scope,
+    start_ms: 0, end_ms: runtime.current?.elapsed(timing?.endedAt) ?? 0,
+    input_source: timing?.inputSource ?? 'microphone', timing_source: 'turn_media', timing_quality: 'provisional', patient_roi_snapshots: [],
   });
   return {status, errorCode, syncPending, uploadProgress: 0, patientAudioLevel: 0, captureSegmentId: captureId,
     segmentId: status === 'recording' && !syncPending ? captureId : null, isCapturing: status === 'recording' && !syncPending,
@@ -297,29 +299,49 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
       }
       sealed.current = false;
       setPending(true);
-      serial.current = serial.current.then(newBlock).catch(failure);
+      setStatus('recording');
       return serial.current;
     },
     pause: () => {
       runtime.current?.pause(); setStatus('paused');
     },
     resume: () => {
-      if (!blocked.current && runtime.current?.resume()) setStatus('recording');
+      if (!blocked.current && (runtime.current?.resume() ?? true)) setStatus('recording');
     },
     elapsedAt, sealForEnding, finalize, stopForRecovery, routePatientAudio: () => false, resumeAudioGraph: async () => undefined,
-    beginPatientTurn: (messageId: number) => {
+    // The patient turn is text-to-speech: it carries no captured media.
+    beginPatientTurn: () => undefined,
+    endPatientTurn: () => undefined,
+    recordWrittenPatientTurn: () => undefined,
+    // A student turn drives one recorder: open on speech start, close on submit.
+    beginStudentTurn: () => {
+      if (sealed.current || runtime.current) return;
+      serial.current = serial.current.then(newTurn).catch(failure);
+    },
+    endStudentTurn: () => {
+      runtime.current?.pause();
+    },
+    discardStudentTurn: () => {
       const current = runtime.current;
-      if (current) {
-        void current.checkpoint({patient_message_id: messageId,
-          patient_playback: {start_ms: current.elapsed(), end_ms: current.elapsed()}}).catch(failure);
+      if (!current) return;
+      runtime.current = null;
+      serial.current = serial.current.then(async () => {
+        try {
+          await current.stop();
+          await current.store.discardUnsent(current.turn);
+        } catch {
+          // A partially captured, unsent turn that cannot be discarded is left
+          // for expiry; it never becomes evidence without a message binding.
+        }
+      }).catch(() => undefined);
+    },
+    prepareStudentTurn,
+    confirmStudentTurn: (timing: StudentCaptureTiming) => {
+      if (timing.turn_media_id && runtime.current?.turn.id === timing.turn_media_id) {
+        // messageId is supplied by recordStudentTurn; confirm only advances ROI.
+        void runtime.current.checkpoint({interaction_area_snapshots: [...roi.current]}).catch(failure);
       }
     },
-    endPatientTurn: (messageId: number, complete = false) => {
-      if (complete) completeBlock(messageId);
-    },
-    recordWrittenPatientTurn: (messageId: number) => completeBlock(messageId, true),
-    beginStudentTurn: () => undefined, endStudentTurn: () => undefined, discardStudentTurn: () => undefined,
-    prepareStudentTurn, confirmStudentTurn: () => undefined,
-    recordStudentTurn: () => undefined,
+    recordStudentTurn: (messageId: number) => completeStudentTurn(messageId),
   };
 };

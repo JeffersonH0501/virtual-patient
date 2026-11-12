@@ -1,7 +1,7 @@
 import { getAuthHeaders } from '../auth/authHeaders';
 import { transformToCamelCase } from '../../utils/apiTransform';
 import { InterviewEvaluationResponse } from '../../types/evaluation';
-import {blockFetch} from '../recordings/blocks';
+import {turnFetch} from '../recordings/turns';
 
 export type InterviewCompletionReason = 'user_completed';
 
@@ -21,7 +21,7 @@ export const completeInterview = async (
       ...(captureSegmentId ? {'X-Capture-Segment': captureSegmentId} : {}),
     },
   };
-  const response = await blockFetch(Number(interviewId), '/complete', init);
+  const response = await turnFetch(Number(interviewId), '/complete', init);
 
   if (!response.ok) {
     throw new Error(`HTTP error! status: ${response.status}`);

@@ -57,8 +57,6 @@ class RecordingUploadRoute(APIRoute):
             limits = RECORDING_FILE_LIMITS
         elif self.path.endswith("/chunks/{kind}/{index}"):
             limits = {"file": TURN_VIDEO_MAX_BYTES}
-        elif self.path.endswith("/recording/blocks/{block_id}"):
-            limits = {"file": RECORDING_FILE_LIMITS["student_video"]}
         elif self.path.endswith("/recording/turns/{turn_id}/video"):
             limits = {"video": TURN_VIDEO_MAX_BYTES}
         else:

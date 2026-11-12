@@ -47,7 +47,7 @@ router = APIRouter(tags=["speech"])
 MAX_TRANSCRIPTION_BYTES = 25 * 1024 * 1024
 
 
-async def _block_patient_audio(interview_id, message_id, inputs, db):
+async def _preserved_patient_audio(interview_id, message_id, inputs, db):
     recording = db.query(InterviewRecordingDB).filter_by(medical_interview_id=interview_id).first()
     if recording is None or (recording.capture_config or {}).get("mediaTransport") != "per_turn_v1":
         return None
@@ -134,7 +134,7 @@ async def synthesize_patient_message(
     """Synthesize one authorized patient message with Azure OpenAI."""
     inputs = _patient_speech_inputs(interview_id, message_id, db, current_user.id)
 
-    preserved = await _block_patient_audio(interview_id, message_id, inputs, db)
+    preserved = await _preserved_patient_audio(interview_id, message_id, inputs, db)
     if preserved is not None:
         return preserved
 
@@ -208,7 +208,7 @@ async def stream_patient_message(
     current_user: User = Depends(_current_media_user),
 ):
     inputs = _patient_speech_inputs(interview_id, message_id, db, current_user.id)
-    preserved = await _block_patient_audio(interview_id, message_id, inputs, db)
+    preserved = await _preserved_patient_audio(interview_id, message_id, inputs, db)
     if preserved is not None:
         return preserved
     request = create_patient_synthesis_request(*inputs)

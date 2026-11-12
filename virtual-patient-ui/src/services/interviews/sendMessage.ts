@@ -4,8 +4,8 @@ import {API_URL} from '../../utils/request';
 import {getAuthHeaders} from '../auth/authHeaders';
 import {captureFetch} from './captureFetch';
 import type {StudentCaptureTiming} from '../../types/recording';
-import {blockFetch} from '../recordings/blocks';
-import {InterviewBlockStore} from '../../recording/InterviewBlockStore';
+import {turnFetch} from '../recordings/turns';
+import {InterviewTurnStore} from '../../recording/InterviewTurnStore';
 import {CaptureSyncError} from '../../recording/CaptureSyncError';
 
 export const sendMessage = async (
@@ -15,14 +15,13 @@ export const sendMessage = async (
   segmentId?: string,
   captureTiming?: StudentCaptureTiming,
 ): Promise<SendMessageResponse> => {
-  if (captureTiming?.block_id && captureTiming.block_scope && clientRequestId) {
-    const store = new InterviewBlockStore(captureTiming.block_scope);
-    const block = (await store.list()).find((item) => item.id === captureTiming.block_id);
-    if (!block || block.state !== 'capturing') throw new Error('The active local block is unavailable');
-    block.requestId = clientRequestId;
-    block.pendingContent = message;
-    block.metadata.student_speech = {start_ms: captureTiming.start_ms, end_ms: captureTiming.end_ms};
-    await store.patch(block.id, {requestId: clientRequestId, pendingContent: message, metadata: {student_speech: block.metadata.student_speech}});
+  if (captureTiming?.turn_media_id && captureTiming.capture_scope && clientRequestId) {
+    const store = new InterviewTurnStore(captureTiming.capture_scope);
+    const turn = (await store.list()).find((item) => item.id === captureTiming.turn_media_id);
+    if (!turn || turn.state !== 'capturing') throw new Error('The active local turn is unavailable');
+    turn.requestId = clientRequestId;
+    turn.pendingContent = message;
+    await store.patch(turn.id, {requestId: clientRequestId, pendingContent: message});
   }
   const authHeaders = getAuthHeaders();
   const init: RequestInit = {
@@ -34,8 +33,8 @@ export const sendMessage = async (
       ...authHeaders,
     },
   };
-  const response = captureTiming?.block_id
-    ? await blockFetch(Number(interviewId), '/messages', init, captureTiming.block_scope)
+  const response = captureTiming?.turn_media_id
+    ? await turnFetch(Number(interviewId), '/messages', init, captureTiming.capture_scope)
     : await captureFetch(interviewId, `${API_URL}/medical-interviews/${interviewId}/messages`, init);
 
   const data: unknown = await response.json();
@@ -47,7 +46,7 @@ export const sendMessage = async (
       typeof data.detail === 'string'
         ? data.detail
         : `Request failed with status ${response.status}`;
-    if (captureTiming?.block_id) throw new CaptureSyncError(response.status, detail);
+    if (captureTiming?.turn_media_id) throw new CaptureSyncError(response.status, detail);
     throw new Error(detail);
   }
 
@@ -65,17 +64,14 @@ export const sendMessage = async (
       ? data.new_message_ids.filter((id): id is number => typeof id === 'number')
       : [];
 
-  if (captureTiming?.block_id && captureTiming.block_scope) {
-    const store = new InterviewBlockStore(captureTiming.block_scope);
-    const block = (await store.list()).find((item) => item.id === captureTiming.block_id);
-    if (!block) throw new Error('The local block was lost while delivering the response');
+  if (captureTiming?.turn_media_id && captureTiming.capture_scope) {
+    const store = new InterviewTurnStore(captureTiming.capture_scope);
+    const turn = (await store.list()).find((item) => item.id === captureTiming.turn_media_id);
+    if (!turn) throw new Error('The local turn was lost while delivering the response');
     const saved = transformToCamelCase(data.messages) as Message[];
-    block.metadata.student_message_id = saved.find((item) => newMessageIds.includes(item.id) && item.senderType === 'user')?.id ?? null;
-    block.metadata.patient_message_id = saved.find((item) => newMessageIds.includes(item.id) && item.senderType === 'patient')?.id;
-    block.pendingContent = undefined;
-    await store.patch(block.id, {pendingContent: undefined, metadata: {
-      student_message_id: block.metadata.student_message_id, patient_message_id: block.metadata.patient_message_id,
-    }});
+    turn.metadata.message_id = saved.find((item) => newMessageIds.includes(item.id) && item.senderType === 'user')?.id;
+    turn.pendingContent = undefined;
+    await store.patch(turn.id, {pendingContent: undefined, metadata: {message_id: turn.metadata.message_id}});
   }
 
   return {

@@ -243,7 +243,7 @@ def get_recap(
         from app.routers.recording_turns import list_turn_media
         manifest = list_turn_media(interview_id, user, db, storage)
         return InterviewRecapResponse(interview_id=interview_id, recording_status=recording.status,
-            duration_ms=manifest['duration_ms'], blocks=manifest['turns'], turns=turns,
+            duration_ms=manifest['duration_ms'], turn_media=manifest['turns'], turns=turns,
             observation_processing=(recording.capture_config or {}).get('observation_processing', {}) if visible else {},
             evaluation_processing=(recording.capture_config or {}).get('evaluation_processing', {}) if visible else {})
     return InterviewRecapResponse(interview_id=interview_id, recording_status=RecordingStatus.UNAVAILABLE,

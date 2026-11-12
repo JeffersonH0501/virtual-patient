@@ -9,8 +9,8 @@ export type RecordingStatus =
   | 'failed';
 
 export type StudentCaptureTiming = {
-  block_id?: string;
-  block_scope?: string;
+  turn_media_id?: string;
+  capture_scope?: string;
   start_ms: number;
   end_ms: number;
   input_source: string;
@@ -150,9 +150,8 @@ export type NonverbalObservation = {
 };
 
 export type InterviewRecap = {
-  blocks?: {blockId: string; offsetMs: number; durationMs: number | null; studentVideoSource: string | null; patientAudioSource: string | null;
-    metadata: {studentMessageId?: number | null; patientMessageId: number; studentSpeech?: {startMs: number; endMs: number} | null;
-      patientPlayback?: {startMs: number; endMs: number} | null}}[] | null;
+  turnMedia?: {turnMediaId: string; sessionClockMs: number; durationMs: number | null; studentVideoSource: string | null;
+    messageId?: number | null; metadata: {messageId?: number | null; sessionClockMs?: number}}[] | null;
   interviewId: number;
   recordingStatus: RecordingStatus;
   durationMs?: number | null;
