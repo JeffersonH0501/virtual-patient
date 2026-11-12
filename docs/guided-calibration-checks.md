@@ -1,7 +1,8 @@
 # Visual calibration and guided checks
 
-The official calibration uses MediaPipe eye-local iris geometry and openness.
-The browser presents five points (center and four corners) for four seconds
+The official calibration uses MediaPipe eye-local iris geometry and openness, sampling video at up to 15 frames per second.
+Guided face, gaze and smile coverage uses the configured sampling rate, capped by the source frame rate; missing samples reduce coverage. Previously saved diagnostic results keep their original calculation until reprocessed.
+The browser presents five points (center and four corners) for three seconds
 each, followed by a five-second camera reference. It excludes the first 250 ms
 of each target from analysis. Stable viewport and camera geometry, private
 capture storage, server-signed checkpoints and authenticated access remain
@@ -16,7 +17,7 @@ the ending segment. Raw eye-coordinate P90 dispersion must be at most 0.04;
 the operational lens radius is bounded between 0.01 and 0.04 eye widths.
 
 Per-turn gaze is classified relative to the calibrated camera and the
-timestamped patient region. Missing or unusable gaze remains unavailable.
+timestamped interaction area. With a calibration profile, an image passing the existing quality checks and two geometrically closed eyes, or a nonuniform usable image without a detected face, count as outside interaction and retain separate reasons. Ambiguous eyes and unusable images remain unavailable. The rules do not establish that a person is absent or inattentive and require local validation.
 Smile uses MediaPipe blendshapes; head nods use CCDb-HG. These observations
 do not directly measure empathy, attention or another psychological state.
 

@@ -45,15 +45,6 @@ def get_supported_language_codes() -> list:
     """
     return list(SUPPORTED_LANGUAGE_CODES)
 
-def get_supported_language_names() -> list:
-    """
-    Get list of supported language names
-    
-    Returns:
-        List of supported language names
-    """
-    return ["English", "Spanish"]
-
 
 def with_patient_response_language(
     interview_metadata: dict[str, Any] | None,

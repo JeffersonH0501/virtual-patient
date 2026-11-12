@@ -9,7 +9,9 @@ vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key
 vi.mock('../../hooks/useTechnicalCalibration', () => ({readGeometry: () => geometry}));
 vi.mock('../../services/interviews/calibration', () => ({processGazeTestFrame: processFrame}));
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); processFrame.mockReset(); });
+afterEach(() => {
+  cleanup(); vi.restoreAllMocks(); vi.useRealTimers(); processFrame.mockReset();
+});
 
 it('reports live estimates and becomes indeterminate when geometry changes', async () => {
   vi.useFakeTimers();
@@ -20,12 +22,16 @@ it('reports live estimates and becomes indeterminate when geometry changes', asy
   });
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({drawImage: vi.fn()} as unknown as CanvasRenderingContext2D);
   vi.spyOn(HTMLCanvasElement.prototype, 'toBlob').mockImplementation((callback) => callback(new Blob(['frame'], {type: 'image/jpeg'})));
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({x: 100, y: 70, width: 400, height: 300, right: 500, bottom: 370} as DOMRect);
   processFrame.mockResolvedValue('inside');
   render(<GazeTest stream={{active: true, getVideoTracks: () => [{readyState: 'live', muted: false}]} as unknown as MediaStream} attemptId="attempt" gazeToken="gaze" cameraToken="camera"
     geometry={geometry} onRestart={vi.fn()} onExit={vi.fn()} />);
-  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  await act(async () => {
+    await Promise.resolve(); await Promise.resolve();
+  });
   expect(screen.getByRole('status').textContent).toBe('calibration.gazeTest.inside');
   expect(processFrame).toHaveBeenCalledOnce();
+  expect(processFrame.mock.calls[0][4]).toMatchObject({timestampMs: 0, xNormalized: 100 / innerWidth, widthNormalized: 400 / innerWidth});
   act(() => window.dispatchEvent(new Event('resize')));
   expect(screen.getByRole('status').textContent).toBe('calibration.gazeTest.indeterminate');
   expect(screen.getByRole('alert').textContent).toBe('calibration.gazeTest.recalibrate');

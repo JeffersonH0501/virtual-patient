@@ -23,47 +23,6 @@ class ClinicalCaseController:
         """Get a clinical case by ID"""
         return self.db.query(ClinicalCaseDB).filter(ClinicalCaseDB.id == clinical_case_id).first()
     
-    def get_clinical_case_summary(self, clinical_case_id: int) -> str:
-        """
-        Get a formatted summary of the clinical case for the virtual patient
-        """
-        clinical_case = self.get_clinical_case(clinical_case_id)
-        
-        if not clinical_case:
-            return "Patient information not available"
-        
-        # Build a comprehensive summary from clinical case data
-        summary_parts = []
-        
-        if clinical_case.chief_complaint:
-            summary_parts.append(f"Chief complaint: {clinical_case.chief_complaint}")
-        
-        if clinical_case.present_illness:
-            summary_parts.append(f"Present illness: {clinical_case.present_illness}")
-        
-        if clinical_case.family_history:
-            summary_parts.append(f"Family history: {clinical_case.family_history}")
-        
-        if clinical_case.medications:
-            summary_parts.append(f"Medications: {clinical_case.medications}")
-        
-        if clinical_case.allergies:
-            summary_parts.append(f"Allergies: {clinical_case.allergies}")
-        
-        if clinical_case.personal_medical_history:
-            summary_parts.append(f"Medical history: {clinical_case.personal_medical_history}")
-        
-        if clinical_case.habits:
-            summary_parts.append(f"Habits: {clinical_case.habits}")
-        
-        if clinical_case.concerns:
-            summary_parts.append(f"Concerns: {clinical_case.concerns}")
-        
-        if summary_parts:
-            return ". ".join(summary_parts)
-        else:
-            return f"Patient: Age: {clinical_case.age or 'Unknown'}"
-    
     @staticmethod
     def create_clinical_case_summary(clinical_case: ClinicalCaseDB) -> str:
         """

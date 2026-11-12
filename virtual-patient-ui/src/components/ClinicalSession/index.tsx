@@ -4,7 +4,7 @@ import {useTranslation} from 'react-i18next';
 import {ActionButtons} from './ActionButtons';
 import {ROUTES, type CalibrationRouteState} from '../../utils/routes';
 import type {ClinicalCaseSimplified} from '../../services/clinicalCases';
-import {useSessionList} from '../../contexts/SessionLists';
+import {useSessionList} from '../../hooks/useSessionList';
 import {CustomSelect} from '../common';
 
 type Props = {

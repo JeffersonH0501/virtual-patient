@@ -76,6 +76,12 @@ def test_patient_mp3_sends_first_chunk_before_reading_next(monkeypatch, disconne
 
     monkeypatch.setattr(speech, "_patient_speech_inputs", lambda *_: ("Synthetic input", None, None))
     monkeypatch.setattr(speech, "AzureOpenAITextToSpeechProvider", lambda: SimpleNamespace(stream=chunks))
+    # This test exercises the direct synthesis stream, not block-based audio
+    # preservation; stub the preservation probe so it declines (returns None)
+    # instead of touching the database.
+    async def _no_block(*_):
+        return None
+    monkeypatch.setattr(speech, "_block_patient_audio", _no_block)
 
     async def scenario():
         response = await speech.stream_patient_message(7, 9, db=None, current_user=SimpleNamespace(id=1))

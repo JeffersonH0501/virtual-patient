@@ -1,8 +1,7 @@
 from .user import UserDB, User, UserCreate, UserInDB, Token, TokenData, UserRole
-from .organization import OrganizationDB, Organization, OrganizationCreate, OrganizationUpdate
-from .clinical_case import ClinicalCaseDB, ClinicalCase, ClinicalCaseWithOrganization, CaseType
+from .clinical_case import ClinicalCaseDB, ClinicalCase, CaseType
 from .personality import PersonalityDB, Personality, PersonalityCreate, PersonalityUpdate
-from .teacher_feedback import TeacherFeedbackDB, TeacherFeedback, TeacherFeedbackCreate
+from .doctor_feedback import DoctorFeedbackDB, DoctorFeedback
 
 from .medical_interview import (
     MedicalInterviewDB, MedicalInterview, MedicalInterviewCreate, MedicalInterviewUpdate,
@@ -19,10 +18,9 @@ from .medical_interview import (
 
 __all__ = [
     "UserDB", "User", "UserCreate", "UserInDB", "Token", "TokenData", "UserRole",
-    "OrganizationDB", "Organization", "OrganizationCreate", "OrganizationUpdate",
-    "ClinicalCaseDB", "ClinicalCase", "ClinicalCaseWithOrganization", "CaseType",
+    "ClinicalCaseDB", "ClinicalCase", "CaseType",
     "PersonalityDB", "Personality", "PersonalityCreate", "PersonalityUpdate",
-    "TeacherFeedbackDB", "TeacherFeedback", "TeacherFeedbackCreate",
+    "DoctorFeedbackDB", "DoctorFeedback",
     "MedicalInterviewDB", "MedicalInterview", "MedicalInterviewCreate", "MedicalInterviewUpdate",
     "InterviewMessageDB", "InterviewMessage", "InterviewMessageCreate",
     "UserHypothesisDB", "UserHypothesis", "UserHypothesisCreate",
@@ -33,11 +31,13 @@ __all__ = [
     "InterviewStatus", "SenderType", "NoteType",
     "InterviewRecordingDB", "InterviewMediaAssetDB", "InterviewTurnDB", "TurnVideoAnalysisDB",
     "RecordingStatus", "TurnVideoAnalysisStatus", "MediaAssetKind",
+    "InterviewPerformanceEventDB",
 ]
 
-from .teacher_grading import TeacherAssignmentDB, TeacherRatingDB
+from .doctor_grading import DoctorAssignmentDB, DoctorRatingDB
 from .self_rating import SelfRatingDB
 from .perception_survey import PerceptionSurveyDB
 from .calibration_capture import CalibrationCaptureDB
 from .capture_operation import CaptureOperationDB
 from .recording_block import InterviewRecordingBlockDB
+from .interview_performance_event import InterviewPerformanceEventDB

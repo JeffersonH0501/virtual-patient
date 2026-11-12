@@ -61,9 +61,9 @@ KNOWN_FAILURE_CODES = {
 
 
 def _require_analysis_admin(interview: MedicalInterviewDB, user: UserDB) -> None:
-    """Limit manual analysis operations to superusers with interview access."""
-    if user.role != UserRole.SUPERUSER:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Superuser analysis access required")
+    """Limit manual analysis operations to administrators with interview access."""
+    if user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin analysis access required")
     _require_replay_access(interview, user)
 
 
@@ -188,60 +188,6 @@ def persist_turn(interview_id, message_id, payload, user, db, *, commit=True):
     return _turn_response(turn)
 
 
-@router.get("/{interview_id}/recording/turn-video-analyses")
-def list_turn_video_analyses(
-    interview_id: int,
-    user: UserDB = Depends(_current_media_user),
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
-    """Expose the durable per-turn queue lifecycle without returning media paths."""
-    interview = _get_interview(db, interview_id)
-    _require_owner(interview, user)
-    require_assessments(db, interview, user)
-    jobs = db.query(TurnVideoAnalysisDB).filter(
-        TurnVideoAnalysisDB.medical_interview_id == interview_id
-    ).order_by(TurnVideoAnalysisDB.queued_at).all()
-    counts = {state.value: 0 for state in TurnVideoAnalysisStatus}
-    items = []
-    for job in jobs:
-        counts[job.status] = counts.get(job.status, 0) + 1
-        items.append({
-            "turn_id": job.turn_id,
-            "speaker": job.speaker,
-            "start_ms": job.start_ms,
-            "end_ms": job.end_ms,
-            "status": job.status,
-            "error": job.error,
-            "queued_at": job.queued_at,
-            "started_at": job.started_at,
-            "completed_at": job.completed_at,
-        })
-    return {"counts": counts, "jobs": items}
-
-
-@router.post("/{interview_id}/evaluation/matched-control")
-async def generate_matched_control(
-    interview_id: int,
-    user: UserDB = Depends(_current_media_user),
-    db: Session = Depends(get_db),
-):
-    if user.role != UserRole.SUPERUSER:
-        raise HTTPException(status_code=403, detail="Superuser research access required")
-    interview = _get_interview(db, interview_id)
-    _require_replay_access(interview, user)
-    if getattr(interview.status, "value", interview.status) != "completed":
-        raise HTTPException(status_code=409, detail="Matched controls require a completed interview")
-    from app.multimodal.matched_control import evaluate_matched_text_control
-    from app.agents.evaluation_agent import EvaluationAgent
-    from app.controllers.medical_interview_controller import MedicalInterviewController
-    from app.utils.language import convert_language_code_to_name
-    source = MedicalInterviewController(db)
-    data = source.get_interview_evaluation_data(interview_id)
-    agent = EvaluationAgent(target_language=convert_language_code_to_name(interview.user.preferred_language or "en"), patient_gender=interview.patient_gender)
-    run_id, results = await evaluate_matched_text_control(db, interview_id, agent, source.format_messages_for_evaluation(data["messages"]))
-    return {"run_id": run_id, "condition": "MATCHED_TEXT_CONTROL", "evaluation_results": results}
-
-
 @router.get("/{interview_id}/evaluation/runs")
 def read_evaluation_runs(
     interview_id: int,
@@ -255,7 +201,7 @@ def read_evaluation_runs(
     runs = db.query(InterviewEvaluationRunDB).filter(
         InterviewEvaluationRunDB.medical_interview_id == interview_id,
     )
-    if user.role != UserRole.SUPERUSER:
+    if user.role != UserRole.ADMIN:
         runs = runs.filter(InterviewEvaluationRunDB.evaluation_condition == "TEXT_PLUS_MULTIMODAL")
     runs = runs.order_by(InterviewEvaluationRunDB.created_at, InterviewEvaluationRunDB.id).all()
     return [{"id": run.id, "condition": run.evaluation_condition,
@@ -277,7 +223,7 @@ def get_recap(
     ).first()
     turns = _recap_turns(db, interview)
     visible = can_read_assessments(db, interview, user)
-    if not visible or user.role != UserRole.SUPERUSER:
+    if not visible or user.role != UserRole.ADMIN:
         for turn in turns:
             turn.paraverbal = None
             turn.nonverbal_features = None

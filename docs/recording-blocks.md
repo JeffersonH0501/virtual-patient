@@ -2,7 +2,7 @@
 
 New UI-created interviews declare `interview_metadata.recording_transport = reusable_blocks_v1` before calibration. Existing drafts, active interviews and recordings retain their transport. Interview updates cannot change it.
 
-One capture attempt is authorized through the existing segment/resume/calibration contract. Its ordered UUID blocks contain one muxed camera/microphone original, message IDs, speech/playback windows, delivery flags and patient-region snapshots. Calibration and geometry belong to the attempt.
+One capture attempt is authorized through the existing segment/resume/calibration contract. Its ordered UUID blocks contain one muxed camera/microphone original, message IDs, speech/playback windows, delivery flags and interaction-area snapshots. Calibration and geometry belong to the attempt. Interaction-area changes are checkpointed during recording so interrupted-block recovery can retain confirmed geometry. Older patient-region snapshots describe a different area and cannot reconstruct the interaction area.
 
 ## Review UI lifecycle
 

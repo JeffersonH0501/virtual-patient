@@ -227,13 +227,18 @@ def list_blocks(interview_id: int, user: UserDB = Depends(_current_media_user), 
             video = f"/medical-interviews/{interview_id}/recording/blocks/{block.id}/media"
         except FileNotFoundError:
             video = None
-        patient_id = block.block_metadata["patient_message_id"]
-        speech = f"interviews/{interview_id}/{recording.id}/patient-speech/{patient_id}.mp3"
-        try:
-            storage.resolve(speech)
-            audio = f"/medical-interviews/{interview_id}/recording/blocks/{block.id}/patient-audio"
-        except FileNotFoundError:
-            audio = None
+        # A block is normally validated to carry patient_message_id, but a
+        # malformed/externally-mutated row must degrade to "no audio" for that
+        # block rather than 500 the entire recap.
+        patient_id = (block.block_metadata or {}).get("patient_message_id")
+        audio = None
+        if patient_id is not None:
+            speech = f"interviews/{interview_id}/{recording.id}/patient-speech/{patient_id}.mp3"
+            try:
+                storage.resolve(speech)
+                audio = f"/medical-interviews/{interview_id}/recording/blocks/{block.id}/patient-audio"
+            except FileNotFoundError:
+                audio = None
         metadata = block.block_metadata if block.encoded_timing.get('window_alignment') != 'unavailable' else {
             **block.block_metadata, 'student_speech': None, 'patient_playback': None}
         blocks.append({**_receipt(block), "offset_ms": offset, "metadata": metadata,

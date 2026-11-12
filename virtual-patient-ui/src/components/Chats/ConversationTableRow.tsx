@@ -22,7 +22,8 @@ type TableRowProps = {
   personality?: Personality | null;
   isAssigned?: boolean;
   manualRatingStatus?: 'pending' | 'in_progress' | 'submitted';
-  onDelete: (id: number) => void;
+  onDelete?: (id: number) => void;
+  readOnly?: boolean;
   canRetryCompletion?: boolean;
 };
 
@@ -38,12 +39,13 @@ export const ConversationTableRow: FC<TableRowProps> = ({
   isAssigned = false,
   manualRatingStatus = 'pending',
   onDelete,
+  readOnly = false,
   canRetryCompletion = false,
 }) => {
   const navigate = useNavigate();
   const {t} = useTranslation();
 
-  const canOpenInterview = status === 'completed' || status === 'in_progress' || status === 'processing' || (status === 'interrupted' && canRetryCompletion);
+  const canOpenInterview = status === 'completed' || status === 'processing' || (!readOnly && (status === 'in_progress' || (status === 'interrupted' && canRetryCompletion)));
   const handleOpenInterview = () => {
     if (!canOpenInterview) return;
     if (status === 'completed' || status === 'processing' || (status === 'interrupted' && canRetryCompletion)) {
@@ -105,7 +107,7 @@ export const ConversationTableRow: FC<TableRowProps> = ({
       </td>
       <td>
         <div className="ui-table-options ui-table-options--icons">
-          {!isAssigned && <Button
+          {!isAssigned && onDelete && <Button
             variant="secondary"
             onClick={(event) => {
               event.stopPropagation();

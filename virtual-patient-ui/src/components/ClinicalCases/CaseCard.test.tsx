@@ -24,7 +24,7 @@ const CasePreview = () => {
   return <CaseCard clinicalCase={{id: 7, title: 'Default case', description: 'Patient scenario', caseType: 'default'}} caseIndex={1} expanded={expanded} onToggle={() => setExpanded(!expanded)} />;
 };
 
-it.each(['student', 'teacher', 'superuser'])('uses the same disclosure card for role %s while preserving simulation access', async (role) => {
+it.each(['student', 'doctor', 'admin'])('uses the same disclosure card for role %s while preserving simulation access', async (role) => {
   actor.role = role;
   render(<MemoryRouter><CasePreview /></MemoryRouter>);
   const toggle = screen.getByRole('button');
@@ -36,7 +36,7 @@ it.each(['student', 'teacher', 'superuser'])('uses the same disclosure card for 
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   expect(card.classList.contains('bg-white')).toBe(true);
   expect(screen.getByText('Simulation configuration')).toBeTruthy();
-  expect(Boolean(screen.queryByRole('button', {name: 'View'}))).toBe(role === 'superuser');
+  expect(Boolean(screen.queryByRole('button', {name: 'View'}))).toBe(role === 'admin');
   expect(getClinicalCaseById).not.toHaveBeenCalled();
   fireEvent.click(toggle);
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
@@ -61,7 +61,7 @@ it('toggles from the case number, description and chevron without toggling from 
 });
 
 it('loads complete details in the reading dialog only after View', async () => {
-  actor.role = 'superuser';
+  actor.role = 'admin';
   render(<MemoryRouter><CasePreview /></MemoryRouter>);
   expect(getClinicalCaseById).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', {name: 'clinicalCases.configureCase'}));
@@ -75,7 +75,7 @@ it('loads complete details in the reading dialog only after View', async () => {
 });
 
 it('keeps loading errors inside the dialog and retries without navigation', async () => {
-  actor.role = 'superuser';
+  actor.role = 'admin';
   vi.mocked(getClinicalCaseById).mockRejectedValueOnce(new Error('Unavailable'));
   render(<MemoryRouter><CasePreview /></MemoryRouter>);
   fireEvent.click(screen.getByRole('button', {name: 'clinicalCases.configureCase'}));

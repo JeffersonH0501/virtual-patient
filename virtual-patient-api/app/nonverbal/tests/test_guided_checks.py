@@ -40,6 +40,26 @@ def test_missing_face_is_unavailable_not_a_negative_smile():
     assert phase["status"] == "insufficient_signal"
 
 
+def test_guided_coverage_uses_sampling_rate_and_preserves_missing_frames():
+    from dataclasses import replace
+    items = observations()[:10]
+    items = [replace(item, shared=replace(item.shared, timestamp_ms=index * 1000 / 15)) for index, item in enumerate(items)]
+    window = GuidedCheckInterval(kind='smile_neutral', start_ms=0, observation_start_ms=0, end_ms=1000)
+    phase = analyze_guided_checks(items, [window], None, sample_fps=15)['phases'][0]
+    assert phase['face_valid_ratio'] == pytest.approx(10 / 15)
+    assert phase['status'] == 'insufficient_signal'
+    assert phase['smile_activity_ratio'] is None
+
+
+def test_guided_coverage_respects_lower_source_frame_rate():
+    from dataclasses import replace
+    items = [replace(item, shared=replace(item.shared, source_fps=10)) for item in observations()[:10]]
+    window = GuidedCheckInterval(kind='smile_neutral', start_ms=0, observation_start_ms=0, end_ms=1000)
+    phase = analyze_guided_checks(items, [window], None, sample_fps=15)['phases'][0]
+    assert phase['face_valid_ratio'] == 1
+    assert phase['status'] == 'available'
+
+
 def test_guided_gaze_without_calibration_is_unavailable():
     result = analyze_guided_checks(observations(), [interval("gaze_still")], None)
     phase = result["phases"][0]

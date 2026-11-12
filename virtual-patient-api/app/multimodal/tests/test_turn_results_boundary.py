@@ -8,6 +8,11 @@ from app.multimodal.config_loader import load_methodology_config
 from app.multimodal.extraction_provenance import build_extraction_manifest
 
 
+def test_gaze_sources_are_included_in_extraction_identity():
+    from app.multimodal.extraction_provenance import SOURCE_FILES
+    assert {'nonverbal/mediapipe_calibration.py', 'nonverbal/guided_eye_geometry.py'} <= set(SOURCE_FILES)
+
+
 def test_manifest_hashes_the_canonical_result_policy():
     manifest = build_extraction_manifest(load_methodology_config(), mode="stored_visual")
     source = Path(__file__).resolve().parents[1] / "turn_results.py"

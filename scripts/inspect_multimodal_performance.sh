@@ -35,8 +35,10 @@ echo "Durable interview flow for interview ${interview_id}"
 
 echo
 echo "Available runtime events for interview ${interview_id} since ${since}"
+# Scrape both the API and the media-processing-worker: multimodal performance
+# events (calibration worker, turn video, pipeline) live in the worker logs.
 events="$(
-  "${compose[@]}" logs --since "${since}" api 2>&1 \
+  "${compose[@]}" logs --since "${since}" api media-processing-worker 2>&1 \
     | grep -E \
       "interview_id=${interview_id}([^0-9]|$)|interview ${interview_id}([^0-9]|$)|/medical-interviews/${interview_id}([/?[:space:]]|$)" \
     | grep -Ev \
@@ -47,6 +49,11 @@ events="$(
 if [[ -n "${events}" ]]; then
   printf '%s\n' "${events}"
 else
-  echo "No matching runtime events exist in the current API container logs."
+  echo "No matching runtime events exist in the current API or worker container logs."
   echo "Docker removes a container's log history when that container is recreated."
 fi
+
+echo
+echo "Hint: to see only performance_event lines, pipe to: grep performance_event"
+echo "To follow one browser action end to end, grep by its trace id:"
+echo "  ${compose[*]} logs --since ${since} api media-processing-worker 2>&1 | grep 'trace_id=<ID>'"

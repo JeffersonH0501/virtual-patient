@@ -216,12 +216,10 @@ class NonverbalProcessedFeatures(BaseModel):
     context (``speaking`` or ``listening``) for the turn.
     """
 
-    visual_alignment_ratio: float | None = None
     interaction_gaze_duration_ms: float | None = None
     outside_gaze_duration_ms: float | None = None
     interaction_gaze_ratio: float | None = None
     median_interaction_dwell_ms: float | None = None
-    median_visual_alignment_dwell_ms: float | None = None
     nod_count: int | None = None
     nod_rate_min: float | None = None
     context: Literal["speaking", "listening"] | None = None

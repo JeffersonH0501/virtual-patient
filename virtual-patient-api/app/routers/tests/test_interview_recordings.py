@@ -53,7 +53,7 @@ class RecordingRangeTests(unittest.TestCase):
 
 class RecordingAuthorizationTests(unittest.TestCase):
     def setUp(self) -> None:
-        owner = SimpleNamespace(id=7, organization_id=3)
+        owner = SimpleNamespace(id=7)
         self.interview = SimpleNamespace(user_id=7, user=owner)
 
     def test_only_owner_can_modify_recording(self) -> None:
@@ -63,12 +63,12 @@ class RecordingAuthorizationTests(unittest.TestCase):
         self.assertEqual(context.exception.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_teacher_without_assignment_cannot_replay(self) -> None:
-        teacher = SimpleNamespace(id=8, organization_id=3, role=UserRole.TEACHER)
+        teacher = SimpleNamespace(id=8, role=UserRole.DOCTOR)
         with self.assertRaises(HTTPException):
             _require_replay_access(self.interview, teacher)
 
     def test_student_from_another_account_cannot_replay(self) -> None:
-        student = SimpleNamespace(id=8, organization_id=3, role=UserRole.STUDENT)
+        student = SimpleNamespace(id=8, role=UserRole.STUDENT)
         with self.assertRaises(HTTPException) as context:
             _require_replay_access(self.interview, student)
         self.assertEqual(context.exception.status_code, status.HTTP_403_FORBIDDEN)
@@ -81,12 +81,12 @@ class RecordingAuthorizationTests(unittest.TestCase):
 class ObservationContractTests(unittest.TestCase):
     def test_public_payload_keeps_zero_and_omits_unavailable_values(self) -> None:
         payload = _without_none({
-            "visual_alignment_ratio": 0,
+            "interaction_gaze_ratio": 0,
             "nod_count": None,
             "nested": {"value": None},
         })
 
-        self.assertEqual(payload, {"visual_alignment_ratio": 0, "nested": {}})
+        self.assertEqual(payload, {"interaction_gaze_ratio": 0, "nested": {}})
 
 
 class TurnResponseContractTests(unittest.TestCase):
@@ -115,8 +115,8 @@ class TurnResponseContractTests(unittest.TestCase):
     def _layered_nonverbal(self, status_value: str = "ok") -> dict:
         return {
             "raw": {"sampled_frame_count": 20},
-            "processed": {"visual_alignment_ratio": 0.7, "nod_count": 0, "median_visual_alignment_dwell_ms": None},
-            "base_labels": {"gaze_orientation": {"visual_alignment_ratio": {"status": "ok", "value": "oriented"}}},
+            "processed": {"interaction_gaze_ratio": 0.7, "nod_count": 0, "median_interaction_dwell_ms": None},
+            "base_labels": {"gaze_orientation": {"interaction_gaze_ratio": {"status": "ok", "value": "oriented"}}},
             "integrated_labels": {"gaze_orientation": {"status": status_value, "value": "oriented" if status_value == "ok" else None}},
             "quality": {"sampledFrameCount": 20, "validFrameCount": 18, "issues": []},
             "versions": {"processing": "1", "thresholds": "1", "label_rules": "1"},
@@ -146,7 +146,7 @@ class TurnResponseContractTests(unittest.TestCase):
         self.assertEqual(response.paraverbal["integrated_labels"]["speech_timing"]["value"], "measured_pace")
         self.assertEqual(response.paraverbal["versions"]["processing"], "1")
         self.assertEqual(response.paraverbal["config_hash"], "abc123")
-        self.assertEqual(response.nonverbal_features["processed"]["visual_alignment_ratio"], 0.7)
+        self.assertEqual(response.nonverbal_features["processed"]["interaction_gaze_ratio"], 0.7)
         self.assertEqual(response.nonverbal_features["processed"]["nod_count"], 0)  # zero preserved
         # No legacy schema marker is added by the recap anymore.
         self.assertNotIn("schema", response.paraverbal)

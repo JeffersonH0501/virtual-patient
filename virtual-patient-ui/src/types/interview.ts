@@ -4,7 +4,6 @@ import {InterviewEvaluation, MultimodalInterviewEvaluation} from './evaluation';
 import {Personality} from './personality';
 import { ClinicalCaseWithTranslations, ClinicalCase } from './clinicalCase';
 import { SessionNote } from './sessionNote';
-import { TeacherFeedback } from './teacherFeedback';
 
 export type Status = 'in_progress' | 'processing' | 'completed' | 'interrupted';
 
@@ -42,7 +41,7 @@ export type CompleteInterviewResponse = {
     errorCode?: string | null;
     recordingTransport?: string | null;
   } | null;
-  reviewAccess?: {canViewAssessments: boolean; assignmentId: number | null; canAssignTeachers?: boolean; selfAssessmentRequired?: boolean};
+  reviewAccess?: {canViewAssessments: boolean; assignmentId: number | null; canAssignDoctors?: boolean; selfAssessmentRequired?: boolean};
   id: number;
   publicId: string;
   userId: number;
@@ -106,8 +105,8 @@ export type InterviewListItem = Interview & {
   reviewProgress?: number | null;
 };
 
-export type OrganizationInterview = {
-  ownerRole?: 'student' | 'teacher' | 'superuser';
+export type AdminInterview = {
+  ownerRole?: 'student' | 'doctor' | 'admin';
   createdAt: string;
   publicId: string;
   id: number;
@@ -115,13 +114,11 @@ export type OrganizationInterview = {
   clinicalCaseId: number;
   status: Status;
   totalDuration: number | null;
-  evaluationScore: number;
-  organizationId: number;
+  evaluationScore: number | null;
   clinicalCaseTitle: string;
   userName: string;
   startTime: string | null;
   endTime: string | null;
-  teacherFeedback: TeacherFeedback[];
   reviewProgress?: number | null;
   personality?: Personality | null;
 };

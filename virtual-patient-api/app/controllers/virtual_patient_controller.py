@@ -22,8 +22,8 @@ from app.utils.language import (
     resolve_patient_response_language,
 )
 
-from app.core.config import settings
 from app.core.async_work import cancel_and_drain
+from app.utils.perf import perf_event
 
 
 logger = logging.getLogger(__name__)
@@ -251,19 +251,15 @@ class VirtualPatientController:
             interview_messages.append(agent_message_object)
             
             total_time = time.perf_counter() - start_time
-            if settings.patient_response_timing_logging:
-                logger.info(
-                    "patient_response_timing interview_id=%s stage=controller "
-                    "validate_ms=%.1f history_ms=%.1f preparation_ms=%.1f "
-                    "workflow_ms=%.1f postprocess_ms=%.1f total_ms=%.1f",
-                    interview_id,
-                    validation_elapsed * 1000,
-                    (history_elapsed - validation_elapsed) * 1000,
-                    (preparation_elapsed - history_elapsed) * 1000,
-                    workflow_time * 1000,
-                    (total_time - preparation_elapsed - workflow_time) * 1000,
-                    total_time * 1000,
-                )
+            perf_event(
+                "conversation", "patient_response_controller", interview_id=interview_id,
+                validate_ms=validation_elapsed * 1000,
+                history_ms=(history_elapsed - validation_elapsed) * 1000,
+                preparation_ms=(preparation_elapsed - history_elapsed) * 1000,
+                workflow_ms=workflow_time * 1000,
+                postprocess_ms=(total_time - preparation_elapsed - workflow_time) * 1000,
+                total_ms=total_time * 1000,
+            )
             
             # Return comprehensive result
             return {

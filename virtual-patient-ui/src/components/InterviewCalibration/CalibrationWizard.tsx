@@ -274,28 +274,35 @@ export const CalibrationActiveStep: FC<ActiveStepProps> = ({
 export const GuidedCheckResults: FC<{diagnostics: GuidedCheckDiagnostics}> = ({diagnostics}) => {
   const {t} = useTranslation();
   const percentage = (value: number | null) => value == null ? t('clinicalChat.recap.notAvailable') : `${Math.round(value * 100)}%`;
-  return <section className="dialog-reading-card text-neutral-800" aria-label={t('calibration.guided.resultsTitle')}>
-    <p>{t('calibration.guided.resultsDescription')}</p>
+  return <section className="guided-results dialog-reading-card text-neutral-800" aria-label={t('calibration.guided.resultsTitle')}>
+    <div className="guided-results-intro">
+      <h2>{t('calibration.guided.resultsTitle')}</h2>
+      <p>{t('calibration.guided.resultsDescription')}</p>
+    </div>
+    {(diagnostics.processingTimeSeconds != null || diagnostics.environment) && <div className="guided-results-context">
     {diagnostics.processingTimeSeconds != null && <p>{t('calibration.guided.processingTime', {seconds: diagnostics.processingTimeSeconds.toFixed(2)})}</p>}
     {diagnostics.environment && <p>{t('calibration.guided.environment', {
       device: t(`calibration.guided.devices.${diagnostics.environment.deviceType}`),
       camera: t(`calibration.guided.cameras.${diagnostics.environment.cameraPosition}`),
       orientation: t(`calibration.guided.orientations.${diagnostics.geometry?.orientation ?? 'unknown'}`),
     })}</p>}
-    <dl>
-      {diagnostics.phases.map((phase) => <div className="turn-detail-row" key={phase.kind}>
-        <dt>{t(`calibration.guided.${diagnostics.version === 'guided_checks_v4_orientation' && phase.kind.startsWith('gaze_') ? 'orientationSteps' : 'steps'}.${phase.kind}.title`)}</dt>
-        <dd>{phase.kind.startsWith('nod_') || phase.kind === 'head_shake'
+    </div>}
+    <div className="guided-results-list">
+      {diagnostics.phases.map((phase) => <article className="guided-result" key={phase.kind}>
+        <h3>{t(`calibration.guided.${diagnostics.version === 'guided_checks_v4_orientation' && phase.kind.startsWith('gaze_') ? 'orientationSteps' : 'steps'}.${phase.kind}.title`)}</h3>
+        <p className="guided-result-primary">{phase.kind.startsWith('nod_') || phase.kind === 'head_shake'
           ? t('calibration.guided.nodComparison', {detected: phase.nodCount ?? t('clinicalChat.recap.notAvailable'), expected: phase.promptedNodCount})
           : t(phase.kind.startsWith('gaze_') ? 'calibration.guided.gazeCoverage' : 'calibration.guided.smileActivity',
-            {value: percentage(phase.kind.startsWith('gaze_') ? phase.gazeValidRatio : phase.smileActivityRatio)})}</dd>
-        {phase.kind.startsWith('gaze_') && phase.gazeErrorMedian != null && <span>{t('calibration.guided.gazeError', {value: phase.gazeErrorMedian.toFixed(3)})}</span>}
-        {phase.sampleCount != null && <dd>{t('calibration.guided.samples', {count: phase.sampleCount, face: percentage(phase.faceValidRatio ?? null)})}</dd>}
-        {(phase.kind.startsWith('nod_') || phase.kind === 'head_shake') && phase.nodWindowCoverage != null && <dd>{t('calibration.guided.nodCoverage', {coverage: percentage(phase.nodWindowCoverage), count: phase.nodEvaluableWindows ?? 0})}</dd>}
-        {phase.nodUnavailableReason && <dd>{t(`calibration.guided.nodReasons.${phase.nodUnavailableReason}`, {defaultValue: t('calibration.guided.nodReasons.unknown')})}</dd>}
-        {phase.kind.startsWith('smile_') && phase.meanSmileActivation != null && <dd>{t('calibration.guided.smileMean', {value: percentage(phase.meanSmileActivation)})}</dd>}
-      </div>)}
-    </dl>
+            {value: percentage(phase.kind.startsWith('gaze_') ? phase.gazeValidRatio : phase.smileActivityRatio)})}</p>
+        <div className="guided-result-details">
+          {phase.kind.startsWith('gaze_') && phase.gazeErrorMedian != null && <p>{t('calibration.guided.gazeError', {value: phase.gazeErrorMedian.toFixed(3)})}</p>}
+          {phase.sampleCount != null && <p>{t('calibration.guided.samples', {count: phase.sampleCount, face: percentage(phase.faceValidRatio ?? null)})}</p>}
+          {(phase.kind.startsWith('nod_') || phase.kind === 'head_shake') && phase.nodWindowCoverage != null && <p>{t('calibration.guided.nodCoverage', {coverage: percentage(phase.nodWindowCoverage), count: phase.nodEvaluableWindows ?? 0})}</p>}
+          {phase.kind.startsWith('smile_') && phase.meanSmileActivation != null && <p>{t('calibration.guided.smileMean', {value: percentage(phase.meanSmileActivation)})}</p>}
+        </div>
+        {phase.nodUnavailableReason && <p className="guided-result-unavailable">{t(`calibration.guided.nodReasons.${phase.nodUnavailableReason}`, {defaultValue: t('calibration.guided.nodReasons.unknown')})}</p>}
+      </article>)}
+    </div>
   </section>;
 };
 

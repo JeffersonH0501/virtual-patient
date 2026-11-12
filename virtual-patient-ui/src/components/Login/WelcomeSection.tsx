@@ -28,7 +28,6 @@ export const WelcomeSection = () => {
           onError={() => setIllustration('unavailable')}
         />
       </div>
-      <p className="auth-copyright">{t('footer.copyright')}</p>
     </aside>
   );
 };

@@ -14,10 +14,10 @@ from app.agents.virtual_patient_workflow import VirtualPatientWorkflow
 from app.agents.schemas.progress_summary import ProgressSummarySchema
 from app.agents.summary_workflow import create_summary_workflow
 from app.controllers.clinical_case_controller import ClinicalCaseController
-from app.core.auth import get_current_active_user, require_superuser
+from app.core.auth import get_current_active_user, require_admin
 from app.core.database import get_db
 from app.models.clinical_case import (
-    CaseType, ClinicalCaseDB, ClinicalCaseSimplified, ClinicalCaseWithOrganization,
+    CaseType, ClinicalCaseDB, ClinicalCaseSimplified, ClinicalCase,
 )
 from app.models.user import User, UserRole
 from app.models.personality import PersonalityDB
@@ -52,7 +52,7 @@ async def preview_patient_response(
     case_id: int,
     request: PatientPreviewRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_superuser),
+    current_user: User = Depends(require_admin),
 ) -> dict[str, str]:
     case = require_default_case(db, case_id)
     personality = db.get(PersonalityDB, request.personality_id)
@@ -100,7 +100,7 @@ async def preview_patient_summary(
     case_id: int,
     request: PreviewSummaryRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_superuser),
+    current_user: User = Depends(require_admin),
 ):
     case = require_default_case(db, case_id)
     workflow = create_summary_workflow(
@@ -135,7 +135,7 @@ async def preview_patient_speech(
     request: PreviewSpeechRequest,
     progressive: bool = False,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_superuser),
+    current_user: User = Depends(require_admin),
 ):
     require_default_case(db, case_id)
     personality = db.get(PersonalityDB, request.personality_id)
@@ -188,7 +188,7 @@ async def get_default_cases(
     return cases[skip:skip + limit]
 
 
-@router.get("/{case_id}", response_model=ClinicalCaseWithOrganization)
+@router.get("/{case_id}", response_model=ClinicalCase)
 async def get_clinical_case(
     case_id: int,
     language: Optional[str] = None,
@@ -202,9 +202,9 @@ async def get_clinical_case(
     )
     if case is None:
         raise HTTPException(404, "Clinical case not found")
-    if current_user.role != UserRole.SUPERUSER:
+    if current_user.role != UserRole.ADMIN:
         case = ClinicalCaseSimplified.model_validate(case)
-    return ClinicalCaseWithOrganization(**case.model_dump(), organization=None)
+    return case
 
 
 @router.get("/{case_id}/languages")

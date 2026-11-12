@@ -33,17 +33,10 @@ uses placeholders so services that do not invoke AI can still start. The
 application initially uses the mini LLM, while both chat deployments remain
 configured for explicit selection and validation.
 
-The backend uses Azure OpenAI directly for TTS and STT. The browser input mode
-remains a UI choice:
-
-```bash
-VITE_SPEECH_INPUT_PROVIDER=server
-```
-
-The active input mode records provisional utterance segments in the browser and
-uploads each segment to the authenticated speech endpoint. The API
-forwards the in-memory payload to Azure OpenAI. Browser speech recognition
-remains an optional fallback and may use an external browser-vendor service.
+The backend uses Azure OpenAI directly for TTS and STT. Speech input always
+records provisional utterance segments in the browser and uploads each segment
+to the authenticated speech endpoint. The API forwards the in-memory payload to
+Azure OpenAI for transcription.
 Client-side audio activity only delimits STT requests; its boundaries remain
 provisional interaction timing rather than validated VAD or evaluation evidence.
 Patient TTS is streamed through the authenticated message speech endpoint and
@@ -108,7 +101,7 @@ During an interview, four continuous sources share one browser clock:
 video is a 1280x720 canvas representation of the camera feed, while patient
 video is a rendered virtual-patient panel rather than a physical camera signal.
 Patient audio is generated TTS, and student audio is captured from the
-microphone independently of browser speech recognition. OPFS is used for
+microphone independently of server transcription. OPFS is used for
 temporary chunks when supported, with an in-memory fallback. The transcript
 remains usable when capture or upload fails.
 
@@ -143,7 +136,7 @@ bash deploy-local.sh database
 
 ## Full deployment
 
-Both startup scripts include the internal `video-processing-worker` in setup,
+Both startup scripts include the internal `media-processing-worker` in setup,
 up, and restart. `verify` checks database metadata, real OpenSMILE extraction
 and voice calibration on generated audio, and the worker health endpoint. It
 does not access participant media or call Azure. Native audio failure stops
@@ -190,8 +183,8 @@ The container serves the UI and forwards `/api/` to the internal API.
    cp virtual-patient-api/config/deployment.json config/deployment.json
    mkdir -m 700 -p config/secrets
    chmod 700 config/secrets
-   (umask 077; openssl rand -hex 32 > config/secrets/video-processing-worker-token.txt)
-   chmod 0444 config/secrets/video-processing-worker-token.txt
+   (umask 077; openssl rand -hex 32 > config/secrets/media-processing-worker-token.txt)
+   chmod 0444 config/secrets/media-processing-worker-token.txt
    ```
 
    Keep the token directory private. The token file must be readable by the
@@ -238,16 +231,18 @@ Both modes call `virtual-patient-api/scripts/setup_db.py`. The process:
 - preserves all data and seeds only empty reference tables;
 - stops on an unversioned, older, or incompatible schema.
 
-Database setup also provisions exactly one `superuser` from `SUPERUSER_EMAIL`,
-`SUPERUSER_NAME`, and `SUPERUSER_PASSWORD` (the account uses a single display
-name). Setup rejects missing values. Re-running setup synchronizes that sole
-account with the configured identity and password; if multiple superusers or a
+Database setup also provisions exactly one admin from `ADMIN_EMAIL`,
+`ADMIN_NAME`, and `ADMIN_PASSWORD` (the account uses a single display
+name). Existing `SUPERUSER_*` environment variables remain supported as a
+fallback for deployments that have not yet renamed them; `ADMIN_*` takes
+precedence. Setup rejects missing values. Re-running setup synchronizes that sole
+account with the configured identity and password; if multiple admins or an
 email collision exists, setup stops for manual resolution. Public
-registration only accepts `student` and `teacher`, and self-service profile
-updates cannot change roles or organization membership.
+registration only accepts `student` and `doctor`, and self-service profile
+updates cannot change roles.
 
 The API repeats the same idempotent synchronization on every process startup,
-so changes to the configured superuser identity, password, or preferred
+so changes to the configured admin identity, password, or preferred
 language take effect after restarting the API. The preferred language defaults
 to Spanish (`es`). Use `bash deploy-local.sh restart` or
 `bash deploy-full.sh restart` after changing the environment file; these

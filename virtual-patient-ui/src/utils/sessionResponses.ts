@@ -10,8 +10,8 @@ export const clearSessionResponses = () => responses.clear();
 /** Cache authorized review JSON, never active capture state or media. */
 export const sessionResponse = async (url: string, options: RequestInit, read: (shared?: boolean) => Promise<Response>): Promise<Response> => {
   const method = options.method?.toUpperCase() ?? 'GET';
-  const eligible = owner && method === 'GET' && (/\/medical-interviews\/\d+\/(complete|recap|teacher-ratings|reviewers|self-rating|learning-moments)(?:\?|$)/.test(url) ||
-    /\/teacher-assignments\/\d+(?:\?|$)/.test(url));
+  const eligible = owner && method === 'GET' && (/\/medical-interviews\/\d+\/(complete|recap|doctor-ratings|reviewers|self-rating|learning-moments)(?:\?|$)/.test(url) ||
+    /\/doctor-assignments\/\d+(?:\?|$)/.test(url));
   if (!eligible) {
     const response = await read();
     if (response.ok && method !== 'GET') responses.clear();

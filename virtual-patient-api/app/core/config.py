@@ -15,12 +15,12 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 load_dotenv(REPOSITORY_ROOT / ".env.local", override=False)
 
 DEPLOYMENT_CONFIG = Path(__file__).resolve().parents[2] / "config" / "deployment.json"
-WORKER_TOKEN_FILE = Path("/run/secrets/video_processing_worker_token")
+WORKER_TOKEN_FILE = Path("/run/secrets/media_processing_worker_token")
 deployment = json.loads(DEPLOYMENT_CONFIG.read_text(encoding="utf-8"))
 worker_token = (
     WORKER_TOKEN_FILE.read_text(encoding="utf-8").strip()
     if WORKER_TOKEN_FILE.is_file()
-    else "local-video-processing-worker-token"
+    else "local-media-processing-worker-token"
 )
 
 
@@ -40,11 +40,11 @@ class Settings:
         os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "480")
     )
 
-    superuser_email: str = os.getenv("SUPERUSER_EMAIL", "").strip().lower()
-    superuser_name: str = os.getenv("SUPERUSER_NAME", "").strip()
-    superuser_password: str = os.getenv("SUPERUSER_PASSWORD", "")
-    superuser_preferred_language: str = os.getenv(
-        "SUPERUSER_PREFERRED_LANGUAGE", "es"
+    admin_email: str = os.getenv("ADMIN_EMAIL", os.getenv("SUPERUSER_EMAIL", "")).strip().lower()
+    admin_name: str = os.getenv("ADMIN_NAME", os.getenv("SUPERUSER_NAME", "")).strip()
+    admin_password: str = os.getenv("ADMIN_PASSWORD", os.getenv("SUPERUSER_PASSWORD", ""))
+    admin_preferred_language: str = os.getenv(
+        "ADMIN_PREFERRED_LANGUAGE", os.getenv("SUPERUSER_PREFERRED_LANGUAGE", "es")
     ).strip().lower()
 
     azure_openai_api_key: str | None = os.getenv("AZURE_OPENAI_API_KEY")
@@ -69,33 +69,29 @@ class Settings:
         "AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME"
     )
 
-    video_processing_worker_url: str = os.getenv(
-        "VIDEO_PROCESSING_WORKER_URL",
-        "http://video-processing-worker:8010",
+    media_processing_worker_url: str = os.getenv(
+        "MEDIA_PROCESSING_WORKER_URL",
+        "http://media-processing-worker:8010",
     ).rstrip("/")
-    video_processing_worker_token: str = worker_token
-    video_processing_worker_timeout_seconds: float = deployment["video_processing_worker_timeout_seconds"]
+    media_processing_worker_token: str = worker_token
+    media_processing_worker_timeout_seconds: float = deployment["media_processing_worker_timeout_seconds"]
 
-    # Temporary diagnostic timing logs for patient-response generation.
-    # Hardcoded on purpose: not sourced from the environment. Flip to True in
-    # code to emit the "patient_response_timing" logs while debugging latency.
-    patient_response_timing_logging: bool = False
     media_retention_months: int = deployment["media_retention_months"]
 
     def __post_init__(self):
         if type(self.media_retention_months) is not int or not 1 <= self.media_retention_months <= 12:
             raise ValueError("Media retention must be between 1 and 12 calendar months")
-        if type(self.video_processing_worker_timeout_seconds) not in (int, float) or not 0 < self.video_processing_worker_timeout_seconds < float("inf"):
+        if type(self.media_processing_worker_timeout_seconds) not in (int, float) or not 0 < self.media_processing_worker_timeout_seconds < float("inf"):
             raise ValueError("Visual worker timeout must be a positive finite number of seconds")
         if self.environment.lower() in {"production", "prod"}:
             if self.recaptcha_secret_key.strip() in {"", "change-me"}:
                 raise ValueError("Production requires RECAPTCHA_SECRET_KEY")
             if len(self.secret_key) < 32 or self.secret_key == "local-development-secret-change-me":
                 raise ValueError("Production requires a non-default SECRET_KEY of at least 32 characters")
-            if len(self.video_processing_worker_token) < 32 or self.video_processing_worker_token == "local-video-processing-worker-token":
+            if len(self.media_processing_worker_token) < 32 or self.media_processing_worker_token == "local-media-processing-worker-token":
                 raise ValueError("Production requires a private video worker token of at least 32 characters")
-            if self.superuser_password in {"", "local-superuser-change-me"}:
-                raise ValueError("Production requires a deployment-managed superuser password")
+            if self.admin_password in {"", "local-superuser-change-me"}:
+                raise ValueError("Production requires a deployment-managed admin password")
 
     @property
     def database_url(self) -> str:

@@ -7,7 +7,7 @@ from pydantic import ValidationError
 from app.agents.schemas.learning_moments import LearningMomentsOutput, validate_references
 from app.models.processing_job import InterviewProcessingJobDB
 from app.models.medical_interview.interview_evaluation import InterviewEvaluationDB
-from app.multimodal.learning_moments import queue_learning_moments, generate_learning_moments, read_learning_moments, recording_for, build_context
+from app.multimodal.learning_moments import queue_learning_moments, generate_learning_moments, read_learning_moments, recording_for, build_context, model_context
 from app.multimodal.conversation_formatter import MultimodalConversationFormatter
 from app.agents.prompts.multimodal_evaluation import MULTIMODAL_EVALUATION_CONFIG
 from app.multimodal.evaluation_service import evaluate_and_store_multimodal
@@ -20,9 +20,17 @@ def moment(**changes):
             "recommendation": "Acknowledge the concern before continuing.", "evidence_used": ["text", "gaze_orientation"], **changes}
 
 
-CONTEXT = {"turn_ids": ["turn-1", "turn-2"], "response_language": "English",
+CONTEXT = {"turn_ids": ["turn-1", "turn-2"], "transcript": "[TURN id=turn-1 speaker=DOCTOR]", "response_language": "English",
            "evidence": {category: {} for category in MULTIMODAL_EVALUATION_CONFIG}}
 CONTEXT["evidence"]["show_empathy"] = {"turn-1": {"gaze_orientation": {}}, "turn-2": {"gaze_orientation": {}}}
+
+
+def test_model_context_maps_transcript_and_evidence_without_changing_original_ids():
+    model_input, original_ids = model_context(CONTEXT)
+    assert model_input["turn_ids"] == ["T1", "T2"]
+    assert "[TURN id=T1 speaker=DOCTOR]" in model_input["transcript"]
+    assert set(model_input["evidence"]["show_empathy"]) == {"T1", "T2"}
+    assert [original_ids[value] for value in model_input["turn_ids"]] == CONTEXT["turn_ids"]
 
 
 def test_empty_and_multimodal_improvement_are_valid_without_quota():
@@ -42,6 +50,16 @@ def test_each_referenced_turn_requires_cited_multimodal_evidence():
     context = {**CONTEXT, "evidence": {**CONTEXT["evidence"], "show_empathy": {"turn-1": {"gaze_orientation": {}}}}}
     with pytest.raises(ValueError):
         validate_references(LearningMomentsOutput(moments=[moment()]), context)
+
+
+@pytest.mark.parametrize("changes", [
+    {"turn_ids": ["turn-1", "turn-2", "turn-3", "turn-4"]},
+    {"observation": "As seen in T39 and T48."},
+    {"recommendation": "Review turno 3."},
+])
+def test_turn_count_and_feedback_references_are_validated(changes):
+    with pytest.raises(ValueError):
+        validate_references(LearningMomentsOutput(moments=[moment(**changes)]), CONTEXT)
 
 
 def test_provider_envelope_annotations_are_ignored_without_relaxing_limits():
@@ -112,8 +130,8 @@ def test_queue_retries_are_idempotent_and_generation_is_independent(database):
 @pytest.mark.parametrize("corrected", [True, False])
 def test_generation_retries_invalid_references_once(database, corrected):
     _, _, recording = seed_control(database)
-    invalid = {"parsed": LearningMomentsOutput(moments=[moment(evidence_used=["speech_timing"])])}
-    valid = {"parsed": LearningMomentsOutput(moments=[moment()])}
+    invalid = {"parsed": LearningMomentsOutput(moments=[moment(turn_ids=["T1"], evidence_used=["speech_timing"])])}
+    valid = {"parsed": LearningMomentsOutput(moments=[moment(turn_ids=["T1", "T2"])])}
     invocation = AsyncMock(side_effect=[invalid, valid if corrected else invalid])
     agent = MagicMock()
     agent.llm.with_structured_output.return_value.ainvoke = invocation
@@ -134,7 +152,7 @@ def test_generation_and_failed_regeneration_preserve_evaluations(database, fail)
     recording.capture_config = {"learning_moments": {"status": "completed", "source_hash": "old-source", "moments": old}}
     database.commit()
     scores_before = database.query(InterviewEvaluationDB).first().evaluation_results.copy()
-    invocation = AsyncMock(side_effect=RuntimeError("Mock provider failure")) if fail else AsyncMock(return_value={"parsed": LearningMomentsOutput(moments=[moment()])})
+    invocation = AsyncMock(side_effect=RuntimeError("Mock provider failure")) if fail else AsyncMock(return_value={"parsed": LearningMomentsOutput(moments=[moment(turn_ids=["T1", "T2"])])})
     agent = MagicMock()
     agent.llm.with_structured_output.return_value.ainvoke = invocation
     agent.llm.model_name = "mock-model"

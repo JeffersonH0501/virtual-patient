@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {selectVideoMimeType} from '../utils/mediaRecorder';
 
-const TARGET_MS = 4_000;
+const TARGET_MS = 3_000;
 const GAZE_INSTRUCTION_DELAY_MS = 5_000;
 const CAMERA_MS = 5_000;
 const SETTLE_MS = 250;
@@ -115,22 +115,29 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
       await new Promise<void>((resolve) => {
         const interval = window.setInterval(() => setRemainingMs(Math.max(0, GAZE_INSTRUCTION_DELAY_MS - (performance.now() - instructionStartedAt))), 50);
         const timeout = window.setTimeout(resolve, GAZE_INSTRUCTION_DELAY_MS);
-        cleanupRef.current = () => { clearInterval(interval); clearTimeout(timeout); resolve(); };
+        cleanupRef.current = () => {
+          clearInterval(interval); clearTimeout(timeout); resolve();
+        };
       });
       if (sequenceRef.current !== sequence) return;
       cleanupRef.current();
     }
     const mimeType = selectVideoMimeType();
-    if (!microphoneStream?.active || !cameraStream?.active || !mimeType) { cancel('recording_failed'); return; }
+    if (!microphoneStream?.active || !cameraStream?.active || !mimeType) {
+      cancel('recording_failed'); return;
+    }
     const combined = new MediaStream([...microphoneStream.getAudioTracks().map((track) => track.clone()), ...cameraStream.getVideoTracks().map((track) => track.clone())]);
     temporaryStreamRef.current = combined;
     let recorder: MediaRecorder;
-    try { recorder = new MediaRecorder(combined, {mimeType, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 96_000}); }
-    catch { combined.getTracks().forEach((track) => track.stop()); cancel('recording_failed'); return; }
+    try {
+      recorder = new MediaRecorder(combined, {mimeType, videoBitsPerSecond: 2_500_000, audioBitsPerSecond: 96_000});
+    } catch {
+      combined.getTracks().forEach((track) => track.stop()); cancel('recording_failed'); return;
+    }
     recorderRef.current = recorder;
     const initial = readGeometry(cameraStream);
     geometryStableRef.current = true;
-    const targets: Array<{targetId: string; targetOrder: number; targetNormalizedX: number; targetNormalizedY: number; targetPixelX: number; targetPixelY: number; presentationStartMs: number; presentationEndMs: number; observationWindowStartMs: number; observationWindowEndMs: number}> = [];
+    const targets: {targetId: string; targetOrder: number; targetNormalizedX: number; targetNormalizedY: number; targetPixelX: number; targetPixelY: number; presentationStartMs: number; presentationEndMs: number; observationWindowStartMs: number; observationWindowEndMs: number}[] = [];
     let origin = 0;
     let pausedAt: number | null = null;
     let pausedMs = 0;
@@ -145,7 +152,9 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
     const elapsed = () => Math.round((pausedAt ?? performance.now()) - origin - pausedMs);
     const closeTarget = (time: number) => {
       const previous = targets[targets.length - 1];
-      if (previous && previous.presentationEndMs === 0) { previous.presentationEndMs = time; previous.observationWindowEndMs = time; }
+      if (previous && previous.presentationEndMs === 0) {
+        previous.presentationEndMs = time; previous.observationWindowEndMs = time;
+      }
     };
     const showTarget = () => {
       const [id, x, y] = TARGETS[targetIndex];
@@ -182,7 +191,9 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
       setWaitingForStep(false);
       presentationRef.current?.(checks[guidedIndex].kind);
     };
-    const markGeometryChange = () => { geometryStableRef.current = false; };
+    const markGeometryChange = () => {
+      geometryStableRef.current = false;
+    };
     cleanupRef.current = () => {
       if (timerRef.current !== null) clearInterval(timerRef.current);
       timerRef.current = null;
@@ -212,22 +223,30 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
         targets.push({targetId, targetOrder: order, targetNormalizedX: x, targetNormalizedY: y, targetPixelX: x * initial.viewportWidth, targetPixelY: y * initial.viewportHeight, presentationStartMs: time, presentationEndMs: 0, observationWindowStartMs: time + SETTLE_MS, observationWindowEndMs: 0});
       } else cameraStart = time + SETTLE_MS;
     };
-    recorder.ondataavailable = (event) => { if (sequenceRef.current === sequence && event.data.size) chunksRef.current.push(event.data); };
-    recorder.onerror = () => { if (sequenceRef.current === sequence) cancel('recording_failed'); };
+    recorder.ondataavailable = (event) => {
+      if (sequenceRef.current === sequence && event.data.size) chunksRef.current.push(event.data);
+    };
+    recorder.onerror = () => {
+      if (sequenceRef.current === sequence) cancel('recording_failed');
+    };
     recorder.onstop = () => {
       if (sequenceRef.current !== sequence) return;
-      if (endedAt === null) { cancel('recording_failed'); return; }
+      if (endedAt === null) {
+        cancel('recording_failed'); return;
+      }
       const durationMs = endedAt;
       closeTarget(durationMs);
       const blob = new Blob(chunksRef.current, {type: mimeType});
       const stable = geometryStableRef.current && JSON.stringify(initial) === JSON.stringify(readGeometry(cameraStream));
       cleanupRef.current(); cleanupRef.current = () => undefined; presentationRef.current = null;
-      if (!blob.size) { cancel('recording_failed'); return; }
+      if (!blob.size) {
+        cancel('recording_failed'); return;
+      }
       setMedia({stage, blob, mimeType, durationMs, metadata: stage === 'guided'
         ? {geometry: initial, geometryStable: stable, guidedChecks, guidedEnvironment: stageMetadata.guidedEnvironment, attestations: stageMetadata.attestations}
         : stage !== 'camera'
-        ? {geometry: initial, targets, gazeSource:'mediapipe_five_point_v1', geometryStable: stable, ...(stage === 'unified' ? {cameraReferenceStartMs: cameraStart, cameraReferenceEndMs: durationMs} : {})}
-        : {...stageMetadata, geometry: initial, geometryStable: stable && JSON.stringify(initial) === JSON.stringify(stageMetadata.expectedGeometry)}});
+          ? {geometry: initial, targets, gazeSource:'mediapipe_five_point_v1', geometryStable: stable, ...(stage === 'unified' ? {cameraReferenceStartMs: cameraStart, cameraReferenceEndMs: durationMs} : {})}
+          : {...stageMetadata, geometry: initial, geometryStable: stable && JSON.stringify(initial) === JSON.stringify(stageMetadata.expectedGeometry)}});
       setPhase('complete');
     };
     recorder.onstart = () => {
@@ -237,7 +256,9 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
       const watchFrames = () => {
         if (sequenceRef.current !== sequence) return;
         const now = performance.now();
-        if (pausedAt === null && now - lastFrame > SETTLE_MS) { cancel('timing_unstable'); return; }
+        if (pausedAt === null && now - lastFrame > SETTLE_MS) {
+          cancel('timing_unstable'); return;
+        }
         lastFrame = now;
         frameRequest = requestAnimationFrame(watchFrames);
       };
@@ -247,8 +268,7 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
       if (stage === 'guided') {
         guidedIndex = 0;
         waitForGuidedStep();
-      }
-      else setPhase(stage === 'camera' ? 'camera_reference' : 'gaze_targets');
+      } else setPhase(stage === 'camera' ? 'camera_reference' : 'gaze_targets');
       if (stage !== 'guided') setRemainingMs(stage === 'camera' ? CAMERA_MS : TARGET_MS);
       if (stage !== 'camera' && stage !== 'guided') showTarget();
       timerRef.current = window.setInterval(() => {
@@ -264,15 +284,20 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
           } else {
             endedAt = elapsed(); clearInterval(timerRef.current!); timerRef.current = null; setActiveCheck(null); recorder.stop();
           }
-        } else if (targetIndex < TARGETS.length - 1) { targetIndex += 1; pending = true; showTarget(); }
-        else if (targetIndex === TARGETS.length - 1 && stage === 'unified') {
+        } else if (targetIndex < TARGETS.length - 1) {
+          targetIndex += 1; pending = true; showTarget();
+        } else if (targetIndex === TARGETS.length - 1 && stage === 'unified') {
           targetIndex += 1; pending = true; setActiveTarget(null); setPhase('camera_reference'); setRemainingMs(CAMERA_MS);
         } else {
           endedAt = elapsed(); clearInterval(timerRef.current!); timerRef.current = null; setActiveTarget(null); recorder.stop();
         }
       }, 50);
     };
-    try { recorder.start(1000); } catch { cancel('recording_failed'); }
+    try {
+      recorder.start(1000);
+    } catch {
+      cancel('recording_failed');
+    }
   }, [cameraStream, microphoneStream, cancel, reset]);
 
   useEffect(() => () => reset(), [reset]);

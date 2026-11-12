@@ -61,7 +61,7 @@ def _valid_thresholds() -> dict[str, Any]:
         },
         "nonverbal": {
             "gaze_orientation": {
-                "visual_alignment_ratio": {
+                "interaction_gaze_ratio": {
                     "strategy": "fixed_bands",
                     "low_below": 0.30,
                     "high_above": 0.65,
@@ -143,7 +143,7 @@ def test_load_real_config_exposes_expected_versions_and_hash() -> None:
     assert isinstance(config, MethodologyConfig)
     # Versions come from the real bundled files (only the two research files).
     assert config.versions.thresholds == "thresholds_v5_interaction_vad"
-    assert config.versions.label_rules == "label_rules_v3_interaction_vad"
+    assert config.versions.label_rules == "label_rules_v4_speech_rate_priority"
     assert len(config.versions.glossary_sha256) == 64
     assert "glossary.yaml" in config.source_documents
     # Sections are parsed mappings.

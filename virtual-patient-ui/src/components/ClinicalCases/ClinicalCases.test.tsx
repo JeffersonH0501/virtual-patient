@@ -49,7 +49,7 @@ it('shows default cases without a surrounding list panel or pagination', async (
   fireEvent.click(screen.getByText('1: Default 1'));
   expect(screen.getByText('1: Default 1').getAttribute('aria-expanded')).toBe('true');
 });
-it.each(['student', 'teacher', 'superuser'])('keeps test actions inside individual cases (%s)', async (role) => {
+it.each(['student', 'doctor', 'admin'])('keeps test actions inside individual cases (%s)', async (role) => {
   mocks.role = role;
   render(
     <MemoryRouter>

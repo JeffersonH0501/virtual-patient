@@ -7,8 +7,7 @@ import {PageHeader} from '../common/PageHeader';
 export const Chats = () => {
   const {user} = useUser();
   const {t} = useTranslation();
-
-  if (user?.role === 'superuser') {
+  if (user?.role === 'admin') {
     return <Students />;
   }
 

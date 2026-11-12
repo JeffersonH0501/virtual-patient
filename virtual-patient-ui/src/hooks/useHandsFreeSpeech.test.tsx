@@ -5,8 +5,8 @@ import {SpeechInputCallbacks} from '../speech/SpeechInputProvider';
 
 const provider = vi.hoisted(() => ({callbacks: null as SpeechInputCallbacks | null,
   instances: [] as {start: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn>}[]}));
-vi.mock('../speech', () => ({
-  createSpeechInputProvider: (callbacks: SpeechInputCallbacks) => {
+vi.mock('../speech/ServerSpeechTranscriptionProvider', () => ({
+  ServerSpeechTranscriptionProvider: vi.fn().mockImplementation((callbacks: SpeechInputCallbacks) => {
     provider.callbacks = callbacks;
     const instance = {
       isSupported: true,
@@ -18,7 +18,7 @@ vi.mock('../speech', () => ({
     };
     provider.instances.push(instance);
     return instance;
-  },
+  }),
 }));
 afterEach(() => {
   cleanup();

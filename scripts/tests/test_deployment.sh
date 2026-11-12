@@ -8,7 +8,7 @@ FIXTURE_DIR="$(mktemp -d "$FIXTURE_BASE/vp-deployment-test.XXXXXX")"
 trap 'rm -rf -- "$FIXTURE_DIR"' EXIT
 mkdir -p "$FIXTURE_DIR/bin" "$FIXTURE_DIR/config/secrets"
 cp "$ROOT_DIR/virtual-patient-api/config/deployment.json" "$FIXTURE_DIR/config/deployment.json"
-printf '%s\n' synthetic-worker-token-test-fixture-only > "$FIXTURE_DIR/config/secrets/video-processing-worker-token.txt"
+printf '%s\n' synthetic-worker-token-test-fixture-only > "$FIXTURE_DIR/config/secrets/media-processing-worker-token.txt"
 cp "$ROOT_DIR/deploy-full.sh" "$ROOT_DIR/deploy-local.sh" "$FIXTURE_DIR/"
 sed -e 's/change-me/synthetic/g' -e 's/^SECRET_KEY=.*/SECRET_KEY=synthetic-secret-with-at-least-32-characters/' "$ROOT_DIR/.env.full.example" > "$FIXTURE_DIR/.env.full"
 cp "$FIXTURE_DIR/.env.full" "$FIXTURE_DIR/.env.local"
@@ -29,7 +29,7 @@ for script in deploy-full.sh deploy-local.sh; do
   for action in setup up restart; do
     : > "$CALL_LOG"
     ENV_FILE="$FIXTURE_DIR/.env.full" bash "$FIXTURE_DIR/$script" "$action" > /dev/null
-    grep -E '(up|restart).*video-processing-worker' "$CALL_LOG" > /dev/null || {
+    grep -E '(up|restart).*media-processing-worker' "$CALL_LOG" > /dev/null || {
       echo "$script $action omitted the visual worker" >&2; exit 1;
     }
     if [[ "$script" == deploy-full.sh ]]; then
@@ -57,17 +57,17 @@ docker compose --env-file "$FIXTURE_DIR/.env.full" -f docker-compose.full.yml --
 import json, sys
 from app.core.config import Settings
 services = json.load(sys.stdin)["services"]
-for service in ("api", "setup", "video-processing-worker"):
+for service in ("api", "setup", "media-processing-worker"):
     env = services[service]["environment"]
     assert not {"MEDIA_CONSENT_POLICY_VERSION", "MEDIA_RETENTION_MONTHS",
-                "VIDEO_PROCESSING_WORKER_TOKEN", "VIDEO_PROCESSING_WORKER_TIMEOUT_SECONDS"}.intersection(env)
+                "MEDIA_PROCESSING_WORKER_TOKEN", "MEDIA_PROCESSING_WORKER_TIMEOUT_SECONDS"}.intersection(env)
     assert services[service]["configs"][0]["target"] == "/app/config/deployment.json"
-    assert services[service]["secrets"][0]["source"] == "video_processing_worker_token"
+    assert services[service]["secrets"][0]["source"] == "media_processing_worker_token"
     assert env["OMP_NUM_THREADS"] == "2"
     Settings(environment=env["ENV"], secret_key=env["SECRET_KEY"],
              recaptcha_secret_key=env["RECAPTCHA_SECRET_KEY"],
-             superuser_password=env["SUPERUSER_PASSWORD"],
-             video_processing_worker_token="synthetic-worker-token-test-fixture-only",
+             admin_password=env["ADMIN_PASSWORD"],
+             media_processing_worker_token="synthetic-worker-token-test-fixture-only",
              media_retention_months=12)
 print("Actual production Compose configuration and Settings: passed")
 '

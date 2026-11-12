@@ -3,6 +3,8 @@ import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {BlockInterviewRecap} from './BlockInterviewRecap';
 import type {InterviewRecap} from '../../types/recording';
 
+class MockURL extends URL {}
+
 vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: 'student'}})}));
 vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key})}));
 vi.mock('../../services/recordings', () => ({resolveRecordingSource: (source?: string | null) => source}));
@@ -19,9 +21,15 @@ const replay = (): InterviewRecap => ({interviewId: 7, recordingStatus: 'ready',
 
 const mediaPlayback = () => {
   const active = new WeakSet<HTMLMediaElement>();
-  vi.spyOn(HTMLMediaElement.prototype, 'paused', 'get').mockImplementation(function () { return !active.has(this); });
-  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async function () { active.add(this); });
-  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function () { active.delete(this); });
+  vi.spyOn(HTMLMediaElement.prototype, 'paused', 'get').mockImplementation(function () {
+    return !active.has(this);
+  });
+  const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(async function () {
+    active.add(this);
+  });
+  vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(function () {
+    active.delete(this);
+  });
   return play;
 };
 
@@ -30,7 +38,9 @@ it('keeps playback active after seeking to the current position', async () => {
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   const video = container.querySelector('video')!;
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   expect(video.paused).toBe(false);
   fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '0'}});
   expect(video.paused).toBe(false);
@@ -40,7 +50,9 @@ it('prepares the next video before the current block ends and reuses it across t
   mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const data = replay();
   data.durationMs = 8000;
@@ -49,7 +61,9 @@ it('prepares the next video before the current block ends and reuses it across t
   const next = [...container.querySelectorAll('video')].find((item) => item.getAttribute('src') === '/next.webm');
   expect(next).toBeDefined();
   const current = [...container.querySelectorAll('video')].find((item) => item.getAttribute('src') === '/original.webm')!;
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   current.currentTime = 4;
   vi.spyOn(current, 'ended', 'get').mockReturnValue(true);
   act(() => tick(100));
@@ -61,14 +75,18 @@ it('stops with a recoverable error when the next block has no playable media', a
   mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const data = replay();
   data.durationMs = 8000;
   data.blocks!.push({...data.blocks![0], blockId: 'missing', offsetMs: 4000, studentVideoSource: null, patientAudioSource: null});
   const {container} = render(<BlockInterviewRecap recap={data} infoDisabled={false} />);
   const current = container.querySelector('video')!;
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   current.currentTime = 4;
   vi.spyOn(current, 'ended', 'get').mockReturnValue(true);
   act(() => tick(100));
@@ -81,7 +99,9 @@ it('surfaces a next-video preload failure when that block becomes active', async
   mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const data = replay();
   data.durationMs = 8000;
@@ -90,7 +110,9 @@ it('surfaces a next-video preload failure when that block becomes active', async
   const [current, next] = container.querySelectorAll('video');
   Object.defineProperty(next, 'error', {configurable: true, value: {code: 4}});
   fireEvent.error(next);
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   current.currentTime = 4;
   vi.spyOn(current, 'ended', 'get').mockReturnValue(true);
   act(() => tick(100));
@@ -105,11 +127,15 @@ it('does not advance past media that ends before the confirmed block boundary', 
   mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   const video = container.querySelector('video')!;
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   video.currentTime = 2;
   Object.defineProperty(video, 'duration', {configurable: true, value: 2});
   vi.spyOn(video, 'ended', 'get').mockReturnValue(true);
@@ -122,11 +148,15 @@ it('accepts a normal final video frame when the browser reports the complete med
   mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   const video = container.querySelector('video')!;
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   video.currentTime = 3.8;
   Object.defineProperty(video, 'duration', {configurable: true, value: 4});
   vi.spyOn(video, 'ended', 'get').mockReturnValue(true);
@@ -139,11 +169,15 @@ it('does not infer a truncated recording when the browser cannot report its dura
   mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   const video = container.querySelector('video')!;
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   video.currentTime = 3.8;
   Object.defineProperty(video, 'duration', {configurable: true, value: Infinity});
   vi.spyOn(video, 'ended', 'get').mockReturnValue(true);
@@ -164,9 +198,13 @@ it('aligns patient audio before resuming after a seek while its media is loading
   await act(async () => undefined);
   play.mockClear();
   const starts: number[] = [];
-  play.mockImplementation(async function () { if (this === audio) starts.push(this.currentTime); });
+  play.mockImplementation(async function () {
+    if (this === audio) starts.push(this.currentTime);
+  });
   audioReady.mockReturnValue(2);
-  await act(async () => { fireEvent.canPlay(audio); });
+  await act(async () => {
+    fireEvent.canPlay(audio);
+  });
   expect(starts.length).toBeGreaterThan(0);
   expect(starts.every((time) => Math.abs(time - 1) < .01)).toBe(true);
 });
@@ -174,13 +212,17 @@ it('aligns patient audio before resuming after a seek while its media is loading
 it('freezes the master clock when video buffers even before readyState changes', async () => {
   mediaPlayback();
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   const video = container.querySelector('video')!;
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '2.4'}});
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   fireEvent.waiting(video);
   video.currentTime = 2.8;
   act(() => tick(100));
@@ -190,16 +232,40 @@ it('freezes the master clock when video buffers even before readyState changes',
 it('does not invent playback time for a block whose media is unavailable', async () => {
   mediaPlayback();
   let tick!: FrameRequestCallback;
-  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => { tick = callback; return 1; }));
+  vi.stubGlobal('requestAnimationFrame', vi.fn((callback) => {
+    tick = callback; return 1;
+  }));
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
   const data = replay();
   data.blocks![0].studentVideoSource = null;
   data.blocks![0].patientAudioSource = null;
   render(<BlockInterviewRecap recap={data} infoDisabled={false} />);
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   act(() => tick?.(performance.now() + 100));
   expect((screen.getByLabelText('clinicalChat.recap.timeline') as HTMLInputElement).value).toBe('0');
   expect(screen.getByRole('alert')).toBeDefined();
+});
+
+it('keeps playing the student video when the patient audio clip fails to load', async () => {
+  const play = mediaPlayback();
+  vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
+  const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
+  const video = container.querySelector('video')!;
+  const audio = container.querySelector('audio')!;
+  // Move into the patient segment, then the patient audio element errors.
+  fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '2.4'}});
+  Object.defineProperty(audio, 'error', {configurable: true, value: {code: 4}});
+  fireEvent.error(audio);
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
+  // One bad patient clip must not wedge the recap: no error, video still plays.
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.getByLabelText('clinicalChat.recap.pause')).toBeDefined();
+  expect(play).toHaveBeenCalled();
+  expect(video.paused).toBe(false);
 });
 
 it('does not report an audio error for an absent patient source', () => {
@@ -219,7 +285,9 @@ it('ignores an interrupted play request when media is paused for buffering', asy
   const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let reject!: (reason: unknown) => void;
-  play.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  play.mockImplementationOnce(() => new Promise((_, fail) => {
+    reject = fail;
+  }));
   fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
   fireEvent.waiting(container.querySelector('video')!);
   await act(async () => reject(new DOMException('Playback was interrupted', 'AbortError')));
@@ -231,7 +299,9 @@ it('ignores a stale playback rejection after rewinding to the beginning', async 
   const play = mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   let reject!: (reason: unknown) => void;
-  play.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  play.mockImplementationOnce(() => new Promise((_, fail) => {
+    reject = fail;
+  }));
   render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '2.4'}});
   fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
@@ -248,7 +318,9 @@ it('restarts from the first block when the final block has no media', async () =
   data.blocks!.push({...data.blocks![0], blockId: 'last', offsetMs: 4000, studentVideoSource: null, patientAudioSource: null});
   const {container} = render(<BlockInterviewRecap recap={data} infoDisabled={false} />);
   fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '8'}});
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   expect(screen.queryByRole('alert')).toBeNull();
   expect((screen.getByLabelText('clinicalChat.recap.timeline') as HTMLInputElement).value).toBe('0');
   expect(container.querySelector('video')?.getAttribute('src')).toBe('/original.webm');
@@ -258,13 +330,17 @@ it('keeps the current audio source stable when preloading completes during playb
   mediaPlayback();
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   const create = vi.fn().mockReturnValue('blob:patient');
-  vi.stubGlobal('URL', Object.assign(class extends URL {}, {createObjectURL: create, revokeObjectURL: vi.fn()}));
+  vi.stubGlobal('URL', Object.assign(MockURL, {createObjectURL: create, revokeObjectURL: vi.fn()}));
   let resolve!: (value: unknown) => void;
-  vi.stubGlobal('fetch', vi.fn(() => new Promise((done) => { resolve = done; })));
+  vi.stubGlobal('fetch', vi.fn(() => new Promise((done) => {
+    resolve = done;
+  })));
   const {container} = render(<BlockInterviewRecap recap={replay()} infoDisabled={false} />);
   const audio = container.querySelector('audio')!;
   fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '2.4'}});
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   await act(async () => resolve({ok: true, blob: async () => new Blob(['audio'], {type: 'audio/mpeg'})}));
   expect(audio.getAttribute('src')).toBe('/exact.mp3');
   expect(screen.queryByRole('alert')).toBeNull();
@@ -276,7 +352,7 @@ it('preloads only current and next patient audio, then releases older blobs', as
   mediaPlayback();
   const create = vi.fn().mockReturnValue('blob:patient');
   const revoke = vi.fn();
-  vi.stubGlobal('URL', Object.assign(class extends URL {}, {createObjectURL: create, revokeObjectURL: revoke}));
+  vi.stubGlobal('URL', Object.assign(MockURL, {createObjectURL: create, revokeObjectURL: revoke}));
   const request = vi.fn().mockResolvedValue({ok: true, blob: async () => new Blob(['audio'], {type: 'audio/mpeg'})});
   vi.stubGlobal('fetch', request);
   const data = replay();
@@ -288,7 +364,9 @@ it('preloads only current and next patient audio, then releases older blobs', as
   expect(request).toHaveBeenCalledTimes(2);
   expect(request).toHaveBeenCalledWith('/exact.mp3', expect.objectContaining({credentials: 'include'}));
   expect(create).toHaveBeenCalledTimes(2);
-  await act(async () => { fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '4'}}); });
+  await act(async () => {
+    fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '4'}});
+  });
   expect(request).toHaveBeenCalledTimes(3);
   expect(request).toHaveBeenCalledWith('/third.mp3', expect.objectContaining({credentials: 'include'}));
   expect(revoke).toHaveBeenCalledTimes(1);
@@ -302,11 +380,15 @@ it('stops on a rejected play request and allows retry without losing the selecte
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '2.4'}});
   play.mockRejectedValue(new Error('Playback blocked'));
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   expect(screen.getByRole('alert')).toBeDefined();
   expect(container.querySelector('video')!.paused).toBe(true);
   play.mockResolvedValue(undefined);
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   expect(screen.queryByRole('alert')).toBeNull();
   expect((screen.getByLabelText('clinicalChat.recap.timeline') as HTMLInputElement).value).toBe('2.4');
   expect(container.querySelector('audio')!.currentTime).toBeCloseTo(1);
@@ -319,10 +401,14 @@ it('resumes aligned media after the browser completes a seek', async () => {
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(2);
   const seeking = vi.spyOn(video, 'seeking', 'get').mockReturnValue(true);
   fireEvent.change(screen.getByLabelText('clinicalChat.recap.timeline'), {target: {value: '2.4'}});
-  await act(async () => { fireEvent.click(screen.getByLabelText('clinicalChat.recap.play')); });
+  await act(async () => {
+    fireEvent.click(screen.getByLabelText('clinicalChat.recap.play'));
+  });
   play.mockClear();
   seeking.mockReturnValue(false);
-  await act(async () => { fireEvent.seeked(video); });
+  await act(async () => {
+    fireEvent.seeked(video);
+  });
   expect(play).toHaveBeenCalled();
   expect(container.querySelector('audio')!.currentTime).toBeCloseTo(1);
 });

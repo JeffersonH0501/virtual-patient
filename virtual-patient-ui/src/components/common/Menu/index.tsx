@@ -49,10 +49,10 @@ export const Menu: FC<Props> = ({open, onOutsideClick, onSignOut, triggerElement
   }, [open, elementReference, triggerElement]);
 
   const roleLabel =
-    user?.role === 'teacher'
-      ? t('common.teacher')
-      : user?.role === 'superuser'
-        ? t('common.superuser')
+    user?.role === 'doctor'
+      ? t('common.doctor')
+      : user?.role === 'admin'
+        ? t('common.admin')
         : t('common.student');
 
   const handleSignOut = () => {

@@ -4,6 +4,7 @@ import {useTranslation} from 'react-i18next';
 import ReCAPTCHA from 'react-google-recaptcha';
 import Cookies from 'js-cookie';
 import {AuthField} from './AuthField';
+import {SemesterSelect} from './SemesterSelect';
 import {Button} from '../common/Button';
 import {Select} from '../common/Select';
 import {MotionContent, MotionHeight} from '../common/Motion';
@@ -23,19 +24,23 @@ export const AuthForm = ({mode, onSwitchMode}: {mode: 'signin' | 'signup'; onSwi
   const [name, setName] = useState('');
   const [password, setPassword] = useState('');
   const [role, setRole] = useState<CreateUserPayload['role'] | ''>('');
+  const [semester, setSemester] = useState<NonNullable<CreateUserPayload['semester_range']> | ''>('');
+  const [university, setUniversity] = useState('');
   const [captcha, setCaptcha] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const captchaRef = useRef<ReCAPTCHA>(null);
   const siteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const valid = email.trim() && password.trim() && captcha
-    && (!registering || (name.trim() && role));
+    && (!registering || (name.trim() && role && (role !== 'student' || (semester && university.trim()))));
 
   const switchMode = () => {
     setEmail('');
     setName('');
     setPassword('');
     setRole('');
+    setSemester('');
+    setUniversity('');
     setError('');
     onSwitchMode();
   };
@@ -47,7 +52,8 @@ export const AuthForm = ({mode, onSwitchMode}: {mode: 'signin' | 'signup'; onSwi
     setError('');
     try {
       const result = registering && role
-        ? await createUser({email: email.trim(), name: name.trim(), password, role, captcha})
+        ? await createUser({email: email.trim(), name: name.trim(), password, role, captcha,
+          ...(role === 'student' && semester ? {semester_range: semester, university: university.trim()} : {})})
         : await signIn({email: email.trim(), password, captcha});
       if (!result.access_token) throw new Error('errors.noAccessToken');
       Cookies.set('access_token', result.access_token, getAuthCookieOptions(result.expires_in));
@@ -85,17 +91,24 @@ export const AuthForm = ({mode, onSwitchMode}: {mode: 'signin' | 'signup'; onSwi
           </div>
           <MotionHeight expanded={registering} fade={false}>
             {registering && <div className="pb-inset">
+              <div className={role === 'student' ? 'grid grid-cols-1 gap-layout sm:grid-cols-2' : undefined}>
               <div className="ui-field">
                 <label htmlFor="signup-role">{t('auth.role')}</label>
                 <Select id="signup-role" label={t('auth.role')} placeholder={t('users.selectRole')}
                   value={role} onValueChange={(value) => {
-                    if (value === 'student' || value === 'teacher') setRole(value);
+                    if (value === 'student' || value === 'doctor') setRole(value);
                   }}
                   options={[
                     {value: 'student', label: t('auth.student')},
-                    {value: 'teacher', label: t('auth.teacher')},
+                    {value: 'doctor', label: t('auth.doctor')},
                   ]} />
               </div>
+              {role === 'student' && <SemesterSelect id="signup-semester" value={semester} onChange={setSemester} required />}
+              </div>
+              {role === 'student' && <div className="pt-inset">
+                <AuthField label={t('auth.university')} id="signup-university" name="university"
+                  value={university} onChange={(event) => setUniversity(event.target.value)} required maxLength={200} />
+              </div>}
             </div>}
           </MotionHeight>
           <AuthField label={t('auth.password')} id="password" name="password" type="password"

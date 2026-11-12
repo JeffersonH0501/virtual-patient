@@ -2,13 +2,13 @@ import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
 import {AssignmentDialog} from './AssignmentDialog';
 const request = vi.hoisted(() => vi.fn());
-vi.mock('../../services/teacherGrading', () => ({gradingRequest: request}));
-vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: 'superuser'}})}));
+vi.mock('../../services/doctorGrading', () => ({gradingRequest: request}));
+vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: 'admin'}})}));
 vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key})}));
 const assignments = [
-  {id: 11, teacherId: 1, teacherName: 'Teacher 1', status: 'pending'},
-  {id: 12, teacherId: 2, teacherName: 'Teacher 2', status: 'in_progress'},
-  {id: 13, teacherId: 3, teacherName: 'Teacher 3', status: 'submitted'},
+  {id: 11, doctorId: 1, doctorName: 'Teacher 1', status: 'pending'},
+  {id: 12, doctorId: 2, doctorName: 'Teacher 2', status: 'in_progress'},
+  {id: 13, doctorId: 3, doctorName: 'Teacher 3', status: 'submitted'},
 ];
 const teachers = Array.from({length: 6}, (_, index) => ({
   id: index + 1,
@@ -49,8 +49,8 @@ it('preselects assignments, locks drafts and submissions and saves the whole sel
   fireEvent.click(screen.getByRole('button', {name: 'common.save'}));
   fireEvent.click(screen.getByRole('button', {name: 'common.save'}));
   expect(request.mock.calls.filter((call) => call[1] === 'PUT')).toHaveLength(1);
-  expect(request).toHaveBeenLastCalledWith('/medical-interviews/42/teacher-assignments', 'PUT', {
-    teacher_ids: [2, 3, 4],
+  expect(request).toHaveBeenLastCalledWith('/medical-interviews/42/doctor-assignments', 'PUT', {
+    doctor_ids: [2, 3, 4],
   });
   finish();
   await waitFor(() => expect(saved).toHaveBeenCalledTimes(1));
@@ -61,7 +61,7 @@ it('shows every teacher without search, keeps status on the right and toggles un
   await screen.findAllByRole('checkbox');
   expect(screen.queryByRole('searchbox')).toBeNull();
   expect(screen.getAllByRole('checkbox')).toHaveLength(6);
-  const status = screen.getByText('grading.in_progress').closest('.teacher-assignment-status')!;
+  const status = screen.getByText('grading.in_progress').closest('.doctor-assignment-status')!;
   expect(status.children[0].textContent).toBe('grading.in_progress');
   expect(screen.queryByText('grading.assignmentLocked')).toBeNull();
   fireEvent.click(screen.getByText('Teacher 6'));
@@ -73,8 +73,8 @@ it('shows every teacher without search, keeps status on the right and toggles un
   expect((screen.getAllByRole('checkbox')[1] as HTMLInputElement).checked).toBe(true);
   fireEvent.click(screen.getByRole('button', {name: 'common.save'}));
   await waitFor(() =>
-    expect(request).toHaveBeenLastCalledWith('/medical-interviews/42/teacher-assignments', 'PUT', {
-      teacher_ids: [1, 2, 3, 6],
+    expect(request).toHaveBeenLastCalledWith('/medical-interviews/42/doctor-assignments', 'PUT', {
+      doctor_ids: [1, 2, 3, 6],
     }),
   );
 });

@@ -25,10 +25,9 @@ class UserIdentityTests(unittest.TestCase):
                                        ({"preferred_language": "en"}, "en")):
                 with self.subTest(schema=schema.__name__, supplied=supplied):
                     db = MagicMock()
-                    account_query, organization_query = MagicMock(), MagicMock()
-                    db.query.side_effect = [account_query, organization_query]
+                    account_query = MagicMock()
+                    db.query.side_effect = [account_query]
                     account_query.filter.return_value.first.return_value = None
-                    organization_query.filter.return_value.order_by.return_value.first.return_value = SimpleNamespace(id=1)
                     with patch("app.routers.users.get_password_hash", return_value="test-hash"):
                         account = persist_user(schema(**self.payload(), **supplied), db)
                     self.assertEqual(account.preferred_language, expected)
@@ -46,7 +45,6 @@ class UserIdentityTests(unittest.TestCase):
     def test_registration_rejects_privilege_and_retired_fields(self):
         for field, value in (
             ("role", "superuser"),
-            ("organization_id", 99),
             ("username", "retired"),
             ("full_name", "Retired Name"),
             ("first_name", "Ana"),
@@ -64,7 +62,7 @@ class UserIdentityTests(unittest.TestCase):
             TokenRequest(username="retired", password="secret")
 
     def test_profile_update_rejects_null_names_email_and_privileges(self):
-        for field in ("email", "name", "role", "organization_id"):
+        for field in ("email", "name", "role"):
             with self.subTest(field=field), self.assertRaises(ValidationError):
                 UserUpdate.model_validate({field: None})
         self.assertEqual(UserUpdate(preferred_language="es").model_dump(exclude_unset=True), {"preferred_language": "es"})

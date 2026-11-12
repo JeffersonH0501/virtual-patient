@@ -3,17 +3,17 @@ import {BrowserRouter as Router, Routes, Route, Navigate} from 'react-router-dom
 import {useTranslation} from 'react-i18next';
 import {useUser} from './hooks/useUser';
 import {AuthLayout} from './components/Auth/AuthLayout';
-import {ClinicalCases} from './components/ClinicalCases';
-import {PatientPreview} from './components/ClinicalCases/PatientPreview';
 import {ROUTES, interviewPath} from './utils/routes';
 import {getActiveInterview} from './services/interviews';
 import {AppContainer} from './components/common';
-import {Chats} from './components/Chats';
-import {Users} from './components/Users';
-import {PerceptionSurvey} from './components/PerceptionSurvey';
 
-const InterviewCalibration = lazy(() => import('./components/InterviewCalibration').then(({InterviewCalibration}) => ({default: InterviewCalibration})));
-const ClinicalChat = lazy(() => import('./components/ClinicalChat').then(({ClinicalChat}) => ({default: ClinicalChat})));
+const ClinicalCases = lazy(() => import('./components/ClinicalCases').then((module) => ({default: module.ClinicalCases})));
+const PatientPreview = lazy(() => import('./components/ClinicalCases/PatientPreview').then((module) => ({default: module.PatientPreview})));
+const Chats = lazy(() => import('./components/Chats').then((module) => ({default: module.Chats})));
+const Users = lazy(() => import('./components/Users').then((module) => ({default: module.Users})));
+const PerceptionSurvey = lazy(() => import('./components/PerceptionSurvey').then((module) => ({default: module.PerceptionSurvey})));
+const InterviewCalibration = lazy(() => import('./components/InterviewCalibration').then((module) => ({default: module.InterviewCalibration})));
+const ClinicalChat = lazy(() => import('./components/ClinicalChat').then((module) => ({default: module.ClinicalChat})));
 
 
 const EntryRedirect: FC = () => {
@@ -28,7 +28,7 @@ const EntryRedirect: FC = () => {
       setDestination(ROUTES.welcome);
       return;
     }
-    if (user.role === 'superuser') {
+    if (user.role === 'admin') {
       setDestination(ROUTES.clinicalCases);
       return;
     }

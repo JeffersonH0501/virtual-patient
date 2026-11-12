@@ -3,7 +3,6 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {ConversationTable} from './ConversationTable';
 import {getInterviews} from '../../services/interviews/getInterviews';
 import {InterviewListItem} from '../../types/interview';
-import {LIST_PAGE_SIZE} from '../../utils/pagination';
 
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
@@ -24,7 +23,7 @@ it('uses the loaded interview summaries when changing pages', async () => {
   fetchPage.mockResolvedValueOnce(Array.from({length: 11}, (_, index) => item(index + 1)));
 
   render(<ConversationTable />);
-  expect(screen.getByRole('table').querySelectorAll('tbody tr[aria-hidden="true"]')).toHaveLength(LIST_PAGE_SIZE);
+  expect(screen.getByRole('table').parentElement?.getAttribute('aria-busy')).toBe('true');
   await screen.findByText('Interview 10');
   expect(screen.getByText('Mostrando 1-10 de 11 entrevistas')).toBeTruthy();
   expect(screen.queryByText('Interview 11')).toBeNull();

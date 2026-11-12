@@ -10,7 +10,7 @@ vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key
 afterEach(cleanup);
 const options = [
   {value: 'auto', label: 'Automatic', searchText: 'Automatic'},
-  {value: 'teacher', label: <><strong>Teacher:</strong>{' '}Ada</>, searchText: 'Teacher: Ada'},
+  {value: 'doctor', label: <><strong>Teacher:</strong>{' '}Ada</>, searchText: 'Teacher: Ada'},
   {value: 'manage', label: <strong>Assign Teacher</strong>, searchText: 'Assign Teacher'},
 ];
 it('emphasizes only the teacher prefix in the popup and selected value', () => {
@@ -21,9 +21,9 @@ it('emphasizes only the teacher prefix in the popup and selected value', () => {
   const teacher = screen.getByRole('option', {name: 'Teacher: Ada'});
   expect(teacher.querySelector('strong')?.textContent).toBe('Teacher:');
   fireEvent.click(teacher);
-  expect(changed).toHaveBeenCalledWith('teacher');
+  expect(changed).toHaveBeenCalledWith('doctor');
   expect(screen.queryByRole('listbox')).toBeNull();
-  view.rerender(<Select label="Source" value="teacher" options={options} onValueChange={changed} />);
+  view.rerender(<Select label="Source" value="doctor" options={options} onValueChange={changed} />);
   expect(within(control).getByText('Teacher:').tagName).toBe('STRONG');
   expect(control.textContent).toBe('Teacher: Ada');
 });
@@ -38,7 +38,7 @@ it('supports arrows, Home, End, selection and Escape without changing the value 
   fireEvent.keyDown(control, {key: 'Home'});
   fireEvent.keyDown(control, {key: 'ArrowDown'});
   fireEvent.keyDown(control, {key: 'Enter'});
-  expect(changed).toHaveBeenCalledWith('teacher');
+  expect(changed).toHaveBeenCalledWith('doctor');
   expect(document.activeElement).toBe(control);
   changed.mockClear();
   fireEvent.keyDown(control, {key: 'ArrowUp'});
@@ -115,7 +115,7 @@ it('keeps popup interaction and the first Escape inside a dismissible dialog', a
   fireEvent.mouseUp(teacher);
   expect(close).not.toHaveBeenCalled();
   fireEvent.click(teacher);
-  expect(changed).toHaveBeenCalledWith('teacher');
+  expect(changed).toHaveBeenCalledWith('doctor');
   fireEvent.click(control);
   fireEvent.keyDown(control, {key: 'Escape', keyCode: 27});
   expect(screen.queryByRole('listbox')).toBeNull();

@@ -83,8 +83,8 @@ def test_real_video_single_pass_mediapipe_and_turn_features(tmp_path):
     processed = preprocess_nonverbal_turn(raw, "speaking", baseline=None)
     assert processed.processed.smile_activity_ratio is not None
     assert processed.processed.nod_count is not None
-    assert processed.processed.visual_alignment_ratio is None
-    assert processed.reasons["visual_alignment_ratio"] == UnavailableReason.GAZE_CALIBRATION_PENDING
+    assert processed.processed.interaction_gaze_ratio is None
+    assert processed.reasons["interaction_gaze_ratio"] == UnavailableReason.GAZE_CALIBRATION_PENDING
 
 
 def test_product_pipeline_reads_stored_video_and_persists_nonverbal_features(tmp_path):
@@ -113,5 +113,5 @@ def test_product_pipeline_reads_stored_video_and_persists_nonverbal_features(tmp
     assert persisted["raw"]["extractor"]["name"] == "mediapipe_ccdbhg"
     assert persisted["raw"]["gaze_observations"]
     assert persisted["processed"]["smile_activity_ratio"] is not None
-    assert persisted["quality"]["feature_reasons"]["visual_alignment_ratio"] == "gaze_calibration_pending"
+    assert persisted["quality"]["feature_reasons"]["interaction_gaze_ratio"] == "gaze_calibration_pending"
     assert persisted["base_labels"]["gaze_orientation"]["interaction_gaze_ratio"]["status"] == "unavailable"

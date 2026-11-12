@@ -35,7 +35,7 @@ export const useReviewRefresh = ({
     async (observations: boolean) => {
       if (
         !interviewId ||
-        role !== 'superuser' ||
+        role !== 'admin' ||
         mode !== 'review' ||
         !isCompleted ||
         regenerateActiveRef.current

@@ -1,7 +1,7 @@
 import {Dialog} from '../common/Dialog';
 import {useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {Assignment, gradingRequest} from '../../services/teacherGrading';
+import {Assignment, gradingRequest} from '../../services/doctorGrading';
 import {User} from '../../types/user';
 import {Button} from '../common';
 import {Badge} from '../common/Badge';
@@ -17,7 +17,7 @@ export const AssignmentDialog = ({
 }) => {
   const {t} = useTranslation();
   const [assignments, setAssignments] = useState<Assignment[]>([]);
-  const [teachers, setTeachers] = useState<User[]>([]);
+  const [doctors, setDoctors] = useState<User[]>([]);
   const [selected, setSelected] = useState<number[]>([]);
   const [busy, setBusy] = useState(true);
   const [loaded, setLoaded] = useState(false);
@@ -27,13 +27,13 @@ export const AssignmentDialog = ({
     setBusy(true);
     try {
       const [items, people] = await Promise.all([
-        gradingRequest<Assignment[]>('/medical-interviews/' + interviewId + '/teacher-assignments'),
+        gradingRequest<Assignment[]>('/medical-interviews/' + interviewId + '/doctor-assignments'),
         (async () => {
           const all: User[] = [];
           let offset = 0;
           while (true) {
             const page = await gradingRequest<{users: User[]; total: number}>(
-              '/users/admin/teachers?offset=' + offset + '&limit=100',
+              '/users/admin/doctors?offset=' + offset + '&limit=100',
             );
             all.push(...page.users);
             offset += page.users.length;
@@ -42,7 +42,7 @@ export const AssignmentDialog = ({
         })(),
       ]);
       setAssignments(items);
-      setTeachers(people);
+      setDoctors(people);
       setSelected((current) =>
         preserve
           ? [
@@ -50,12 +50,12 @@ export const AssignmentDialog = ({
                 ...current.filter(
                   (id) =>
                     people.some((person) => person.id === id) ||
-                    items.some((item) => item.teacherId === id),
+                    items.some((item) => item.doctorId === id),
                 ),
-                ...items.filter((item) => item.status !== 'pending').map((item) => item.teacherId),
+                ...items.filter((item) => item.status !== 'pending').map((item) => item.doctorId),
               ]),
             ]
-          : items.map((item) => item.teacherId),
+          : items.map((item) => item.doctorId),
       );
       setLoaded(true);
     } catch {
@@ -73,8 +73,8 @@ export const AssignmentDialog = ({
     setBusy(true);
     setError('');
     try {
-      await gradingRequest('/medical-interviews/' + interviewId + '/teacher-assignments', 'PUT', {
-        teacher_ids: selected,
+      await gradingRequest('/medical-interviews/' + interviewId + '/doctor-assignments', 'PUT', {
+        doctor_ids: selected,
       });
       onSaved?.();
       onClose();
@@ -86,22 +86,22 @@ export const AssignmentDialog = ({
       setBusy(false);
     }
   };
-  const baseline = assignments.map((item) => item.teacherId);
+  const baseline = assignments.map((item) => item.doctorId);
   const changed =
     selected.length !== baseline.length || selected.some((id) => !baseline.includes(id));
   const people = [
-    ...teachers.map((person) => ({id: person.id, name: person.name, email: person.email})),
+    ...doctors.map((person) => ({id: person.id, name: person.name, email: person.email})),
     ...assignments
-      .filter((item) => !teachers.some((person) => person.id === item.teacherId))
+      .filter((item) => !doctors.some((person) => person.id === item.doctorId))
       .map((item) => ({
-        id: item.teacherId,
-        name: item.teacherName,
-        email: item.teacherEmail ?? '',
+        id: item.doctorId,
+        name: item.doctorName,
+        email: item.doctorEmail ?? '',
       })),
   ];
   return (
     <Dialog
-      title={t('grading.assignedTeachers')}
+      title={t('grading.assignedDoctors')}
       onClose={onClose}
       busy={busy}
       size="medium"
@@ -142,12 +142,12 @@ export const AssignmentDialog = ({
           <p role="status">{t('common.loading')}</p>
         </div>
       ) : (
-        <div className="teacher-assignment-list" role="group" aria-label={t('grading.teachers')}>
+        <div className="doctor-assignment-list" role="group" aria-label={t('grading.doctors')}>
           {people.map((person) => {
-            const assignment = assignments.find((item) => item.teacherId === person.id);
+            const assignment = assignments.find((item) => item.doctorId === person.id);
             const locked = Boolean(assignment && assignment.status !== 'pending');
             return (
-              <label className="teacher-assignment-row" key={person.id}>
+              <label className="doctor-assignment-row" key={person.id}>
                 <input
                   type="checkbox"
                   checked={selected.includes(person.id)}
@@ -167,7 +167,7 @@ export const AssignmentDialog = ({
                   </span>
                 </span>
                 {assignment && (
-                  <span className="teacher-assignment-status">
+                  <span className="doctor-assignment-status">
                     <Badge
                       tone={
                         assignment.status === 'submitted'
@@ -184,7 +184,7 @@ export const AssignmentDialog = ({
               </label>
             );
           })}
-          {!people.length && loaded && <p className="ui-empty-state">{t('grading.noTeachers')}</p>}
+          {!people.length && loaded && <p className="ui-empty-state">{t('grading.noDoctors')}</p>}
         </div>
       )}
     </Dialog>

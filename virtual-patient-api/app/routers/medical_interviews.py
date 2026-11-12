@@ -43,6 +43,7 @@ from app.utils.language import (
 )
 from app.media.storage import get_media_storage
 from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.utils.perf import perf_event
 from app.multimodal.evaluation_service import evaluate_and_store_multimodal, validate_text_control
 
 logger = logging.getLogger(__name__)
@@ -77,6 +78,34 @@ class CompleteInterviewResponse(BaseModel):
 
 class CompleteInterviewRequest(BaseModel):
     completion_reason: Literal["user_completed"] = "user_completed"
+
+
+def _turn_job_outcome_counts(db: Session, interview_id: int) -> dict[str, int]:
+    """Count this interview's durable turn jobs grouped by terminal/pending state.
+
+    Returns a snapshot used for per-interview completion metrics: how many turn
+    jobs finished before the interview closed versus how many were still
+    pending. ``pending`` covers queued and processing; ``finished`` is the sum
+    of completed and failed. The counts never include calibration or isolated
+    tests because those never create ``TurnVideoAnalysisDB`` rows for an
+    interview.
+    """
+    def count(*statuses: str) -> int:
+        return db.query(TurnVideoAnalysisDB.id).filter(
+            TurnVideoAnalysisDB.medical_interview_id == interview_id,
+            TurnVideoAnalysisDB.status.in_(statuses),
+        ).count()
+
+    completed = count(TurnVideoAnalysisStatus.COMPLETED.value)
+    failed = count(TurnVideoAnalysisStatus.FAILED.value)
+    pending = count(*_PENDING_TURN_ANALYSIS_STATUSES)
+    return {
+        "completed": completed,
+        "failed": failed,
+        "pending": pending,
+        "finished": completed + failed,
+        "total": completed + failed + pending,
+    }
 
 
 async def _wait_for_multimodal_analysis(
@@ -211,6 +240,19 @@ async def _evaluate_and_complete_interview(
         )
         multimodal_status = await _wait_for_multimodal_analysis(db, interview_id)
         timings_ms["multimodal_wait"] = (perf_counter() - phase_started) * 1000
+        perf_event("interview_completion", "wait_for_multimodal", phase="complete", status="success",
+                   duration_ms=timings_ms["multimodal_wait"], interview_id=interview_id,
+                   observation_status=multimodal_status)
+        # Per-interview snapshot: how many durable turn jobs finished before the
+        # interview closed versus how many were still pending, with the real
+        # participant wait from completion request to analysis being terminal.
+        turn_jobs = _turn_job_outcome_counts(db, interview_id)
+        perf_event("interview_completion", "turn_jobs_snapshot", phase="complete", status="success",
+                   duration_ms=timings_ms["multimodal_wait"], interview_id=interview_id,
+                   observation_status=multimodal_status,
+                   turn_jobs_total=turn_jobs["total"], turn_jobs_finished=turn_jobs["finished"],
+                   turn_jobs_completed=turn_jobs["completed"], turn_jobs_failed=turn_jobs["failed"],
+                   turn_jobs_pending=turn_jobs["pending"])
         if multimodal_status == "failed":
             raise RuntimeError("Multimodal analysis finished with a failed status")
         from app.models.medical_interview.interview_evaluation import EvaluationCondition
@@ -233,6 +275,9 @@ async def _evaluate_and_complete_interview(
             len(evaluation_results), json.dumps(timings_ms, sort_keys=True),
             process_id(), current_rss_mb(),
         )
+        perf_event("interview_completion", "text_evaluation", phase="complete", status="success",
+                   duration_ms=(perf_counter() - overall_started) * 1000, interview_id=interview_id,
+                   aspect_count=len(evaluation_results), timings_ms=timings_ms)
     except Exception:
         logger.exception(
             "performance_event component=interview_completion operation=text_evaluation phase=failed "
@@ -240,6 +285,8 @@ async def _evaluate_and_complete_interview(
             interview_id, (perf_counter() - overall_started) * 1000,
             json.dumps(timings_ms, sort_keys=True), process_id(), current_rss_mb(),
         )
+        perf_event("interview_completion", "text_evaluation", phase="failed", status="error",
+                   duration_ms=(perf_counter() - overall_started) * 1000, interview_id=interview_id)
         db.rollback()
         try:
             interview_controller.interrupt_processing(interview_id)
@@ -325,14 +372,14 @@ async def create_interview(
     Note: If patient_gender is provided but patient_name is not, the system will automatically
     select the appropriate name (female_name or male_name) and photo from the clinical case.
     """
-    if interview_data.calibration_test and current_user.role != UserRole.SUPERUSER:
-        raise HTTPException(status_code=403, detail="Calibration tests are only available to superusers")
+    if interview_data.calibration_test and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Calibration tests are only available to administrators")
     if interview_data.calibration_test:
         raise HTTPException(status_code=410, detail="Use the temporary nonverbal test")
-    if current_user.role == UserRole.SUPERUSER and not interview_data.calibration_test:
+    if current_user.role == UserRole.ADMIN and not interview_data.calibration_test:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Superusers cannot start medical interview simulations",
+            detail="Administrators cannot start medical interview simulations",
         )
 
     service = MedicalInterviewController(db)
@@ -380,6 +427,7 @@ async def create_interview(
         patient_gender=interview_data.patient_gender,
         personality_id=interview_data.personality_id
     )
+    perf_event("interview", "created", phase="complete", status="success", interview_id=interview.id)
     
     return InterviewResponse(interview=interview)
 
@@ -405,12 +453,6 @@ async def save_calibration_result(
     rejected with 409 once ``start_time`` is set, preventing an arbitrary
     overwrite of the calibration an in-progress session already relies on.
     """
-    interview = db.query(MedicalInterviewDB).filter(
-        MedicalInterviewDB.id == interview_id,
-        MedicalInterviewDB.user_id == current_user.id,
-    ).first()
-    if not interview:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
     interview = lock_row(db, MedicalInterviewDB, interview_id)
     if not interview or interview.user_id != current_user.id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
@@ -455,8 +497,8 @@ async def start_interview(
     db: Session = Depends(get_db),
 ):
     """Start the official interview clock after successful calibration."""
-    if current_user.role == UserRole.SUPERUSER:
-        raise HTTPException(status_code=403, detail="Superusers cannot start medical interview simulations")
+    if current_user.role == UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Administrators cannot start medical interview simulations")
     service = MedicalInterviewController(db)
     if not service.validate_interview_access(interview_id, current_user.id):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to this interview")
@@ -465,6 +507,7 @@ async def start_interview(
     interview = service.start_interview(interview_id)
     if not interview:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Interview not found")
+    perf_event("interview", "started", phase="complete", status="success", interview_id=interview_id)
     return interview
 
 @router.get("/{interview_id}", response_model=MedicalInterviewComplete)
@@ -476,39 +519,39 @@ async def get_interview(
 ):
     """
     Get interview details by ID.
-    
+
     - **interview_id**: Unique identifier for the interview
-    
-    Returns complete interview information including evaluation if completed.
+
+    Returns complete interview information, including the evaluation when the
+    interview is completed. Private clinical-case content stays redacted until
+    the interview is completed or the caller is an authorized reviewer.
     """
     service = MedicalInterviewController(db)
-    
+
     # Validate access
     if not service.validate_interview_access(interview_id, current_user.id):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Access denied to this interview"
         )
-    
+
     interview = service.get_interview_complete(interview_id)
     if not interview:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Interview not found"
         )
-    
-    # Check if interview is completed and has evaluation
+
+    # Attach the evaluation when the interview is completed.
     if interview.status == "completed":
-        evaluation_controller = InterviewEvaluationController(db)
-        evaluation = evaluation_controller.get_evaluation_by_interview_id(interview_id)
+        evaluation = InterviewEvaluationController(db).get_evaluation_by_interview_id(interview_id)
         if evaluation:
-            # Add evaluation to the interview object
             interview.interview_evaluation = evaluation
-    
+
     # Add isOwner field to the response
     interview_dict = interview.model_dump()
     interview_dict['isOwner'] = interview_dict.get('user_id') == current_user.id
-    
+
     interface_language = resolve_ui_language(language, current_user.preferred_language)
     localize_interview_content(interview_dict, interface_language)
 
@@ -588,7 +631,7 @@ def get_user_interviews(
         user_id=current_user.id,
         skip=skip,
         limit=limit,
-        include_assigned=current_user.role == UserRole.TEACHER,
+        include_assigned=current_user.role == UserRole.DOCTOR,
     )
     
     # Translate personality names based on user's preferred language
@@ -599,42 +642,39 @@ def get_user_interviews(
     
     return interviews_with_scores
 
-def require_organization_staff(current_user: User, organization_id: int):
-    """Keep organization history and metrics restricted to authorized staff."""
-    if current_user.role != UserRole.SUPERUSER:
-        raise HTTPException(status_code=403, detail="Organization staff access required")
-    if current_user.organization_id is None or current_user.organization_id != organization_id:
-        raise HTTPException(status_code=404, detail="Organization not found")
+def require_admin_history(current_user: User):
+    """Keep administrative history restricted to administrators."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
 
 
-@router.get("/organization/{organization_id}/interview-counts")
-async def get_organization_interview_counts(
-    organization_id: int,
+@router.get("/admin/interview-counts")
+async def get_admin_interview_counts(
+
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user),
 ):
-    """Return interview totals in the same scope as organization history."""
-    require_organization_staff(current_user, organization_id)
-    return MedicalInterviewController(db).get_organization_interview_counts(organization_id, current_user)
+    """Return totals for the administrative history."""
+    require_admin_history(current_user)
+    return MedicalInterviewController(db).get_admin_interview_counts(current_user)
 
 
-@router.get("/organization/{organization_id}", response_model=List[Dict[str, Any]])
-async def get_interviews_by_organization(
-    organization_id: int,
+@router.get("/admin/history", response_model=List[Dict[str, Any]])
+async def get_admin_interviews(
     response: Response,
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_active_user)
 ):
-    """List started interviews in the caller's organization with an exact total."""
-    require_organization_staff(current_user, organization_id)
+    """List started interviews with an exact total for administrators."""
+    require_admin_history(current_user)
     interview_controller = MedicalInterviewController(db)
     response.headers["X-Total-Count"] = str(
-        interview_controller.count_organization_interviews(organization_id, current_user)
+        interview_controller.count_admin_interviews(current_user)
     )
-    interviews = interview_controller.get_interviews_by_organization(
-        organization_id=organization_id,
+    interviews = interview_controller.get_admin_interviews(
+
         current_user=current_user,
         skip=skip,
         limit=limit
@@ -943,14 +983,11 @@ def delete_interview(
     current_user: User = Depends(get_current_active_user),
     db: Session = Depends(get_db)
 ):
-    """Delete an owned interview, or an organization interview as superuser."""
+    """Delete an owned interview, or any eligible interview as admin."""
     query = db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id)
-    if current_user.role == UserRole.SUPERUSER:
-        if current_user.organization_id is None:
-            raise HTTPException(status_code=404, detail="Interview not found")
+    if current_user.role == UserRole.ADMIN:
         query = query.join(UserDB, MedicalInterviewDB.user_id == UserDB.id).filter(
-            UserDB.organization_id == current_user.organization_id,
-            UserDB.role.in_([UserRole.STUDENT, UserRole.TEACHER]),
+            UserDB.role.in_([UserRole.STUDENT, UserRole.DOCTOR]),
         )
     else:
         query = query.filter(MedicalInterviewDB.user_id == current_user.id)
@@ -964,69 +1001,6 @@ def delete_interview(
     from app.controllers.administrative_deletion import delete_parent
     delete_parent(db, interview, "interview")
     return None
-
-
-@router.get("/organization/{organization_id}/active-students-count")
-async def get_active_students_count_by_organization(
-    organization_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get the count of students who have active conversations (ignoring organization_id parameter).
-
-    - **organization_id**: Unique identifier for the organization (ignored in logic)
-
-    Returns the count of distinct students with active interviews.
-    """
-    require_organization_staff(current_user, organization_id)
-    interview_controller = MedicalInterviewController(db)
-    count = interview_controller.count_active_student_conversations_by_organization(
-        organization_id=organization_id
-    )
-    return {"organization_id": organization_id, "active_students_count": count}
-
-
-@router.get("/organization/{organization_id}/completed-students-count")
-async def get_completed_students_count_by_organization(
-    organization_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get the count of students who have completed conversations (ignoring organization_id parameter).
-
-    - **organization_id**: Unique identifier for the organization (ignored in logic)
-
-    Returns the count of distinct students with completed interviews.
-    """
-    require_organization_staff(current_user, organization_id)
-    interview_controller = MedicalInterviewController(db)
-    count = interview_controller.count_completed_student_conversations_by_organization(
-        organization_id=organization_id
-    )
-    return {"organization_id": organization_id, "completed_students_count": count}
-
-
-@router.get("/organization/{organization_id}/average-score")
-async def get_average_score_by_organization(
-    organization_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get the average evaluation score for all conversations (ignoring organization_id parameter).
-
-    - **organization_id**: Unique identifier for the organization (ignored in logic)
-
-    Returns the average score, total evaluations count, and whether data exists.
-    """
-    require_organization_staff(current_user, organization_id)
-    interview_controller = MedicalInterviewController(db)
-    result = interview_controller.get_average_score_by_organization(
-        organization_id=organization_id
-    )
-    return result
 
 
 @router.get("/my/active", response_model=Optional[MedicalInterview])
@@ -1049,36 +1023,6 @@ async def get_my_active_interview(
     return MedicalInterview.from_orm(active)
 
 
-@router.get("/my/completed-cases")
-async def get_my_completed_cases(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get the count of completed cases for the current user.
-    
-    Returns the count of completed interviews for the authenticated user.
-    """
-    interview_controller = MedicalInterviewController(db)
-    count = interview_controller.count_completed_cases_for_user(current_user.id)
-    return {"user_id": current_user.id, "completed_cases_count": count}
-
-
-@router.get("/my/average-duration")
-async def get_my_average_duration(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_active_user)
-):
-    """
-    Get the average duration of completed cases for the current user.
-    
-    Returns the average duration in seconds for completed interviews of the authenticated user.
-    """
-    interview_controller = MedicalInterviewController(db)
-    result = interview_controller.get_average_duration_for_user(current_user.id)
-    return result
-
-
 @router.get("/my/average-score")
 async def get_my_average_score(
     db: Session = Depends(get_db),
@@ -1090,5 +1034,5 @@ async def get_my_average_score(
     Returns the average score, total evaluations count, and whether data exists for the authenticated user.
     """
     interview_controller = MedicalInterviewController(db)
-    result = interview_controller.get_average_score_for_user(current_user.id, include_text_only=current_user.role == UserRole.SUPERUSER)
+    result = interview_controller.get_average_score_for_user(current_user.id, include_text_only=current_user.role == UserRole.ADMIN)
     return result

@@ -4,8 +4,11 @@ import {MemoryRouter} from 'react-router-dom';
 import type {PropsWithChildren} from 'react';
 import {PatientPreview} from './PatientPreview';
 
-vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key})}));
-vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: 'superuser', name: 'Preview user'}})}));
+vi.mock('react-i18next', () => ({
+  useTranslation: () => ({t: (key: string) => key}),
+  Trans: ({i18nKey}: {i18nKey: string}) => i18nKey,
+}));
+vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: 'admin', name: 'Preview user'}})}));
 const media = vi.hoisted(() => ({startCamera: vi.fn(), startMicrophone: vi.fn(), stopAll: vi.fn(), cameraState: 'idle', microphoneState: 'idle'}));
 vi.mock('../../contexts/interviewMedia', () => ({useInterviewMedia: () => media}));
 vi.mock('../../hooks/useHandsFreeSpeech', () => ({useHandsFreeSpeech: () => ({isListening: false, audioLevel: 0, hasPendingUtterance: false, isSubmittingUtterance: false})}));

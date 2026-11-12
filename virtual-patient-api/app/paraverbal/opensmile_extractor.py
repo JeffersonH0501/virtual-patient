@@ -34,6 +34,7 @@ from time import perf_counter
 
 from app.multimodal.schemas import ParaverbalRawFeatures
 from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.utils.perf import perf_event
 
 
 logger = logging.getLogger(__name__)
@@ -147,6 +148,11 @@ def _analyze_turn(
             result.audio_quality.get("issues") if result else ["features_unavailable"],
             process_id(), current_rss_mb(),
         )
+        perf_event("paraverbal", "turn_extraction", phase="complete", status="success",
+                   duration_ms=(perf_counter() - started_at) * 1000,
+                   interview_id=turn.medical_interview_id, turn_id=turn.turn_id,
+                   segment_duration_ms=duration_ms,
+                   voiced_duration_ms=result.voiced_duration_ms if result else None)
         return result
     except (OSError, subprocess.SubprocessError, wave.Error, ValueError) as error:
         logger.exception(
@@ -156,6 +162,10 @@ def _analyze_turn(
             turn.turn_id, duration_ms, (perf_counter() - started_at) * 1000,
             type(error).__name__, process_id(), current_rss_mb(),
         )
+        perf_event("paraverbal", "turn_extraction", phase="failed", status="error",
+                   duration_ms=(perf_counter() - started_at) * 1000,
+                   interview_id=turn.medical_interview_id, turn_id=turn.turn_id,
+                   segment_duration_ms=duration_ms, error_type=type(error).__name__)
         return None
 
 
@@ -240,6 +250,10 @@ def _extract_raw_features(
                       if loudness_column is not None and math.isfinite(float(frame[loudness_column].iloc[index]))]
 
     issues: list[str] = []
+    if intervals and intervals[0][0] == 0:
+        issues.append("speech_at_window_start")
+    if intervals and intervals[-1][1] >= decoded_duration_ms:
+        issues.append("speech_at_window_end")
     if pitch_column is None:
         issues.append("f0_unavailable")
     if loudness_column is None:

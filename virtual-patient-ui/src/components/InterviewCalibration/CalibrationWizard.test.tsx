@@ -230,8 +230,8 @@ it('places the camera preview before device selectors and the start action', () 
   const preview = view.container.querySelector('.calibration-preparation-media')!;
   const selectors = view.container.querySelector('.calibration-device-list')!;
   const start = screen.getByRole('button', {name: en.calibration.startCalibration});
-  expect(preview.compareDocumentPosition(selectors) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  expect(selectors.compareDocumentPosition(start) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(preview.compareDocumentPosition(selectors)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(selectors.compareDocumentPosition(start)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
 });
 
 it.each([['en', en], ['es', es]] as const)('shows translated completion text in %s', async (language, catalog) => {

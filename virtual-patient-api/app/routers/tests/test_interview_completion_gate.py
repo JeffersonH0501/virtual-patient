@@ -1,10 +1,13 @@
-"""Tests for the interview completion gate."""
+"""Tests for the interview completion gate and completion metrics."""
 
 import asyncio
 import unittest
 from types import SimpleNamespace
 
-from app.routers.medical_interviews import _wait_for_multimodal_analysis
+from app.routers.medical_interviews import (
+    _turn_job_outcome_counts,
+    _wait_for_multimodal_analysis,
+)
 
 
 class _Query:
@@ -40,6 +43,65 @@ class _Database:
         if self.query_count % 2:
             return _Query(recording=self.recording)
         return _Query(pending_count=self.pending_count)
+
+
+class _CountingQuery:
+    def __init__(self, result: int):
+        self._result = result
+
+    def filter(self, *args):
+        del args
+        return self
+
+    def count(self):
+        return self._result
+
+
+class _CountingSession:
+    """Returns counts in the fixed order _turn_job_outcome_counts queries them.
+
+    The helper counts completed, then failed, then pending (queued+processing);
+    this fake returns ``counts`` in that order so the snapshot can be asserted
+    without a real database.
+    """
+
+    def __init__(self, counts: list[int]):
+        self._counts = list(counts)
+
+    def query(self, entity):
+        del entity
+        return _CountingQuery(self._counts.pop(0))
+
+
+class TurnJobOutcomeCountsTests(unittest.TestCase):
+    def test_snapshot_groups_finished_and_pending_jobs(self):
+        session = _CountingSession([3, 1, 2])  # completed, failed, pending
+
+        snapshot = _turn_job_outcome_counts(session, 70)
+
+        self.assertEqual(
+            snapshot,
+            {"completed": 3, "failed": 1, "pending": 2, "finished": 4, "total": 6},
+        )
+
+    def test_snapshot_is_all_zero_when_no_turn_jobs_exist(self):
+        session = _CountingSession([0, 0, 0])
+
+        snapshot = _turn_job_outcome_counts(session, 70)
+
+        self.assertEqual(
+            snapshot,
+            {"completed": 0, "failed": 0, "pending": 0, "finished": 0, "total": 0},
+        )
+
+    def test_snapshot_counts_a_fully_pending_interview_as_unfinished(self):
+        session = _CountingSession([0, 0, 5])
+
+        snapshot = _turn_job_outcome_counts(session, 70)
+
+        self.assertEqual(snapshot["finished"], 0)
+        self.assertEqual(snapshot["pending"], 5)
+        self.assertEqual(snapshot["total"], 5)
 
 
 class InterviewCompletionGateTests(unittest.TestCase):

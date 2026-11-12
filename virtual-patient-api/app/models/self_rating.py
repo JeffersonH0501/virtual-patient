@@ -1,4 +1,4 @@
-"""Owner-authored self-assessments, independent of assigned teacher ratings."""
+"""Owner-authored self-assessments, independent of assigned doctor ratings."""
 from sqlalchemy import Column, Integer, ForeignKey, DateTime, JSON, Float, String
 from sqlalchemy.sql import func
 from app.core.database import Base

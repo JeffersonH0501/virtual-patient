@@ -48,7 +48,7 @@ def stage_block_turns(db, recording, validate_cache=False):
             turn.start_ms, turn.end_ms = offset + start, offset + end
             turn.input_source = "camera_microphone" if speaker == "student" else "tts"
             turn.timing_source = "block_speech" if speaker == "student" else ("tts_playback" if window else "tts_written")
-            turn.timing_quality = "measured" if speaker == "student" or data.get("patient_playback_complete", True) else "provisional"
+            turn.timing_quality = "measured" if speaker == "patient" and data.get("patient_playback_complete", True) else "provisional"
             if speaker == 'patient' and data.get('patient_playback_complete', True):
                 message.message_metadata = {**(message.message_metadata or {}), 'playback_confirmed': True}
             if not reliable or (speaker == 'student' and not data.get('student_speech_complete', True)):

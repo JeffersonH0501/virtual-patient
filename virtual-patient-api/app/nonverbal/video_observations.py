@@ -13,7 +13,6 @@ from app.media.patient_roi import parse_patient_roi_snapshots
 from app.multimodal.schemas import NonverbalRawFeatures
 from app.nonverbal.ccdbhg import NodAnalysis, NodEvent
 from app.nonverbal.gaze import GazeObservation
-from app.nonverbal.gaze_calibration import classify_interaction_gaze
 from app.nonverbal.mediapipe_extractor import extract_video
 from app.nonverbal.shared_observations import SharedFrameObservation
 from app.nonverbal.smile import SmileObservation, extract_smile
@@ -134,18 +133,13 @@ def build_turn_raw_features(
         index = bisect_right(timestamps, timestamp_ms) - 1
         return snapshots[index] if snapshots and index >= 0 else None
 
+    from app.nonverbal.mediapipe_calibration import gaze_interaction_state
     semantic = [
         {
             "timestamp_ms": item.gaze.timestamp_ms,
-            "state": classify_interaction_gaze(
-                (item.gaze.unclipped_x, item.gaze.unclipped_y)
-                if item.gaze.valid
-                and item.gaze.unclipped_x is not None and item.gaze.unclipped_y is not None
-                else None,
-                calibration_profile,
-                roi_at(item.gaze.timestamp_ms),
-                camera_match=item.gaze.state == 'mediapipe_camera',
-            ),
+            "state": {"inside": "INSIDE", "outside": "OUTSIDE"}.get(
+                gaze_interaction_state(item.gaze, calibration_profile, roi_at(item.gaze.timestamp_ms)), "UNAVAILABLE"),
+            **({"reason": item.gaze.state} if item.gaze.state in {"eyes_closed", "face_not_detected"} else {}),
         }
         for item in observations
     ] if calibration_profile is not None else []
@@ -179,7 +173,7 @@ def build_turn_raw_features(
         frame_timestamps_ms=[item.shared.timestamp_ms for item in observations],
         sample_fps=effective_sample_fps,
         turn_duration_ms=max(0, int(window.end_ms - window.start_ms)),
-        extractor={"name": "mediapipe_ccdbhg", "version": "5_interaction_area", "window_end_ms": window.end_ms,
+        extractor={"name": "mediapipe_ccdbhg", "version": "6_gaze_observability", "window_end_ms": window.end_ms,
                    "gaze_source": gaze_source,
                    "sampling_max_gap_ms": max((item.shared.sampling_max_gap_ms for item in observations), default=100.0)},
         video_quality={

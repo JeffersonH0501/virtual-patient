@@ -29,6 +29,7 @@ from app.models.medical_interview.enums import SenderType
 from app.models.medical_interview.medical_interview import MedicalInterviewDB
 from app.models.user import User
 from app.media.access import _current_media_user
+from app.utils.perf import track
 from app.speech.azure_openai import AzureOpenAITextToSpeechProvider
 from app.speech.contracts import (
     SpeechConfigurationError,
@@ -138,10 +139,12 @@ async def synthesize_patient_message(
         return preserved
 
     try:
-        audio = await run_in_threadpool(
-            SpeechService().synthesize_patient_message,
-            *inputs,
-        )
+        with track("conversation", "tts", interview_id=interview_id, message_id=message_id) as event:
+            audio = await run_in_threadpool(
+                SpeechService().synthesize_patient_message,
+                *inputs,
+            )
+            event["audio_bytes"] = len(audio.content)
     except (SpeechConfigurationError, SpeechProviderError) as error:
         logger.warning(
             "Speech synthesis failed for interview %s message %s: %s",
@@ -216,10 +219,17 @@ async def stream_patient_message(
 async def transcribe_audio(
     audio: UploadFile = File(...),
     language: Optional[Literal["en", "es"]] = Form(default=None),
+    interview_id: Optional[int] = Form(default=None, ge=1),
     current_user: User = Depends(get_current_active_user),
+    db: Session = Depends(get_db),
 ):
     """Transcribe uploaded audio without storing the media payload."""
-    del current_user
+    if interview_id is not None:
+        interview = db.get(MedicalInterviewDB, interview_id)
+        if interview is None or interview.user_id != current_user.id:
+            raise HTTPException(status_code=404, detail="Interview not found")
+        if (interview.interview_metadata or {}).get("calibration_test") is True:
+            raise HTTPException(status_code=404, detail="Interview not found")
     content = await audio.read(MAX_TRANSCRIPTION_BYTES + 1)
     if not content:
         raise HTTPException(
@@ -233,15 +243,17 @@ async def transcribe_audio(
         )
 
     try:
-        result = await run_in_threadpool(
-            SpeechService().transcribe,
-            SpeechTranscriptionRequest(
-                content=content,
-                filename=audio.filename or "audio.webm",
-                content_type=audio.content_type or "application/octet-stream",
-                language=language,
+        with track("conversation", "stt", interview_id=interview_id, audio_bytes=len(content)) as event:
+            result = await run_in_threadpool(
+                SpeechService().transcribe,
+                SpeechTranscriptionRequest(
+                    content=content,
+                    filename=audio.filename or "audio.webm",
+                    content_type=audio.content_type or "application/octet-stream",
+                    language=language,
+                )
             )
-        )
+            event["chars"] = len(result.text)
     except (SpeechConfigurationError, SpeechProviderError) as error:
         logger.warning("Speech transcription failed: %s", error)
         raise _speech_http_error(error) from error

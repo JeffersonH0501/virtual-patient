@@ -15,8 +15,8 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from app.agents.virtual_patient_agent import VirtualPatientAgent
 from app.agents.translator_agent import TranslatorAgent, PatientResponseError
-from app.core.config import settings
 from app.core.async_work import run_sync_owned, cancel_and_drain
+from app.utils.perf import perf_event
 
 from app.agents.schemas.progress_summary import ProgressSummarySchema
 
@@ -100,14 +100,11 @@ class VirtualPatientWorkflow:
         
         # Return only the fields we're updating
         end_time = time.time()
-        if settings.patient_response_timing_logging:
-            logger.info(
-                "patient_response_timing interview_id=%s stage=workflow_interview_node "
-                "agent_ms=%.1f total_ms=%.1f",
-                self.interview_id,
-                (time.perf_counter() - agent_started_at) * 1000,
-                (end_time - start_time) * 1000,
-            )
+        perf_event(
+            "conversation", "patient_response_workflow", interview_id=self.interview_id,
+            agent_ms=(time.perf_counter() - agent_started_at) * 1000,
+            total_ms=(end_time - start_time) * 1000,
+        )
         return {"interview_result": result}
 
     async def translate_patient_response_node(self, state: State) -> State:

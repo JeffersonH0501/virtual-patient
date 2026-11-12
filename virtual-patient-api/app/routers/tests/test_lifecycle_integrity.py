@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.core.database import Base, engine, get_db, SQLALCHEMY_DATABASE_URL
 from app.core.auth import get_current_active_user
 from app.models.user import UserDB, UserRole
-from app.models.organization import OrganizationDB
 from app.models.clinical_case import ClinicalCaseDB
 from app.models.medical_interview import MedicalInterviewDB, InterviewStatus, InterviewRecordingDB, InterviewMediaAssetDB, InterviewTurnDB, TurnVideoAnalysisDB
 from app.models.processing_job import InterviewProcessingJobDB
@@ -41,15 +40,13 @@ def lifecycle_api(tmp_path):
         Base.metadata.create_all(test_engine)
         with Session(test_engine) as db:
             assert db.scalar(text("SELECT current_schema()")) == schema
-            organization = OrganizationDB(name="Synthetic lifecycle " + uuid4().hex, active=True)
-            db.add(organization); db.flush()
-            user = UserDB(name="Synthetic lifecycle", email=uuid4().hex + "@example.org", hashed_password="unused", role=UserRole.STUDENT, organization_id=organization.id)
+            user = UserDB(name="Synthetic lifecycle", email=uuid4().hex + "@example.org", hashed_password="unused", role=UserRole.STUDENT)
             case = ClinicalCaseDB(title="Synthetic lifecycle", description="Test only")
             db.add_all([user, case]); db.flush()
             interview = MedicalInterviewDB(user_id=user.id, clinical_case_id=case.id,
                 status=InterviewStatus.IN_PROGRESS, interview_metadata={"calibration": calibration_payload()})
             db.add(interview); db.commit()
-            actor = SimpleNamespace(id=user.id, role=UserRole.STUDENT, organization_id=organization.id, preferred_language="en")
+            actor = SimpleNamespace(id=user.id, role=UserRole.STUDENT, preferred_language="en")
             identifier, case_id = interview.id, case.id
         app = FastAPI()
         for router in (interviews.router, recordings.router, messages.router):
@@ -71,7 +68,7 @@ def lifecycle_api(tmp_path):
             connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
 
 
-@pytest.mark.parametrize("role", [UserRole.STUDENT, UserRole.TEACHER])
+@pytest.mark.parametrize("role", [UserRole.STUDENT, UserRole.DOCTOR])
 def test_two_precreated_drafts_cannot_both_start(lifecycle_api, role):
     state = lifecycle_api
     state.actor.role = role

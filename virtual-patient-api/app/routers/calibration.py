@@ -27,12 +27,13 @@ from app.models.calibration import (
     CameraCalibrationMetadata,
     GazeCalibrationMetadata, LiveGazeMetadata,
 )
-from app.multimodal.video_processing_client import (
+from app.multimodal.media_processing_client import (
     process_calibration_video,
-    warmup_video_processing_worker,
+    warmup_media_processing_worker,
 )
 from app.models.user import User, UserRole
 from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.utils.perf import perf_event
 
 router = APIRouter(prefix="/calibration", tags=["calibration"])
 logger = logging.getLogger(__name__)
@@ -50,9 +51,9 @@ CALIBRATION_UPLOAD_CHUNK_BYTES = 1024 * 1024  # 1 MiB
 
 @router.get("/tests")
 def list_calibration_tests(current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    """List the authenticated superuser's retained test references."""
-    if current_user.role != UserRole.SUPERUSER:
-        raise HTTPException(403, "Calibration tests are only available to superusers")
+    """List the authenticated administrator's retained test references."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(403, "Calibration tests are only available to administrators")
     rows = db.query(MedicalInterviewDB.id, MedicalInterviewDB.created_at,
         func.count(CalibrationCaptureDB.id).label("capture_count")).join(
         CalibrationCaptureDB, CalibrationCaptureDB.medical_interview_id == MedicalInterviewDB.id).filter(
@@ -79,7 +80,7 @@ async def warm_up_visual_worker(
 ) -> dict[str, str]:
     """Begin loading the shared visual models when calibration starts."""
     try:
-        await warmup_video_processing_worker()
+        await warmup_media_processing_worker()
     except Exception as error:  # noqa: BLE001 - return a controlled service failure.
         logger.warning(
             "Calibration visual warmup failed user_id=%s error_type=%s",
@@ -182,16 +183,19 @@ async def process_gaze_test_frame(
     media: Annotated[UploadFile, File()],
     attestations_json: Annotated[str, Form()],
     geometry_json: Annotated[str, Form()],
+    interaction_area_json: Annotated[str, Form()],
     attempt_id: Annotated[str, Form(min_length=36, max_length=36)],
     current_user: User = Depends(get_current_active_user),
 ):
     """Evaluate one temporary frame using this user's signed test calibration."""
-    if current_user.role != UserRole.SUPERUSER:
-        raise HTTPException(403, "Gaze tests are only available to superusers")
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(403, "Gaze tests are only available to administrators")
     from app.multimodal.calibration_attestation import verify_calibration_checkpoints
     try:
         attestations = json.loads(attestations_json)
         geometry = json.loads(geometry_json)
+        from app.media.patient_roi import parse_patient_roi_snapshots
+        interaction_area = parse_patient_roi_snapshots([json.loads(interaction_area_json)])[0]
     except (TypeError, ValueError) as error:
         raise HTTPException(422, "Invalid gaze test metadata") from error
     verified = verify_calibration_checkpoints(current_user.id, 0, attestations, attempt_id)
@@ -210,7 +214,7 @@ async def process_gaze_test_frame(
         with tempfile.NamedTemporaryFile(delete=False, prefix="virtual-patient-gaze-", suffix=".jpg") as handle:
             path = Path(handle.name)
             handle.write(content)
-        result = await process_calibration_video(path, LiveGazeMetadata(profile=verified["profile"]), "live-gaze")
+        result = await process_calibration_video(path, LiveGazeMetadata(profile=verified["profile"], interaction_area=interaction_area), "live-gaze")
         return {"state": result.get("state") if result.get("state") in {"inside", "outside"} else "indeterminate"}
     except Exception as error:
         logger.exception("Live gaze processing failed")
@@ -228,9 +232,9 @@ async def process_nonverbal_test(
     attempt_id: Annotated[str, Form(min_length=36, max_length=36)],
     current_user: User = Depends(get_current_active_user),
 ):
-    """Analyze a superuser's temporary capture without an interview or retained media."""
-    if current_user.role != UserRole.SUPERUSER:
-        raise HTTPException(403, "Nonverbal tests are only available to superusers")
+    """Analyze an administrator's temporary capture without an interview or retained media."""
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(403, "Nonverbal tests are only available to administrators")
     from jose import jwt, JWTError
     from app.core.config import settings
     from app.multimodal.calibration_attestation import AUDIENCE, sign_checkpoint, verify_calibration_checkpoints
@@ -372,13 +376,13 @@ async def process_calibration_stage(
     content_type = (media.content_type or "").split(";", 1)[0].lower()
     if hasattr(metadata, "experimental_quality_bypass"):
         experiment = db.get(MedicalInterviewDB, interview_id)
-        metadata.experimental_quality_bypass = bool(current_user.role == UserRole.SUPERUSER and resume_attempt_id is None
+        metadata.experimental_quality_bypass = bool(current_user.role == UserRole.ADMIN and resume_attempt_id is None
             and experiment is not None and experiment.user_id == current_user.id and experiment.start_time is None
             and (experiment.interview_metadata or {}).get("calibration_test") is True)
     if stage == "guided":
         from app.multimodal.calibration_attestation import verify_calibration_checkpoints
-        if current_user.role != UserRole.SUPERUSER:
-            raise HTTPException(403, "Guided checks are only available to superusers")
+        if current_user.role != UserRole.ADMIN:
+            raise HTTPException(403, "Guided checks are only available to administrators")
         interview = db.get(MedicalInterviewDB, interview_id)
         if interview is None or interview.user_id != current_user.id or not (interview.interview_metadata or {}).get("calibration_test"):
             raise HTTPException(404, "Calibration test not found")
@@ -462,6 +466,9 @@ async def process_calibration_stage(
             current_rss_mb(),
             json.dumps(safe_quality, sort_keys=True),
         )
+        perf_event("calibration", "checkpoint", phase="complete", status="success", duration_ms=elapsed_seconds * 1000,
+                   interview_id=interview_id, stage=stage, capture_duration_ms=duration_ms, upload_bytes=size_bytes,
+                   quality=safe_quality)
     except HTTPException:
         raise
     except Exception as error:
@@ -471,6 +478,8 @@ async def process_calibration_stage(
             "user_id=%s stage=%s capture_duration_ms=%s parent_rss_mb=%s",
             current_user.id, stage, duration_ms, current_rss_mb(),
         )
+        perf_event("calibration", "checkpoint", phase="failed", status="error", interview_id=interview_id,
+                   stage=stage, capture_duration_ms=duration_ms, error_type=type(error).__name__)
         raise HTTPException(503, "Calibration could not be saved; retry the original upload") from error
     finally:
         _delete_temp(temp_path)

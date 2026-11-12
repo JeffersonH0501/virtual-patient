@@ -1,7 +1,7 @@
 import {Dialog} from './Dialog';
 import {useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {gradingRequest} from '../../services/teacherGrading';
+import {gradingRequest} from '../../services/doctorGrading';
 import {Button} from './index';
 
 export const AdministrativeDeleteDialog = ({

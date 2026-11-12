@@ -25,7 +25,7 @@ const activeCapture = vi.hoisted(() => vi.fn(() => null));
 
 vi.mock('react-i18next', () => ({useTranslation: () => ({i18n: {}, t: (key: string) => key})}));
 vi.mock('../../contexts/interviewMedia', () => ({useInterviewMedia: () => media}));
-vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: 'superuser'}})}));
+vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: 'admin'}})}));
 vi.mock('../../services/interviews', () => api);
 vi.mock('../../services/interviews/calibration', () => ({processNonverbalTest: api.processNonverbalTest}));
 vi.mock('../../services/interviews/createInterview', () => ({createInterview: api.createInterview}));
@@ -37,16 +37,16 @@ vi.mock('../../hooks/useTechnicalCalibration', () => ({
     const [capture, setCapture] = useState<{stage: string; blob: Blob} | null>(null);
     return {
       media: capture, phase, reset: () => {
- setCapture(null); setPhase('idle');
-},
+        setCapture(null); setPhase('idle');
+      },
       cancel: () => {
- captureControl.cancel(); setPhase('error');
-},
+        captureControl.cancel(); setPhase('error');
+      },
       failureReason: 'capture_interrupted',
       start: (stage: string, metadata: Record<string, unknown>) => {
- captureControl.start(stage, metadata);
- setPhase(captureControl.hold ? 'gaze_targets' : 'complete'); if (!captureControl.hold) setCapture({stage, blob: new Blob([stage])});
-},
+        captureControl.start(stage, metadata);
+        setPhase(captureControl.hold ? 'gaze_targets' : 'complete'); if (!captureControl.hold) setCapture({stage, blob: new Blob([stage])});
+      },
     };
   },
 }));
@@ -69,8 +69,8 @@ vi.mock('./CalibrationWizard', () => ({
 }));
 
 afterEach(async () => {
- cleanup(); await Promise.resolve(); captureControl.hold = false; vi.clearAllMocks(); api.discardCalibrationDraft.mockReset().mockResolvedValue(undefined);
- media.cameraStream = null;
+  cleanup(); await Promise.resolve(); captureControl.hold = false; vi.clearAllMocks(); api.discardCalibrationDraft.mockReset().mockResolvedValue(undefined);
+  media.cameraStream = null;
 });
 
 it('opens the live gaze view only after successful test calibration', async () => {
@@ -123,7 +123,9 @@ it('waits for guided processing before showing the results', async () => {
   Object.assign(URL, {createObjectURL: vi.fn(() => 'blob:temporary'), revokeObjectURL: vi.fn()});
   api.createInterview.mockResolvedValue({id: 42});
   let finish!: (result: unknown) => void;
-  api.processNonverbalTest.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+  api.processNonverbalTest.mockImplementationOnce(() => new Promise((resolve) => {
+    finish = resolve;
+  }));
   render(<MemoryRouter initialEntries={[{pathname: '/interviews/calibration', state: {clinicalCaseId: 1, patientResponseLanguage: 'en', calibrationTest: true}}]}>
     <InterviewCalibration />
   </MemoryRouter>);
@@ -216,8 +218,8 @@ it('repeats only camera after a unified capture passes gaze', async () => {
 it('keeps device preparation visible until capture starts without an intermediate screen', async () => {
   let created!: (value: {id: number}) => void;
   api.createInterview.mockReturnValueOnce(new Promise((resolve) => {
- created = resolve;
-}));
+    created = resolve;
+  }));
   api.processCalibrationStage.mockReturnValue(new Promise(() => undefined));
   render(<MemoryRouter initialEntries={[{pathname: '/interviews/calibration', state: {clinicalCaseId: 1, patientResponseLanguage: 'en'}}]}>
     <Routes><Route path="/interviews/calibration" element={<InterviewCalibration />} /></Routes>
@@ -291,8 +293,8 @@ it('discards an unstarted draft on navigation without deleting during Strict Mod
 it('discards late draft creation after exit without starting capture', async () => {
   let created!: (value: {id: number}) => void;
   api.createInterview.mockReturnValueOnce(new Promise((resolve) => {
- created = resolve;
-}));
+    created = resolve;
+  }));
   renderCalibrationWithExit();
   fireEvent.click(screen.getByRole('button', {name: 'Prepare'}));
   await confirmCalibrationExit();
@@ -343,8 +345,8 @@ it('keeps the failure panel while retrying draft creation', async () => {
 it('does not start capture when draft creation completes after opening exit', async () => {
   let created!: (value: {id: number}) => void;
   api.createInterview.mockReturnValueOnce(new Promise((resolve) => {
- created = resolve;
-}));
+    created = resolve;
+  }));
   render(<MemoryRouter initialEntries={[{pathname: '/interviews/calibration', state: {clinicalCaseId: 1, patientResponseLanguage: 'en'}}]}>
     <Routes><Route path="/interviews/calibration" element={<InterviewCalibration />} /></Routes>
   </MemoryRouter>);
@@ -369,9 +371,9 @@ it('recalibrates the same started interview using only its authorized resume att
   render(<MemoryRouter initialEntries={[{pathname: '/interviews/calibration', state: {
     draftInterviewId: 7, resume: {resumeAttemptId: 'attempt', offsetMs: 60_000, pendingPatientMessageId: 12},
   }}]}><Routes>
-    <Route path="/interviews/calibration" element={<InterviewCalibration />} />
-    <Route path="/interviews/7/session" element={<h1>Resumed session</h1>} />
-  </Routes></MemoryRouter>);
+      <Route path="/interviews/calibration" element={<InterviewCalibration />} />
+      <Route path="/interviews/7/session" element={<h1>Resumed session</h1>} />
+    </Routes></MemoryRouter>);
   fireEvent.click(await screen.findByRole('button', {name: 'Prepare'}));
   fireEvent.click(await screen.findByRole('button', {name: 'Continue'}));
   await screen.findByRole('heading', {name: 'Resumed session'});

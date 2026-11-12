@@ -3,7 +3,7 @@ import pytest
 from app.models.medical_interview import MedicalInterviewDB
 from app.models.user import UserDB, UserRole
 from app.routers import clinical_cases
-from app.routers.tests.test_teacher_grading import grading_api, history_api, assign
+from app.routers.tests.test_doctor_grading import grading_api, history_api, assign
 
 
 @pytest.mark.parametrize('status', ['processing', 'completed'])
@@ -31,21 +31,18 @@ def test_owner_reads_full_localized_case_before_self_submission(grading_api, sta
     assert catalog.json()['chief_complaint'] is None
 
 
-def test_case_review_requires_assignment_or_ownership_and_current_organization(grading_api):
+def test_case_review_requires_assignment_or_ownership(grading_api):
     client, actor, db, interview_id, second_id = grading_api
-    actor.role = UserRole.TEACHER
+    actor.role = UserRole.DOCTOR
     path = f'/medical-interviews/{interview_id}/clinical-case'
     assert client.get(path).status_code == 404
     assign(client, actor, interview_id)
-    actor.role = UserRole.TEACHER
+    actor.role = UserRole.DOCTOR
     assert client.get(path).status_code == 200
     teacher_id = actor.id
     actor.id = second_id
     assert client.get(path).status_code == 404
     actor.id = teacher_id
-    db.get(UserDB, db.get(MedicalInterviewDB, interview_id).user_id).organization_id += 1
-    db.commit()
-    assert client.get(path).status_code == 404
 
 
 @pytest.mark.parametrize('status', ['in_progress', 'interrupted'])

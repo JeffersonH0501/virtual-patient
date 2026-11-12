@@ -2,6 +2,7 @@ import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {WelcomeSection} from '../Login/WelcomeSection';
 import {AuthForm} from './AuthForm';
+import {Footer} from '../common/Footer';
 
 export const AuthLayout = () => {
   const {i18n} = useTranslation();
@@ -19,6 +20,7 @@ export const AuthLayout = () => {
           <AuthForm mode={mode} onSwitchMode={() => setMode(mode === 'signin' ? 'signup' : 'signin')} />
         </section>
       </main>
+      <Footer />
     </div>
   );
 };

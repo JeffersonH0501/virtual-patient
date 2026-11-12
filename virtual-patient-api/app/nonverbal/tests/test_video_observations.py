@@ -43,6 +43,20 @@ def test_partial_feature_availability_is_preserved_per_turn():
     assert raw.gaze_observations[1]["valid"] is False
 
 
+def test_unobservable_face_and_closed_eyes_are_separate_outside_reasons():
+    from dataclasses import replace
+    samples = [replace(enriched(100, smile=False, gaze=False), gaze=GazeObservation(100, False, 'eyes_closed')),
+               replace(enriched(200, face=False, smile=False, gaze=False), gaze=GazeObservation(200, False, 'face_not_detected')),
+               replace(enriched(300, smile=False, gaze=False), gaze=GazeObservation(300, False, 'capture_quality'))]
+    raw = build_turn_raw_features(samples, TurnWindow('a', 0, 400, 'student'), calibration_profile={})
+    assert raw.gaze_semantic_observations == [
+        {'timestamp_ms': 100, 'state': 'OUTSIDE', 'reason': 'eyes_closed'},
+        {'timestamp_ms': 200, 'state': 'OUTSIDE', 'reason': 'face_not_detected'},
+        {'timestamp_ms': 300, 'state': 'UNAVAILABLE'},
+    ]
+    assert raw.smile_activation_samples == [] and raw.nod_count is None
+
+
 def test_invalid_historical_roi_leaves_alignment_unavailable_without_losing_smile():
     snapshots = [None]
     raw = build_turn_raw_features(

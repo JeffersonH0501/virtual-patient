@@ -47,8 +47,7 @@ def _require_owner(interview: MedicalInterviewDB, user: UserDB) -> None:
 def _require_replay_access(interview: MedicalInterviewDB, user: UserDB) -> None:
     if interview.user_id == user.id:
         return
-    owner_organization_id = interview.user.organization_id if interview.user else None
-    if user.role == UserRole.SUPERUSER and user.organization_id is not None and user.organization_id == owner_organization_id:
+    if user.role == UserRole.ADMIN:
         return
     state = inspect(interview, raiseerr=False)
     db = state.session if state is not None else None

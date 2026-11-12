@@ -114,7 +114,13 @@ def build_camera_reference(observations, metadata):
 
 def gaze_observation(shared, profile):
     eye=mediapipe_eye_observation(shared)
-    if not eye.valid: return eye
+    if not eye.valid:
+        if not image_usable(shared): return GazeObservation(shared.timestamp_ms,False,"capture_quality")
+        if not shared.face_valid and shared.reason == "face_not_detected":
+            if shared.frame_brightness_std < 5:
+                return GazeObservation(shared.timestamp_ms,False,"capture_quality")
+            return GazeObservation(shared.timestamp_ms,False,"face_not_detected")
+        return eye
     if not image_usable(shared): return GazeObservation(shared.timestamp_ms,False,"capture_quality")
     raw=np.asarray([eye.unclipped_x,eye.unclipped_y])
     try:
@@ -126,8 +132,10 @@ def gaze_observation(shared, profile):
         return GazeObservation(shared.timestamp_ms,False,"invalid_calibration")
 
 
-def gaze_screen_state(gaze):
-    if (not gaze.valid or gaze.unclipped_x is None or gaze.unclipped_y is None
-            or not np.isfinite([gaze.unclipped_x, gaze.unclipped_y]).all()):
-        return "indeterminate"
-    return "inside" if 0 <= gaze.unclipped_x <= 1 and 0 <= gaze.unclipped_y <= 1 else "outside"
+def gaze_interaction_state(gaze, profile, interaction_area):
+    from app.nonverbal.gaze_calibration import classify_interaction_gaze
+    if profile is not None and gaze.state in {"eyes_closed", "face_not_detected"}:
+        return "outside"
+    point = (gaze.unclipped_x, gaze.unclipped_y) if gaze.valid and gaze.unclipped_x is not None and gaze.unclipped_y is not None else None
+    state = classify_interaction_gaze(point, profile, interaction_area, camera_match=gaze.state == "mediapipe_camera")
+    return {"INSIDE": "inside", "OUTSIDE": "outside"}.get(state, "indeterminate")

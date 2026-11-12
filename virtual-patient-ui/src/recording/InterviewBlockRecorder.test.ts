@@ -100,7 +100,9 @@ it('excludes seventeen paused minutes from one minute of active recording', asyn
 
 it('keeps historical speech timestamps unchanged after a later network pause', async () => {
   vi.stubGlobal('MediaRecorder', Recorder);
-  vi.stubGlobal('MediaStream', vi.fn(function () { return {}; }));
+  vi.stubGlobal('MediaStream', vi.fn(function () {
+    return {};
+  }));
   let now = 100;
   vi.spyOn(performance, 'now').mockImplementation(() => now);
   const block = {id: 'block', state: 'capturing', chunks: 0, metadata: {}} as LocalInterviewBlock;

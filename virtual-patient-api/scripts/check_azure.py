@@ -15,6 +15,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from app.core.azure_openai import (  # noqa: E402
     EMBEDDING_DIMENSIONS,
     LLMVariant,
+    create_azure_openai_client,
     create_chat_model,
     create_embeddings,
     create_openai_client,
@@ -87,7 +88,12 @@ def check_tts() -> tuple[OpenAI, bytes]:
     return client, audio
 
 
-def check_stt(client: OpenAI, audio: bytes) -> None:
+def check_stt(audio: bytes) -> None:
+    # STT uses the deployment-based Azure client (versioned endpoint), exactly
+    # like the production provider (app/speech/azure_openai.py). The v1 client
+    # used for chat/TTS returns 404 DeploymentNotFound for transcriptions, so
+    # this check must use the same client the application actually uses.
+    client = create_azure_openai_client()
     audio_file = BytesIO(audio)
     audio_file.name = "azure-speech-check.mp3"
     transcription = client.audio.transcriptions.create(
@@ -134,14 +140,14 @@ def main() -> None:
         print("Azure TTS: OK")
         results.append(True)
 
-    if audio_client is None or audio_data is None:
+    if audio_data is None:
         print("Azure STT: BLOCKED (TTS did not provide test audio)")
         results.append(False)
     else:
         results.append(
             run_check(
                 "Azure STT",
-                lambda: check_stt(audio_client, audio_data),
+                lambda: check_stt(audio_data),
             )
         )
 

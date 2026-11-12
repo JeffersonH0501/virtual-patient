@@ -22,7 +22,6 @@ class ClinicalCaseDB(Base):
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)  # Description shown in UI
     case_type = Column(Enum(CaseType, name='case_type', values_callable=lambda obj: [e.value for e in obj]), nullable=False, default=CaseType.DEFAULT)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True)
     active = Column(Boolean, default=False)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=True)  # Only for custom cases
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -66,8 +65,6 @@ class ClinicalCaseDB(Base):
     female_name_translations = Column(JSON, nullable=True, default={})
     male_name_translations = Column(JSON, nullable=True, default={})
 
-    # Relationship to organization (only for custom cases)
-    organization = relationship("OrganizationDB", back_populates="clinical_cases")
     
     # Relationship to user who created the case (only for custom cases)
     creator = relationship("UserDB", foreign_keys=[created_by])
@@ -78,7 +75,6 @@ class ClinicalCaseBase(BaseModel):
     title: str
     description: str
     case_type: CaseType = CaseType.DEFAULT
-    organization_id: Optional[int] = None
     active: Optional[bool] = False
     created_by: Optional[int] = None  # Only for custom cases
     icon: Optional[str] = None
@@ -146,7 +142,6 @@ class ClinicalCaseSimplified(BaseModel):
     title: str
     description: str
     case_type: CaseType
-    organization_id: Optional[int] = None
     active: bool
     icon: Optional[str] = None
     age: Optional[int] = None
@@ -160,13 +155,3 @@ class ClinicalCaseSimplified(BaseModel):
     class Config:
         from_attributes = True
 
-class ClinicalCaseWithOrganization(ClinicalCase):
-    organization: Optional["Organization"] = None
-
-    class Config:
-        from_attributes = True
-
-# Import here to avoid circular imports
-from app.models.organization import Organization
-
-ClinicalCaseWithOrganization.model_rebuild() 

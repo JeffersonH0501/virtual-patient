@@ -103,6 +103,9 @@ class Database:
     def __init__(self, interview):
         self.interview = interview
         self.commit_count = 0
+        # SQLAlchemy Session exposes an ``info`` dict; ``lock_row`` reads
+        # ``capture_wait`` from it to decide whether to bound the lock wait.
+        self.info = {}
 
     def query(self, model):
         return Query(self.interview)

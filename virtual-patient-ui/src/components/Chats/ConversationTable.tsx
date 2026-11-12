@@ -4,7 +4,7 @@ import {useEffect, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {ListPanel, Pagination} from '../common';
 import {TableHeader} from '../common/Table/TableHeader';
-import {useSessionList} from '../../contexts/SessionLists';
+import {useSessionList} from '../../hooks/useSessionList';
 import {ConversationTableRow} from './ConversationTableRow';
 import {TableLoadingRows} from '../common/Table/TableLoadingState';
 import {deleteInterview} from '../../services/interviews';

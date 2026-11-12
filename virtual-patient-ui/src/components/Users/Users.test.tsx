@@ -1,13 +1,15 @@
 import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest';
 import {cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
-import {MemoryRouter} from 'react-router-dom';
+import {MemoryRouter, useLocation} from 'react-router-dom';
 import {Users} from './index';
 
 const mocks = vi.hoisted(() => ({
-  role: 'superuser',
+  role: 'admin',
   list: vi.fn(),
   create: vi.fn(),
   update: vi.fn(),
+  activity: vi.fn(),
+  survey: vi.fn(),
 }));
 const translate = (
   key: string,
@@ -16,7 +18,7 @@ const translate = (
   key === 'pagination.showingUsers'
     ? 'Mostrando ' + options?.from + '-' + options?.to + ' de ' + options?.total + ' usuarios'
     : key + (options?.name ? ' ' + options.name : options?.page ? ' ' + options.page : '');
-vi.mock('react-i18next', () => ({useTranslation: () => ({t: translate})}));
+vi.mock('react-i18next', () => ({useTranslation: () => ({t: translate, i18n: {resolvedLanguage: 'es'}})}));
 vi.mock('../../hooks/useUser', () => ({
   useUser: () => ({user: {role: mocks.role}, isLoading: false}),
 }));
@@ -24,6 +26,8 @@ vi.mock('../../services/users/manageUsers', () => ({
   listManagedUsers: mocks.list,
   createManagedUser: mocks.create,
   updateManagedUser: mocks.update,
+  getManagedActivity: mocks.activity,
+  getManagedSurvey: mocks.survey,
   MANAGED_USERS_PAGE_SIZE: 10,
 }));
 const account = {
@@ -48,16 +52,58 @@ const fill = (label: string, value: string) => {
   } else fireEvent.change(control, {target: {value}});
 };
 beforeEach(() => {
+  mocks.activity.mockReset().mockResolvedValue([{userId: 1, hasInterviews: false, hasSubmittedSurvey: false}]);
+  mocks.survey.mockReset().mockResolvedValue({answers: {'CUQ-01': 4}, comments: {CUQ: 'Useful'}, cuq_score: 75});
   mocks.list.mockReset().mockResolvedValue({users: [account], total: 1});
   mocks.create.mockReset().mockResolvedValue(account);
   mocks.update.mockReset().mockResolvedValue(account);
 });
 afterEach(() => {
   cleanup();
-  mocks.role = 'superuser';
+  mocks.role = 'admin';
 });
 
 describe('account administration', () => {
+  it('disables interview and survey actions when neither is available', async () => {
+    renderUsers();
+    await screen.findByText(account.email);
+    expect((screen.getByRole('button', {name: 'users.viewInterviews'}) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', {name: 'users.viewSurvey'}) as HTMLButtonElement).disabled).toBe(true);
+  });
+  it('shows academic details and enables interview navigation when available', async () => {
+    mocks.list.mockResolvedValue({users: [{...account, semesterRange: 'ninth_plus', university: 'Example University'}], total: 1});
+    mocks.activity.mockResolvedValue([{userId: 1, hasInterviews: true, hasSubmittedSurvey: false}]);
+    renderUsers();
+    await waitFor(() => expect((screen.getByRole('button', {name: 'users.viewInterviews'}) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(screen.getByRole('row', {name: 'users.editAccount Student'}));
+    expect((screen.getByLabelText('auth.university') as HTMLInputElement).value).toBe('Example University');
+    expect(screen.getByRole('combobox', {name: 'auth.semester'}).textContent).toContain('auth.semesterNinthPlus');
+    fireEvent.change(screen.getByLabelText('auth.university'), {target: {value: ' New University '}});
+    fireEvent.click(screen.getByRole('combobox', {name: 'auth.semester'}));
+    fireEvent.click(screen.getByRole('option', {name: 'auth.semesterFifthEighth'}));
+    fireEvent.click(screen.getByRole('button', {name: 'users.save'}));
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(1, {semester_range: 'fifth_eighth', university: 'New University'}));
+  });
+  it('opens submitted survey details without opening the user editor', async () => {
+    mocks.activity.mockResolvedValue([{userId: 1, hasInterviews: false, hasSubmittedSurvey: true}]);
+    renderUsers();
+    const button = await screen.findByRole('button', {name: 'users.viewSurvey'});
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    expect(await screen.findByText('Useful')).toBeDefined();
+    expect(mocks.survey).toHaveBeenCalledWith(1);
+    expect(screen.queryByLabelText('auth.password')).toBeNull();
+  });
+  it('opens the selected user interview filter', async () => {
+    mocks.activity.mockResolvedValue([{userId: 1, hasInterviews: true, hasSubmittedSurvey: false}]);
+    const Location = () => <output>{useLocation().search}</output>;
+    render(<MemoryRouter><Users /><Location /></MemoryRouter>);
+    const button = await screen.findByRole('button', {name: 'users.viewInterviews'});
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(button);
+    expect(screen.getByText('?user=1')).toBeDefined();
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
   it('creates a teacher with one password without replacing the administrator session', async () => {
     renderUsers();
     await screen.findByText(account.email);
@@ -68,14 +114,14 @@ describe('account administration', () => {
     fill('auth.password', 'password');
     expect(screen.getByRole('combobox', {name: 'auth.role'}).textContent).toContain('users.selectRole');
     expect((screen.getByRole('button', {name: 'users.createAction'}) as HTMLButtonElement).disabled).toBe(true);
-    fill('auth.role', 'teacher');
+    fill('auth.role', 'doctor');
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', {name: 'users.createAction'}));
     await waitFor(() =>
       expect(mocks.create).toHaveBeenCalledWith({
         name: 'Teacher',
         email: 'teacher@example.org',
         password: 'password',
-        role: 'teacher',
+        role: 'doctor',
       }),
     );
     await screen.findByText('users.created');
@@ -90,13 +136,13 @@ describe('account administration', () => {
     expect(screen.getByText('users.passwordHint')).toBeDefined();
     fill('auth.name', 'Updated');
     fill('auth.email', 'updated@example.org');
-    fill('auth.role', 'teacher');
+    fill('auth.role', 'doctor');
     fireEvent.click(screen.getByRole('button', {name: 'users.save'}));
     await waitFor(() =>
       expect(mocks.update).toHaveBeenCalledWith(1, {
         name: 'Updated',
         email: 'updated@example.org',
-        role: 'teacher',
+        role: 'doctor',
       }),
     );
     await screen.findByText('users.updated');
@@ -181,12 +227,13 @@ describe('account administration', () => {
     mocks.list.mockResolvedValueOnce({users: [], total: 0});
     renderUsers();
     await screen.findByText('users.empty');
+    expect(screen.getByRole('table').querySelector('tbody tr td')?.getAttribute('colspan')).toBe('5');
     expect(screen.getByText('Mostrando 0-0 de 0 usuarios')).toBeDefined();
     expect((screen.getByRole('button', {name: 'common.next'}) as HTMLButtonElement).disabled).toBe(
       true,
     );
   });
-  it.each(['student', 'teacher'])('does not load accounts for %s', (role) => {
+  it.each(['student', 'doctor'])('does not load accounts for %s', (role) => {
     mocks.role = role;
     renderUsers();
     expect(mocks.list).not.toHaveBeenCalled();
@@ -230,7 +277,7 @@ it('enables saving only for meaningful changes and disables again when reverted'
   fill('auth.email', 'STUDENT@example.org');
   expect(save().disabled).toBe(true);
   fill('auth.email', account.email);
-  fill('auth.role', 'teacher');
+  fill('auth.role', 'doctor');
   expect(save().disabled).toBe(false);
   fill('auth.role', 'student');
   expect(save().disabled).toBe(true);

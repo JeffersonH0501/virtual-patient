@@ -90,7 +90,7 @@ def insufficient_reference() -> FamilyLabel:
 #                      pause_time_ratio, median_pause_duration_ms,
 #                      pause_frequency_per_min
 # prosodic_variability: f0_p20_p80_range_semitones, loudness_p20_p80_range
-# gaze_orientation:  visual_alignment_ratio, median_visual_alignment_dwell_ms
+# gaze_orientation:  interaction_gaze_ratio
 # head_nods: nod_present, nod_rate_min, interaction_context
 # smile_activity: smile_activity_ratio, mean_smile_activation
 
@@ -428,7 +428,6 @@ def test_gaze_orientation_ordered_priority(config) -> None:
     base = nonverbal(
         gaze_orientation={
             "interaction_gaze_ratio": ok("interaction_gaze_outside"),
-            "median_visual_alignment_dwell_ms": ok("visual_dwell_brief"),
         }
     )
 
@@ -438,12 +437,11 @@ def test_gaze_orientation_ordered_priority(config) -> None:
 
 
 def test_gaze_orientation_fallback(config) -> None:
-    """Fallback: high alignment with typical dwell matches no rule -> fallback."""
+    """Fallback: an alignment value matching no rule -> fallback."""
 
     base = nonverbal(
         gaze_orientation={
             "interaction_gaze_ratio": ok("unknown"),
-            "median_visual_alignment_dwell_ms": ok("visual_dwell_typical"),
         }
     )
 
@@ -455,12 +453,11 @@ def test_gaze_orientation_fallback(config) -> None:
 
 
 def test_gaze_orientation_unavailable(config) -> None:
-    """Unavailable: both visual-orientation slots unavailable -> FEATURE_UNAVAILABLE."""
+    """Unavailable: the gaze-orientation slot unavailable -> FEATURE_UNAVAILABLE."""
 
     base = nonverbal(
         gaze_orientation={
             "interaction_gaze_ratio": unavailable(),
-            "median_visual_alignment_dwell_ms": unavailable(),
         }
     )
 

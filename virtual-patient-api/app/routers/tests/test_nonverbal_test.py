@@ -50,7 +50,7 @@ def test_test_uses_temporary_file_and_signed_checkpoints(monkeypatch):
             'camera_metadata': {'affine_matrix': matrix, 'geometry': geometry,
                 'geometry_stable': True, 'gaze_source': 'mediapipe_five_point_v1'}}, .1
     monkeypatch.setattr(calibration, '_run_timed_worker', AsyncMock(side_effect=worker))
-    response = upload(client(UserRole.SUPERUSER), metadata)
+    response = upload(client(UserRole.ADMIN), metadata)
     assert response.status_code == 200
     assert response.json()['result']['checkpoints']['camera']['attestation']
     assert not seen[0].exists()
@@ -79,7 +79,7 @@ def test_guided_capture_requires_checkpoints_for_the_same_attempt(monkeypatch):
     worker = AsyncMock(return_value=({'passed': True, 'guided_checks': {'phases': []}}, .1))
     monkeypatch.setattr(calibration, '_run_timed_worker', worker)
     def request(attempt_id):
-        return client(UserRole.SUPERUSER).post('/calibration/nonverbal-test', data={
+        return client(UserRole.ADMIN).post('/calibration/nonverbal-test', data={
             'stage': 'guided', 'attempt_id': attempt_id,
             'duration_ms': str(guided['guided_checks'][-1]['end_ms']),
             'metadata_json': json.dumps(guided),
@@ -100,7 +100,7 @@ def test_nod_and_smile_test_does_not_require_gaze_calibration(monkeypatch):
         'attestations': {}, 'profile': {'untrusted': True}}
     worker = AsyncMock(return_value=({'passed': True, 'guided_checks': {'phases': []}}, .1))
     monkeypatch.setattr(calibration, '_run_timed_worker', worker)
-    response = client(UserRole.SUPERUSER).post('/calibration/nonverbal-test', data={
+    response = client(UserRole.ADMIN).post('/calibration/nonverbal-test', data={
         'stage': 'guided', 'attempt_id': '12345678-1234-1234-1234-123456789012',
         'duration_ms': str(guided['guided_checks'][-1]['end_ms']), 'metadata_json': json.dumps(guided),
     }, files={'media': ('guided.webm', b'video', 'video/webm')})
@@ -123,20 +123,22 @@ def test_live_gaze_requires_matching_signed_calibration_and_discards_frame(monke
     tokens = {'gaze': sign_checkpoint(7, 0, 'gaze', gaze, gaze_metadata, attempt),
               'camera': sign_checkpoint(7, 0, 'camera', camera, camera_metadata, attempt)}
     paths = []
+    area = {'timestampMs': 0, 'xNormalized': .2, 'yNormalized': .1, 'widthNormalized': .6, 'heightNormalized': .7}
     async def process(path, parsed, stage):
         paths.append(path)
         assert path.read_bytes() == b'frame'
         assert parsed.profile['capture_geometry'] == geometry
+        assert parsed.interaction_area['x_normalized'] == .2
         assert stage == 'live-gaze'
         return {'state': 'inside'}
     monkeypatch.setattr(calibration, 'process_calibration_video', process)
     def request(role, current_geometry, current_attempt=attempt):
         return client(role).post('/calibration/gaze-test/frame', data={'attempt_id': current_attempt,
-            'attestations_json': json.dumps(tokens), 'geometry_json': json.dumps(current_geometry)},
+            'attestations_json': json.dumps(tokens), 'geometry_json': json.dumps(current_geometry), 'interaction_area_json': json.dumps(area)},
             files={'media': ('frame.jpg', b'frame', 'image/jpeg')})
     assert request(UserRole.STUDENT, geometry).status_code == 403
-    assert request(UserRole.SUPERUSER, {**geometry, 'viewport_width': 1}).status_code == 409
-    assert request(UserRole.SUPERUSER, geometry, '99999999-1234-1234-1234-123456789012').status_code == 422
-    response = request(UserRole.SUPERUSER, geometry)
+    assert request(UserRole.ADMIN, {**geometry, 'viewport_width': 1}).status_code == 409
+    assert request(UserRole.ADMIN, geometry, '99999999-1234-1234-1234-123456789012').status_code == 422
+    response = request(UserRole.ADMIN, geometry)
     assert response.status_code == 200 and response.json() == {'state': 'inside'}
     assert not paths[0].exists()

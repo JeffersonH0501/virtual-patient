@@ -19,14 +19,14 @@ export type NavigationSection = 'cases' | 'interviews' | 'users' | 'perception';
 
 /** Resolve one visible navigation tab, including interview detail routes. */
 export const getNavigationSection = (pathname: string, role?: string): NavigationSection => {
-  if (pathname === ROUTES.perceptionSurvey && role !== 'superuser') return 'perception';
+  if (pathname === ROUTES.perceptionSurvey && role !== 'admin') return 'perception';
   if (pathname === ROUTES.calibration || pathname === ROUTES.patientPreview) return 'cases';
   if (pathname === ROUTES.clinicalCases || pathname.startsWith(ROUTES.clinicalCases + '/')) return 'cases';
-  if (pathname === ROUTES.users && role === 'superuser') return 'users';
+  if (pathname === ROUTES.users && role === 'admin') return 'users';
   if (pathname === ROUTES.interviews || pathname.startsWith(ROUTES.interviews + '/')) {
     return 'interviews';
   }
-  return role === 'superuser' ? 'interviews' : 'cases';
+  return role === 'admin' ? 'interviews' : 'cases';
 };
 
 /** Case configuration carried to calibration before creating an interview draft. */

@@ -8,9 +8,9 @@ import enum
 
 # Enum for user roles
 class UserRole(str, enum.Enum):
-    TEACHER = "teacher"
+    DOCTOR = "doctor"
     STUDENT = "student"
-    SUPERUSER = "superuser"
+    ADMIN = "admin"
 
 # SQLAlchemy Model
 class UserDB(Base):
@@ -24,12 +24,12 @@ class UserDB(Base):
     hashed_password = Column(String)
     disabled = Column(Boolean, default=False)
     preferred_language = Column(String, default="es")
+    semester_range = Column(String(16), nullable=True)
+    university = Column(String(200), nullable=True)
     role = Column(Enum(UserRole, name='user_role', values_callable=lambda obj: [e.value for e in obj]), nullable=False, default=UserRole.STUDENT)
-    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=False, index=True)
 
     # Relationships
     medical_interviews = relationship("MedicalInterviewDB", back_populates="user")
-    organization = relationship("OrganizationDB")
 
 Name = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 # The registration form collects a single "Name" value, stored in the ``name``
@@ -50,7 +50,8 @@ class UserBase(EmailIdentity):
     disabled: Optional[bool] = None
     preferred_language: Optional[str] = "es"
     role: Optional[UserRole] = UserRole.STUDENT
-    organization_id: Optional[int] = None
+    semester_range: Optional[Literal["first_four", "fifth_eighth", "ninth_plus"]] = None
+    university: Optional[str] = None
 
 class UserCreate(EmailIdentity):
     """Fields accepted by the public registration endpoint."""
@@ -60,7 +61,9 @@ class UserCreate(EmailIdentity):
     email: EmailStr
     name: Name
     preferred_language: Optional[str] = "es"
-    role: Literal[UserRole.STUDENT, UserRole.TEACHER] = UserRole.STUDENT
+    role: Literal[UserRole.STUDENT, UserRole.DOCTOR] = UserRole.STUDENT
+    semester_range: Optional[Literal["first_four", "fifth_eighth", "ninth_plus"]] = None
+    university: Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]] = None
     password: str
 
     @field_validator("password")
@@ -72,20 +75,22 @@ class UserCreate(EmailIdentity):
 
 
 class AdminUserCreate(UserCreate):
-    """Account creation restricted to authenticated superusers."""
+    """Account creation restricted to authenticated administrators."""
 
-    role: Literal[UserRole.TEACHER, UserRole.STUDENT] = UserRole.STUDENT
+    role: Literal[UserRole.DOCTOR, UserRole.STUDENT] = UserRole.STUDENT
 
 
 class AdminUserUpdate(EmailIdentity):
-    """Partial account changes available only to organization superusers."""
+    """Partial account changes available only to administrators."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: Optional[Name] = None
     email: Optional[EmailStr] = None
-    role: Optional[Literal[UserRole.TEACHER, UserRole.STUDENT]] = None
+    role: Optional[Literal[UserRole.DOCTOR, UserRole.STUDENT]] = None
     password: Optional[str] = None
+    semester_range: Optional[Literal["first_four", "fifth_eighth", "ninth_plus"]] = None
+    university: Optional[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=200)]] = None
 
     @field_validator("name", "email", "role", "password", mode="before")
     @classmethod

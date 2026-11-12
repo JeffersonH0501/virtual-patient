@@ -43,7 +43,7 @@ export const PatientPreview = () => {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [ending, setEnding] = useState(false);
   const [startedAt, setStartedAt] = useState<number | null>(null);
-  const isSuperuser = user?.role === 'superuser';
+  const isSuperuser = user?.role === 'admin';
   const isConfigured = Boolean(isSuperuser && configuration?.clinicalCaseId
     && configuration.personalityId && configuration.gender);
   const {cameraStream, cameraState, microphoneStream, microphoneState, startCamera, startMicrophone, stopAll} = useInterviewMedia();

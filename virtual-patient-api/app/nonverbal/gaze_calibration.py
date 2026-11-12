@@ -15,8 +15,6 @@ MIN_TARGET_VALID_MS = 300.0
 MAX_MEDIAN_ERROR = .15
 MAX_P90_ERROR = .30
 MIN_CAMERA_VALID_MS = 1000.0
-CAMERA_RADIUS_NORMALIZED = .12
-PATIENT_MARGIN_RATIO = .10
 DWELL_GAP_TOLERANCE_MS = 150.0
 MAX_CALIBRATION_SAMPLE_GAP_MS = 150.0
 
@@ -69,25 +67,6 @@ def _valid_duration(observations: Sequence[GazeObservation], start: int, end: in
     if len(times) < 2:
         return 0.0
     return float(sum(min(times[i + 1] - times[i], MAX_CALIBRATION_SAMPLE_GAP_MS) for i in range(len(times) - 1)))
-
-
-def classify_gaze(point: tuple[float, float] | None, profile: dict | None, patient_roi: dict | None, *, camera_match: bool | None = None) -> str:
-    if point is None or profile is None:
-        return "UNAVAILABLE"
-    x, y = point
-    camera = profile.get("camera_reference_center")
-    if camera_match is True or camera_match is None and camera and hypot(x - camera[0], y - camera[1]) <= profile.get("camera_radius_normalized", CAMERA_RADIUS_NORMALIZED):
-        return "CAMERA"
-    if 0 <= x <= 1 and 0 <= y <= 1:
-        if patient_roi is None:
-            return "UNAVAILABLE"
-        if patient_roi:
-            margin_x = patient_roi["width_normalized"] * PATIENT_MARGIN_RATIO
-            margin_y = patient_roi["height_normalized"] * PATIENT_MARGIN_RATIO
-            if patient_roi["x_normalized"] - margin_x <= x <= patient_roi["x_normalized"] + patient_roi["width_normalized"] + margin_x and patient_roi["y_normalized"] - margin_y <= y <= patient_roi["y_normalized"] + patient_roi["height_normalized"] + margin_y:
-                return "PATIENT"
-        return "OTHER_INTERFACE"
-    return "AWAY_OR_OUTSIDE"
 
 
 def classify_interaction_gaze(point, profile, interaction_area, *, camera_match=False):

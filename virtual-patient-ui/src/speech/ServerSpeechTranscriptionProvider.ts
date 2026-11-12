@@ -43,6 +43,7 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
   constructor(
     private readonly callbacks: SpeechInputCallbacks,
     private readonly sharedStream: MediaStream | null = null,
+    private readonly interviewId?: number,
   ) {}
 
   start(language: string): void {
@@ -233,7 +234,7 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
     this.transcriptionQueue = this.transcriptionQueue
       .then(async () => {
         if (!this.active || captureGeneration !== this.captureGeneration) return;
-        const result = await transcribeStudentAudio(audio, filename, language);
+        const result = await transcribeStudentAudio(audio, filename, language, this.interviewId);
         if (
           !this.active
           || captureGeneration !== this.captureGeneration

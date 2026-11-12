@@ -58,20 +58,6 @@ class InterviewEvaluationController:
         
         return InterviewEvaluation.from_orm(evaluation)
     
-    def delete_evaluation(self, interview_id: int, condition: EvaluationCondition = EvaluationCondition.TEXT_ONLY) -> bool:
-        """Delete evaluation for an interview"""
-        evaluation = self.db.query(InterviewEvaluationDB).filter(
-            InterviewEvaluationDB.medical_interview_id == interview_id,
-            InterviewEvaluationDB.evaluation_condition == condition.value,
-        ).first()
-        
-        if not evaluation:
-            return False
-        
-        self.db.delete(evaluation)
-        self.db.commit()
-        return True
-    
     def calculate_overall_score(self, evaluation_results: List[EvaluationResult]) -> float:
         """Calculate overall score from individual evaluation results"""
         if not evaluation_results:

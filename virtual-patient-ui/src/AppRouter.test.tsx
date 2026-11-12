@@ -26,12 +26,12 @@ afterEach(() => {
 });
 
 it.each([
-  ['superuser', '/', null, '/cases'],
+  ['admin', '/', null, '/cases'],
   ['student', '/', null, '/cases'],
-  ['teacher', '/unknown', null, '/cases'],
+  ['doctor', '/unknown', null, '/cases'],
   ['student', '/interviews/42/calibration', null, '/cases'],
   ['student', '/cases/123', {id: 42}, '/interviews/42/session'],
-  ['teacher', '/', {id: 42}, '/interviews/42/session'],
+  ['doctor', '/', {id: 42}, '/interviews/42/session'],
   [null, '/unknown', null, '/welcome'],
 ])('routes %s from %s', async (role, entry, activeInterview, destination) => {
   session.user = role ? {role} : null;
@@ -41,5 +41,5 @@ it.each([
   render(<AppRouter />);
 
   await waitFor(() => expect(window.location.pathname).toBe(destination));
-  expect(getActiveInterview).toHaveBeenCalledTimes(role && role !== 'superuser' ? 1 : 0);
+  expect(getActiveInterview).toHaveBeenCalledTimes(role && role !== 'admin' ? 1 : 0);
 });

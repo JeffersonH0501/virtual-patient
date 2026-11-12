@@ -3,7 +3,7 @@ import {FC, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {CaseCard} from './CaseCard';
 import {ClinicalCasesLoading} from './ClinicalCasesLoading';
-import {useSessionList} from '../../contexts/SessionLists';
+import {useSessionList} from '../../hooks/useSessionList';
 import {useUser} from '../../hooks';
 import {PageHeader} from '../common/PageHeader';
 import {MotionHeight} from '../common/Motion';

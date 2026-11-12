@@ -29,6 +29,7 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
   const starting = useRef(false);
   const startAbort = useRef<AbortController | null>(null);
   const roi = useRef<Record<string, number>[]>([]);
+  const closingBlock = useRef(false);
   const invalidate = useCallback((code: string) => {
     blocked.current = code;
     setError(code); setPending(true); runtime.current?.pause();
@@ -49,7 +50,7 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
 
   const sampleRegion = useCallback(() => {
     const rect = document.querySelector<HTMLElement>('[data-interaction-area]')?.getBoundingClientRect();
-    if (!rect || !runtime.current || sealed.current) return;
+    if (!rect || !runtime.current || sealed.current || closingBlock.current) return;
     const region = {xNormalized: Math.max(0, rect.x) / innerWidth, yNormalized: Math.max(0, rect.y) / innerHeight,
       widthNormalized: Math.max(0, Math.min(innerWidth, rect.right) - Math.max(0, rect.x)) / innerWidth,
       heightNormalized: Math.max(0, Math.min(innerHeight, rect.bottom) - Math.max(0, rect.y)) / innerHeight};
@@ -57,7 +58,8 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
     const last = roi.current[roi.current.length - 1];
     if (last && Object.entries(region).every(([key, value]) => last[key] === value)) return;
     roi.current.push({timestampMs: runtime.current.elapsed(), ...region});
-  }, []);
+    void runtime.current.checkpoint({interaction_area_snapshots: [...roi.current]}).catch(failure);
+  }, [failure]);
 
   const newBlock = useCallback(async () => {
     const {interviewId, cameraStream, microphoneStream} = latest.current;
@@ -221,9 +223,11 @@ export const useBlockInterviewRecording = (options: UseInterviewRecordingOptions
         patient_playback: playbackStart == null ? null : {start_ms: playbackStart, end_ms: end},
         patient_audio_missing: written, patient_playback_complete: true, recovery: Boolean(latest.current.resumeAttemptId && !persisted.metadata.student_message_id),
         interaction_area_snapshots: roi.current, duration_ms: end};
+      closingBlock.current = true;
       const closed = await current.close(metadata);
       completedMs.current += closed.metadata.duration_ms!;
       runtime.current = null;
+      closingBlock.current = false;
       void blockUploadQueue(id, () => writer.current).enqueue(closed).catch(failure);
       if (!sealed.current) await newBlock();
     }).catch(failure);

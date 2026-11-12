@@ -14,6 +14,13 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
   const [patientSpeaking, setPatientSpeaking] = useState(false);
   const [volume, setVolume] = useState(1);
   const [audioUrls, setAudioUrls] = useState<Record<string, string>>({});
+  // Patient-audio sources whose blob failed to load or decode. Such a block's
+  // patient segment is skipped (treated as unavailable) instead of stalling or
+  // erroring the whole recap, so one bad clip never blocks the interview.
+  const [failedAudio, setFailedAudio] = useState<ReadonlySet<string>>(() => new Set());
+  const markAudioFailed = useCallback((source: string) => {
+    setFailedAudio((current) => current.has(source) ? current : new Set(current).add(source));
+  }, []);
   const audioCache = useRef(new Map<string, {controller: AbortController; url?: string}>());
   const [poster, setPoster] = useState<string | null>(null);
   const video = useRef<HTMLVideoElement>(null);
@@ -32,6 +39,8 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
   const student = block?.metadata.studentSpeech;
   const patientActive = Boolean(patient && local >= patient.startMs && local < patient.endMs);
   const activeId = patientActive ? block?.metadata.patientMessageId : block?.metadata.studentMessageId;
+  // A declared patient-audio source is only usable until its blob fails to load.
+  const patientAudioUsable = Boolean(block?.patientAudioSource && !failedAudio.has(block.patientAudioSource));
   const currentAudioSource = block?.patientAudioSource;
   const nextAudioSource = nextBlock?.patientAudioSource;
   if (selectedAudio.current.blockId !== block?.blockId || !playing) {
@@ -63,6 +72,9 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
           entry.url = url;
           setAudioUrls((current) => ({...current, [source]: url}));
         } catch (loadError) {
+          // A failed *preload* is only a lost optimization: the <audio> element
+          // can still load the source directly. Do not mark the source failed
+          // here; only an actual element error (onError) means it is unusable.
           if (!controller.signal.aborted) console.error('Patient audio preload failed', loadError);
         }
       })();
@@ -132,11 +144,16 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
     applied.current = seekRequest.requestId;
   }, [seekRequest, recap.turns, seek]);
   useEffect(() => {
-    if (playing && block && !block.studentVideoSource && !(patientActive && block.patientAudioSource)) {
+    // A block with no video and no usable patient audio has nothing to play at
+    // this position: surface a recoverable error (the user keeps the time and a
+    // play button) instead of inventing time. When the block HAS video, a failed
+    // patient audio is handled by muting that segment and advancing (the sync
+    // effects below no longer wait on an unusable audio source).
+    if (playing && block && !block.studentVideoSource && !(patientActive && patientAudioUsable)) {
       setError(true);
       setPlaying(false);
     }
-  }, [playing, block, patientActive]);
+  }, [playing, block, patientActive, patientAudioUsable]);
   useEffect(() => {
     if (!playing) {
       video.current?.pause(); audio.current?.pause(); return;
@@ -184,18 +201,18 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
     if (Math.abs(element.currentTime - position) > .15) element.currentTime = position;
     element.muted = !student || local < student.startMs || local >= student.endMs || patientActive;
     element.volume = volume;
-    if (waiting.current.video || (patientActive && block.patientAudioSource && (waiting.current.audio || !audio.current || audio.current.readyState < 2))) {
+    if (waiting.current.video || (patientActive && patientAudioUsable && (waiting.current.audio || !audio.current || audio.current.readyState < 2))) {
       element.pause(); audio.current?.pause(); return;
     }
     if (playing && element.readyState >= 2 && element.paused) {
       playMedia(element);
     }
-  }, [block, local, playing, volume, patientActive, student, mediaReady, playMedia]);
+  }, [block, local, playing, volume, patientActive, patientAudioUsable, student, mediaReady, playMedia]);
   useEffect(() => {
     const element = audio.current;
     if (!element) return;
     element.volume = volume;
-    if (!patient || !patientActive || !playing || !block?.patientAudioSource) {
+    if (!patient || !patientActive || !playing || !patientAudioUsable) {
       element.pause(); return;
     }
     if (waiting.current.audio || element.readyState < 2 || (block.studentVideoSource && (waiting.current.video || !video.current || video.current.readyState < 2 || video.current.seeking))) {
@@ -207,7 +224,7 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
     if (element.paused) {
       playMedia(element);
     }
-  }, [patientActive, patient, local, playing, volume, block, mediaReady, playMedia]);
+  }, [patientActive, patient, local, playing, volume, block, patientAudioUsable, mediaReady, playMedia]);
   useEffect(() => {
     const picture = video.current;
     const sound = audio.current;
@@ -225,11 +242,10 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
           if (time >= duration) {
             seek(0); setPlaying(true); return;
           }
-          if (!block?.studentVideoSource && !(patientActive && block?.patientAudioSource)) {
-            setError(true); return;
-          }
+          // A block with no video and no usable patient audio is not an error:
+          // pressing play lets the skip effect advance past it to the next media.
           if (video.current?.error) video.current.load();
-          if (audio.current?.error && block.patientAudioSource) audio.current.load();
+          if (audio.current?.error && block?.patientAudioSource) audio.current.load();
           setError(false);
           playingRef.current = true;
           if (video.current && !waiting.current.video && (!patientActive || !block.patientAudioSource || (audio.current && audio.current.readyState >= 2 && !waiting.current.audio))) playMedia(video.current);
@@ -287,8 +303,11 @@ export const useBlockPlayback = (recap: InterviewRecap, seekRequest?: {turnId: s
       if (patientActive) mediaWaiting('audio');
     },
     onError: () => {
-      if (playingRef.current && patientActive && block?.patientAudioSource) {
-        setError(true); setPlaying(false);
+      // A patient-audio element error marks that one source unusable so the skip
+      // effect advances past its segment, instead of wedging the whole recap.
+      if (block?.patientAudioSource) {
+        markAudioFailed(block.patientAudioSource);
+        waiting.current.audio = false;
       }
     },
   };

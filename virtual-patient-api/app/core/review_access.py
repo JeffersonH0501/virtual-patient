@@ -2,12 +2,12 @@
 from fastapi import HTTPException
 from app.models.user import UserDB, UserRole
 from app.models.clinical_case import ClinicalCaseSimplified
-from app.models.teacher_grading import TeacherAssignmentDB, TeacherRatingDB
+from app.models.doctor_grading import DoctorAssignmentDB, DoctorRatingDB
 from app.models.self_rating import SelfRatingDB
 
 
 def assignment_for(db, interview_id, user):
-    return db.query(TeacherAssignmentDB).filter_by(interview_id=interview_id, teacher_id=user.id).first()
+    return db.query(DoctorAssignmentDB).filter_by(interview_id=interview_id, doctor_id=user.id).first()
 
 
 def can_replay(db, interview, user):
@@ -16,17 +16,17 @@ def can_replay(db, interview, user):
     if interview.user_id == user.id:
         return True
     owner = db.get(UserDB, interview.user_id)
-    if not owner or user.organization_id is None or owner.organization_id != user.organization_id:
+    if not owner:
         return False
-    if user.role == UserRole.SUPERUSER:
+    if user.role == UserRole.ADMIN:
         return True
-    return user.role == UserRole.TEACHER and assignment_for(db, interview.id, user) is not None
+    return user.role == UserRole.DOCTOR and assignment_for(db, interview.id, user) is not None
 
 
 def can_read_assessments(db, interview, user):
     if not can_replay(db, interview, user):
         return False
-    if user.role == UserRole.SUPERUSER:
+    if user.role == UserRole.ADMIN:
         return True
     if interview.user_id == user.id:
         if interview.status == "in_progress":
@@ -34,8 +34,8 @@ def can_read_assessments(db, interview, user):
         rating = db.get(SelfRatingDB, interview.id)
         return bool(rating and rating.submitted_at)
     assignment = assignment_for(db, interview.id, user)
-    return bool(assignment and db.query(TeacherRatingDB).filter(
-        TeacherRatingDB.assignment_id == assignment.id, TeacherRatingDB.submitted_at.isnot(None),
+    return bool(assignment and db.query(DoctorRatingDB).filter(
+        DoctorRatingDB.assignment_id == assignment.id, DoctorRatingDB.submitted_at.isnot(None),
     ).first())
 
 
@@ -48,13 +48,13 @@ def redact_interview(db, interview, user, data):
     from app.controllers.interview_lifecycle import interview_lifecycle
     data["lifecycle"] = interview_lifecycle(interview, owner=interview.user_id == user.id)
     allowed = can_read_assessments(db, interview, user)
-    assignment = assignment_for(db, interview.id, user) if user.role == UserRole.TEACHER else None
+    assignment = assignment_for(db, interview.id, user) if user.role == UserRole.DOCTOR else None
     data["review_access"] = {"can_view_assessments": allowed, "assignment_id": assignment.id if assignment else None,
-                             "self_assessment_required": interview.user_id == user.id and user.role != UserRole.SUPERUSER and not allowed}
-    if user.role == UserRole.SUPERUSER:
+                             "self_assessment_required": interview.user_id == user.id and user.role != UserRole.ADMIN and not allowed}
+    if user.role == UserRole.ADMIN:
         owner = db.get(UserDB, interview.user_id)
-        data["review_access"]["can_assign_teachers"] = bool(owner and owner.role == UserRole.STUDENT and interview.status == "completed")
-    if user.role != UserRole.SUPERUSER:
+        data["review_access"]["can_assign_doctors"] = bool(owner and owner.role == UserRole.STUDENT and interview.status == "completed")
+    if user.role != UserRole.ADMIN:
         data["interview_evaluation"] = None
     if not allowed:
         for message in data.get("messages", []):
@@ -64,6 +64,6 @@ def redact_interview(db, interview, user, data):
         if interview.user_id == user.id:
             data["interview_metadata"] = {key: value for key, value in (interview.interview_metadata or {}).items()
                                           if key in ("calibration", "patient_response_language")}
-    if user.role != UserRole.SUPERUSER and interview.status != "completed" and data.get("clinical_case"):
+    if user.role != UserRole.ADMIN and interview.status != "completed" and data.get("clinical_case"):
         data["clinical_case"] = ClinicalCaseSimplified.model_validate(data["clinical_case"]).model_dump()
     return data

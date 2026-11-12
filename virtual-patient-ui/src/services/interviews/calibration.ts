@@ -38,12 +38,13 @@ export const warmUpCalibration = async (): Promise<void> => {
   if (!response.ok) throw new Error('Visual calibration warm-up failed');
 };
 
-export const processGazeTestFrame = async (media: Blob, attemptId: string, attestations: Record<string, string>, geometry: object, signal: AbortSignal): Promise<'inside' | 'outside' | 'indeterminate'> => {
+export const processGazeTestFrame = async (media: Blob, attemptId: string, attestations: Record<string, string>, geometry: object, interactionArea: object, signal: AbortSignal): Promise<'inside' | 'outside' | 'indeterminate'> => {
   const form = new FormData();
   form.append('media', media, 'frame.jpg');
   form.append('attempt_id', attemptId);
   form.append('attestations_json', JSON.stringify(attestations));
   form.append('geometry_json', JSON.stringify(transformToSnakeCase(geometry)));
+  form.append('interaction_area_json', JSON.stringify(interactionArea));
   const response = await apiFetch(`${API_URL}/calibration/gaze-test/frame`, {method: 'POST', headers: getAuthHeaders(), body: form, signal});
   if (!response.ok) throw Object.assign(new Error('Gaze test frame failed'), {status: response.status});
   const {state} = await response.json();

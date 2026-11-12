@@ -8,7 +8,7 @@ import en from '../../../i18n/locales/en.json';
 import es from '../../../i18n/locales/es.json';
 import {loadSurvey} from '../../../services/perceptionSurvey';
 
-const account = vi.hoisted(() => ({role: 'superuser'}));
+const account = vi.hoisted(() => ({role: 'admin'}));
 vi.mock('../../../hooks', () => ({useUser: () => ({user: account, signOut: vi.fn()})}));
 vi.mock('../Menu', () => ({Menu: () => null}));
 vi.mock('../HelpModal', () => ({HelpModal: () => null}));
@@ -30,8 +30,8 @@ it.each(['es', 'en'])('keeps role-specific navigation order and permissions in %
   const i18n = createInstance();
   await i18n.init({lng: language, resources: {en: {translation: en}, es: {translation: es}}});
   for (const [role, destinations] of [
-    ['superuser', ['/cases', '/interviews', '/users']],
-    ['teacher', ['/cases', '/interviews']],
+    ['admin', ['/cases', '/interviews', '/users']],
+    ['doctor', ['/cases', '/interviews']],
     ['student', ['/cases', '/interviews']],
   ] as const) {
     account.role = role;
@@ -39,7 +39,7 @@ it.each(['es', 'en'])('keeps role-specific navigation order and permissions in %
     const links = within(screen.getByRole('navigation')).getAllByRole('link');
     expect(links.map((link) => link.getAttribute('href'))).toEqual(destinations);
     expect(links[0].textContent).toBe(i18n.t('navigation.clinicalCases'));
-    if (role === 'superuser') {
+    if (role === 'admin') {
       expect(links[1].textContent).toBe(i18n.t('navigation.conversations'));
       expect(links[2].textContent).toBe(i18n.t('navigation.users'));
     }
@@ -49,22 +49,22 @@ it.each(['es', 'en'])('keeps role-specific navigation order and permissions in %
 
 it.each([
   ['student', '/cases', '/cases'],
-  ['teacher', '/cases', '/cases'],
-  ['superuser', '/cases', '/cases'],
+  ['doctor', '/cases', '/cases'],
+  ['admin', '/cases', '/cases'],
   ['student', '/interviews/calibration', '/cases'],
-  ['teacher', '/interviews/calibration', '/cases'],
-  ['superuser', '/interviews/session-preview', '/cases'],
-  ['superuser', '/cases/7', '/cases'],
+  ['doctor', '/interviews/calibration', '/cases'],
+  ['admin', '/interviews/session-preview', '/cases'],
+  ['admin', '/cases/7', '/cases'],
   ['student', '/interviews', '/interviews'],
-  ['teacher', '/interviews', '/interviews'],
-  ['superuser', '/interviews', '/interviews'],
+  ['doctor', '/interviews', '/interviews'],
+  ['admin', '/interviews', '/interviews'],
   ['student', '/interviews/example/review', '/interviews'],
-  ['teacher', '/interviews/example/review', '/interviews'],
-  ['superuser', '/interviews/example/review', '/interviews'],
+  ['doctor', '/interviews/example/review', '/interviews'],
+  ['admin', '/interviews/example/review', '/interviews'],
   ['student', '/interviews/example/session', '/interviews'],
-  ['teacher', '/interviews/example/session', '/interviews'],
-  ['superuser', '/interviews/example/session', '/interviews'],
-  ['superuser', '/users', '/users'],
+  ['doctor', '/interviews/example/session', '/interviews'],
+  ['admin', '/interviews/example/session', '/interviews'],
+  ['admin', '/users', '/users'],
 ])('marks exactly one tab for %s at %s', async (role, pathname, destination) => {
   account.role = role;
   const i18n = createInstance();
@@ -78,7 +78,7 @@ it.each([
 });
 
 it('keeps the interviews tab selected and returns to the unified list from a teacher review', async () => {
-  account.role = 'teacher';
+  account.role = 'doctor';
   const i18n = createInstance();
   await i18n.init({lng: 'es', resources: {es: {translation: es}}});
   render(<I18nextProvider i18n={i18n}><MemoryRouter initialEntries={[{pathname: '/interviews/example/review', state: {navigationSection: 'assignments'}}]}><Header /></MemoryRouter></I18nextProvider>);

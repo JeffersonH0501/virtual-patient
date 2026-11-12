@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   list: vi.fn(),
   metrics: vi.fn(),
   remove: vi.fn(),
-  role: 'superuser',
+  role: 'admin',
 }));
 const translate = (key: string, options?: {from?: number; to?: number; total?: number}) =>
   key === 'pagination.showing'
@@ -15,14 +15,13 @@ const translate = (key: string, options?: {from?: number; to?: number; total?: n
     : key;
 vi.mock('react-i18next', () => ({useTranslation: () => ({t: translate})}));
 vi.mock('../../hooks/useUser', () => ({
-  useUser: () => ({user: {id: 99, role: mocks.role, organizationId: 7}}),
+  useUser: () => ({user: {id: 99, role: mocks.role}}),
 }));
-vi.mock('../../services/interviews/getOrganizationInterviews', () => ({
-  getOrganizationInterviews: mocks.list,
+vi.mock('../../services/interviews/getAdminInterviews', () => ({
+  getAdminInterviews: mocks.list,
 }));
-vi.mock('../../services/teacherGrading', () => ({gradingRequest: vi.fn()}));
+vi.mock('../../services/doctorGrading', () => ({gradingRequest: vi.fn()}));
 vi.mock('../../services/interviews', () => ({deleteInterview: mocks.remove}));
-vi.mock('../../services/students/getStudentsMetrics', () => ({getStudentsMetrics: mocks.metrics}));
 const interview = {
   id: 42,
   publicId: 'opaque-token',
@@ -35,11 +34,10 @@ const interview = {
   status: 'completed',
   totalDuration: 60,
   evaluationScore: null,
-  teacherFeedback: [],
 };
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.role = 'superuser';
+  mocks.role = 'admin';
   mocks.remove.mockReset().mockResolvedValue(undefined);
   mocks.list.mockResolvedValue({interviews: [interview], total: 1});
   mocks.metrics.mockResolvedValue({
@@ -115,7 +113,7 @@ it('paginates by ten using the exact total and disables next on the final page',
     });
   open();
   await screen.findByText('Mostrando 1-10 de 11 entrevistas');
-  expect(mocks.list).toHaveBeenLastCalledWith('7', 0, 100);
+  expect(mocks.list).toHaveBeenLastCalledWith(0, 100);
   fireEvent.click(screen.getByRole('button', {name: 'common.next'}));
   await screen.findByText('Mostrando 11-11 de 11 entrevistas');
   expect(mocks.list).toHaveBeenCalledTimes(1);
@@ -189,7 +187,7 @@ it('blocks duplicate confirmation, cancellation and pagination during deletion',
 });
 
 it('redirects the former teacher listing to the unified interview list', async () => {
-  mocks.role = 'teacher';
+  mocks.role = 'doctor';
   const Destination = () => {
     const location = useLocation();
     return <p>{location.pathname + location.search}</p>;

@@ -73,15 +73,15 @@ afterEach(() => {
   fixtures.role = 'student';
 });
 
-it.each(['student', 'teacher', 'superuser'])('restricts evaluation regeneration to superusers for role %s', (role) => {
+it.each(['student', 'doctor', 'admin'])('restricts evaluation regeneration to superusers for role %s', (role) => {
   fixtures.role = role;
   render(<I18nextProvider i18n={i18n}><EvaluationResultsPanel evaluationData={makeData()} canRegenerate onRegenerate={vi.fn()} /></I18nextProvider>);
   const button = screen.queryByRole('button', {name: en.evaluation.regenerateEvaluation});
-  expect(Boolean(button)).toBe(role === 'superuser');
+  expect(Boolean(button)).toBe(role === 'admin');
 });
 
 it('marks stale evaluation only on its regeneration control and exposes the explanation on hover or focus', () => {
-  fixtures.role = 'superuser';
+  fixtures.role = 'admin';
   const {rerender} = render(<I18nextProvider i18n={i18n}><EvaluationResultsPanel evaluationData={makeData()} canRegenerate evaluationStale /></I18nextProvider>);
   const button = screen.getByRole('button', {name: en.evaluation.regenerateEvaluation});
   expect(button.classList.contains('ui-icon-button--warning')).toBe(true);
@@ -103,7 +103,7 @@ it('marks stale evaluation only on its regeneration control and exposes the expl
 });
 
 it('regenerates only after confirmation and leaves cancellation without effects', () => {
-  fixtures.role = 'superuser';
+  fixtures.role = 'admin';
   const regenerate = vi.fn();
   render(<I18nextProvider i18n={i18n}><EvaluationResultsPanel evaluationData={makeData()} canRegenerate onRegenerate={regenerate} /></I18nextProvider>);
   fireEvent.click(screen.getByRole('button', {name: en.evaluation.regenerateEvaluation}));
@@ -118,7 +118,7 @@ it('regenerates only after confirmation and leaves cancellation without effects'
 });
 
 it('runs only the selected operation from the shared refresh control', () => {
-  fixtures.role = 'superuser';
+  fixtures.role = 'admin';
   const regenerate = vi.fn();
   const reprocess = vi.fn();
   render(<I18nextProvider i18n={i18n}>
@@ -315,7 +315,7 @@ describe('Evaluation condition selector', () => {
 
 });
 
-it.each(['student', 'teacher', 'superuser'])('shows the case comparison inside the completeness criteria for %s', (role) => {
+it.each(['student', 'doctor', 'admin'])('shows the case comparison inside the completeness criteria for %s', (role) => {
   fixtures.role = role;
   const data = makeData();
   data.interview.hypotheses = [{id: 1, interviewId: 7, hypothesisText: 'Synthetic hypothesis', hypothesisOrder: 1}];

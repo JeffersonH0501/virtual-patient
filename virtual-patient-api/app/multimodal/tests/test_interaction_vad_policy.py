@@ -21,8 +21,8 @@ def test_valid_f0_is_not_blocked_by_missing_loudness_reference():
     assert result.prosodic_variability.value == 'reduced_f0_variability'
 
 
-def test_zero_pause_count_has_priority_over_rate():
+def test_rate_is_preserved_when_no_pause_is_reportable():
     config = load_methodology_config()
     values = ParaverbalProcessedFeatures(pause_count=0, pause_time_ratio=0, speech_rate_wpm=200)
     base = compute_paraverbal_base_labels(values, config, baseline_available=True, session_refs=None)
-    assert integrate_paraverbal_labels(base, config).speech_timing.value == 'no_reportable_pauses'
+    assert integrate_paraverbal_labels(base, config).speech_timing.value == 'fast_speech_few_pauses'

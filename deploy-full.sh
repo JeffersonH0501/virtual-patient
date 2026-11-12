@@ -24,7 +24,7 @@ validate_configuration() {
   local key value
   local required=(
     POSTGRES_PASSWORD SECRET_KEY AZURE_OPENAI_API_KEY AZURE_OPENAI_ENDPOINT
-    SUPERUSER_EMAIL SUPERUSER_NAME SUPERUSER_PASSWORD
+    ADMIN_EMAIL ADMIN_NAME ADMIN_PASSWORD
     AZURE_OPENAI_LLM_DEPLOYMENT_NAME AZURE_OPENAI_LLM_MINI_DEPLOYMENT_NAME
     AZURE_OPENAI_STT_DEPLOYMENT_NAME AZURE_OPENAI_TTS_DEPLOYMENT_NAME
     AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME
@@ -33,6 +33,9 @@ validate_configuration() {
 
   for key in "${required[@]}"; do
     value="$(env_value "$key")"
+    if [[ -z "$value" && "$key" == ADMIN_* ]]; then
+      value="$(env_value "SUPERUSER_${key#ADMIN_}")"
+    fi
     if [[ -z "$value" || "$value" == *change-me* ]]; then
       echo "Set a real value for $key in $ENV_FILE" >&2
       exit 1
@@ -40,7 +43,7 @@ validate_configuration() {
   done
 
   local deployment_file
-  for deployment_file in config/deployment.json config/secrets/video-processing-worker-token.txt; do
+  for deployment_file in config/deployment.json config/secrets/media-processing-worker-token.txt; do
     if [[ ! -s "$ROOT_DIR/$deployment_file" ]]; then
       echo "Missing or empty deployment file: $deployment_file" >&2
       exit 1
@@ -79,12 +82,12 @@ case "$action" in
     validate_configuration
     compose up -d --build postgres
     compose --profile tools run --rm setup
-    compose up -d --build api video-processing-worker ui
+    compose up -d --build api media-processing-worker ui
     verify
     ;;
   up)
     validate_configuration
-    compose up -d postgres api video-processing-worker ui
+    compose up -d postgres api media-processing-worker ui
     verify
     ;;
   verify)
@@ -93,7 +96,7 @@ case "$action" in
     ;;
   restart)
     validate_configuration
-    compose up -d --build --force-recreate api video-processing-worker ui
+    compose up -d --build --force-recreate api media-processing-worker ui
     verify
     ;;
   status)

@@ -73,23 +73,3 @@ class MessageController:
         if message:
             return InterviewMessage.model_validate(message)
         return None
-    
-    def get_conversation_history(self, interview_id: int, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        """Get conversation history formatted for GPT context"""
-        messages = self.get_interview_messages(interview_id, limit)
-        
-        history = []
-        for message in messages:
-            history.append({
-                "role": SenderType.USER if message.sender_type == SenderType.USER else SenderType.CHATBOT,
-                "content": message.content,
-                "created_at": message.created_at.isoformat(),
-            })
-        
-        return history
-    
-    
-    def validate_interview_exists(self, interview_id: str) -> bool:
-        """Validate that the interview exists"""
-        interview = self.db.query(MedicalInterviewDB).filter(MedicalInterviewDB.id == interview_id).first()
-        return interview is not None

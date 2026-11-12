@@ -10,7 +10,7 @@ from app.models.calibration_capture import CalibrationCaptureDB
 from app.models.medical_interview import MedicalInterviewDB
 from app.models.medical_interview import InterviewStatus, TurnVideoAnalysisDB
 from app.models.processing_job import InterviewProcessingJobDB
-from app.models.teacher_grading import TeacherAssignmentDB
+from app.models.doctor_grading import DoctorAssignmentDB
 
 logger = logging.getLogger(__name__)
 CALIBRATION_DRAFT_TTL = timedelta(hours=1)
@@ -31,12 +31,12 @@ def cleanup_abandoned_interview_drafts(db, *, dry_run=True, now=None):
             if (interview is None or interview.start_time is not None or interview.status != InterviewStatus.IN_PROGRESS
                     or interview.recording is not None or interview.messages or interview.turns or interview.hypotheses
                     or interview.session_notes or interview.interview_evaluations or interview.progress_summary is not None
-                    or interview.teacher_feedback):
+                    or interview.doctor_feedback):
                 continue
             metadata = interview.interview_metadata or {}
             if metadata.get("calibration_test") is True or interview.created_at is None:
                 continue
-            if (db.query(TeacherAssignmentDB).filter_by(interview_id=identifier).first()
+            if (db.query(DoctorAssignmentDB).filter_by(interview_id=identifier).first()
                     or db.query(InterviewProcessingJobDB).filter_by(medical_interview_id=identifier).first()
                     or db.query(TurnVideoAnalysisDB).filter_by(medical_interview_id=identifier).first()):
                 continue
@@ -55,7 +55,7 @@ def cleanup_abandoned_interview_drafts(db, *, dry_run=True, now=None):
                 interview = lock_row(db, MedicalInterviewDB, identifier)
                 if (interview is None or interview.start_time is not None or interview.recording is not None
                         or interview.messages or interview.turns or interview.hypotheses or interview.session_notes
-                        or interview.interview_evaluations or interview.progress_summary is not None or interview.teacher_feedback):
+                        or interview.interview_evaluations or interview.progress_summary is not None or interview.doctor_feedback):
                     continue
                 delete_parent(db, interview, "interview")
             removed += 1

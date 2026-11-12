@@ -394,8 +394,8 @@ def main() -> None:
                 "nod_count": nv.get("nod_count"), "nod_rate_min": nv.get("nod_rate_min"),
                 "smile_activity_ratio": nv.get("smile_activity_ratio"),
                 "mean_smile_activation": nv.get("mean_smile_activation"),
-                "visual_alignment_ratio": nv.get("visual_alignment_ratio"),
-                "median_visual_alignment_dwell_ms": nv.get("median_visual_alignment_dwell_ms"),
+                "interaction_gaze_ratio": nv.get("interaction_gaze_ratio"),
+                "median_interaction_dwell_ms": nv.get("median_interaction_dwell_ms"),
             })
         wall_seconds = (perf_counter() - benchmark_started)
         cpu_ended = os.times()

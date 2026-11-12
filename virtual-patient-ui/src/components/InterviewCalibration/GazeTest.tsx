@@ -10,6 +10,7 @@ type Props = {stream: MediaStream; attemptId: string; gazeToken: string; cameraT
 export const GazeTest = ({stream, attemptId, gazeToken, cameraToken, geometry, onRestart, onExit}: Props) => {
   const {t} = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
+  const areaRef = useRef<HTMLDivElement>(null);
   const [state, setState] = useState<'inside' | 'outside' | 'indeterminate'>('indeterminate');
   const [changed, setChanged] = useState(false);
 
@@ -52,7 +53,13 @@ export const GazeTest = ({stream, attemptId, gazeToken, cameraToken, geometry, o
             stale = window.setTimeout(() => setState('indeterminate'), 3000);
             deadline = window.setTimeout(() => controller?.abort(), 15000);
             try {
-              const next = await processGazeTestFrame(blob, attemptId, {gaze: gazeToken, camera: cameraToken}, geometry, controller.signal);
+              const rect = areaRef.current?.getBoundingClientRect();
+              if (!rect || rect.width <= 0 || rect.height <= 0) throw new Error('Interaction area unavailable');
+              const interactionArea = {timestampMs: 0, xNormalized: Math.max(0, rect.x) / innerWidth,
+                yNormalized: Math.max(0, rect.y) / innerHeight,
+                widthNormalized: (Math.min(innerWidth, rect.right) - Math.max(0, rect.x)) / innerWidth,
+                heightNormalized: (Math.min(innerHeight, rect.bottom) - Math.max(0, rect.y)) / innerHeight};
+              const next = await processGazeTestFrame(blob, attemptId, {gaze: gazeToken, camera: cameraToken}, geometry, interactionArea, controller.signal);
               if (!stopped) setState(performance.now() - startedAt <= 3000 ? next : 'indeterminate');
             } catch (error) {
               if (!stopped) {
@@ -89,7 +96,10 @@ export const GazeTest = ({stream, attemptId, gazeToken, cameraToken, geometry, o
     <p role="status" aria-live="polite">{t(`calibration.gazeTest.${state}`)}</p>
     <p>{t('calibration.gazeTest.notice')}</p>
     {changed && <p role="alert">{t('calibration.gazeTest.recalibrate')}</p>}
-    <video ref={videoRef} autoPlay muted playsInline className="mx-auto w-full max-w-md" aria-label={t('calibration.gazeTest.camera')} />
+    <div ref={areaRef} className="mx-auto w-full max-w-md border-2 border-white p-inset">
+      <p>{t('calibration.gazeTest.area')}</p>
+      <video ref={videoRef} autoPlay muted playsInline className="mx-auto w-full" aria-label={t('calibration.gazeTest.camera')} />
+    </div>
     <div className="ui-button-group"><Button onClick={onRestart}>{t('calibration.restartCalibration')}</Button><Button variant="secondary" onClick={onExit}>{t('calibration.exitTitle')}</Button></div>
   </div>;
 };

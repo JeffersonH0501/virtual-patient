@@ -30,6 +30,7 @@ from app.models.medical_interview import (
 )
 from app.models.medical_interview.interview_recording import InterviewRecordingSegmentDB
 from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.utils.perf import perf_event
 
 logger = logging.getLogger(__name__)
 _RESULT_PREFIX = "__TURN_VIDEO_RESULT__ "
@@ -337,6 +338,10 @@ def _process_job(
             (perf_counter() - processing_started) * 1000, duration_ms, len(observations),
             json.dumps(timings_ms, sort_keys=True), process_id(), current_rss_mb(),
         )
+        perf_event("turn_video", "analysis", phase="complete", status="success",
+                   duration_ms=(perf_counter() - processing_started) * 1000,
+                   interview_id=job.medical_interview_id, turn_id=job.turn_id, job_id=job.id,
+                   queue_wait_ms=queue_wait_ms, sampled_frames=len(observations), timings_ms=timings_ms)
         return "completed"
     except Exception as error:  # noqa: BLE001 - failure is durable and later turns continue.
         db.rollback()
@@ -354,6 +359,10 @@ def _process_job(
             job_id, (perf_counter() - processing_started) * 1000,
             json.dumps(timings_ms, sort_keys=True), process_id(), current_rss_mb(),
         )
+        if job is not None:
+            perf_event("turn_video", "analysis", phase="failed", status="error",
+                       duration_ms=(perf_counter() - processing_started) * 1000,
+                       interview_id=job.medical_interview_id, turn_id=job.turn_id, job_id=job.id)
         return "failed"
     finally:
         if temporary is not None:

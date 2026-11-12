@@ -1,6 +1,6 @@
 import {useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
-import {gradingRequest, Workspace} from '../../services/teacherGrading';
+import {gradingRequest, Workspace} from '../../services/doctorGrading';
 import {Button, Field} from '../common';
 import {Badge} from '../common/Badge';
 import {MotionHeight} from '../common/Motion';
@@ -31,7 +31,7 @@ export const HumanRatingPanel = ({
   onSubmitted: () => void | Promise<void>;
 }) => {
   const {t} = useTranslation();
-  const workspacePath = selfInterviewId === undefined ? '/teacher-assignments/' + assignmentId
+  const workspacePath = selfInterviewId === undefined ? '/doctor-assignments/' + assignmentId
     : '/medical-interviews/' + selfInterviewId + '/self-rating';
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [values, setValues] = useState<Record<string, {score: string; feedback: string}>>({});

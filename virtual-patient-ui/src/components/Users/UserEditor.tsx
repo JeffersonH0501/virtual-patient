@@ -9,6 +9,7 @@ import {
   updateManagedUser,
 } from '../../services/users/manageUsers';
 import {Button, Field, Select} from '../common';
+import {SemesterSelect} from '../Auth/SemesterSelect';
 
 type UserEditorProps = {account?: User; onClose: () => void; onSaved: (created: boolean) => void};
 
@@ -17,10 +18,12 @@ export const UserEditor = ({account, onClose, onSaved}: UserEditorProps) => {
   const [form, setForm] = useState<Omit<ManagedUserPayload, 'role'> & {role: ManagedUserPayload['role'] | ''}>({
     name: account?.name ?? '',
     email: account?.email ?? '',
-    role: account?.role === 'teacher' ? 'teacher' : account ? 'student' : '',
+    role: account?.role === 'doctor' ? 'doctor' : account ? 'student' : '',
     password: '',
   });
   const [busy, setBusy] = useState(false);
+  const [semester, setSemester] = useState<NonNullable<User['semesterRange']> | ''>(account?.semesterRange ?? '');
+  const [university, setUniversity] = useState(account?.university ?? '');
   const submitting = useRef(false);
   const [error, setError] = useState('');
   const name = form.name.trim();
@@ -28,8 +31,9 @@ export const UserEditor = ({account, onClose, onSaved}: UserEditorProps) => {
   const nameChanged = Boolean(account && name !== account.name.trim());
   const emailChanged = Boolean(account && email !== account.email.trim().toLowerCase());
   const roleChanged = Boolean(account && form.role !== account.role);
+  const academicChanged = form.role === 'student' && (semester !== (account?.semesterRange ?? '') || university.trim() !== (account?.university ?? ''));
   const hasChanges =
-    !account || nameChanged || emailChanged || roleChanged || form.password.length > 0;
+    !account || nameChanged || emailChanged || roleChanged || academicChanged || form.password.length > 0;
   const passwordValid = Boolean(form.password.trim()) || Boolean(account && form.password === '');
   const valid = Boolean(form.role && name && /^[^\s@]+@[^\s@]+$/.test(email) && passwordValid);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
@@ -46,9 +50,15 @@ export const UserEditor = ({account, onClose, onSaved}: UserEditorProps) => {
         if (nameChanged) changes.name = name;
         if (emailChanged) changes.email = email;
         if (roleChanged) changes.role = role;
+        if (role === 'student' && semester !== (account.semesterRange ?? '')) changes.semester_range = semester || null;
+        if (role === 'student' && university.trim() !== (account.university ?? '')) changes.university = university.trim() || null;
         if (form.password) changes.password = form.password;
         await updateManagedUser(account.id, changes);
-      } else await createManagedUser({...payload, password: form.password});
+      } else {
+        await createManagedUser({...payload, password: form.password, ...(role === 'student' ? {
+          ...(semester ? {semester_range: semester} : {}), ...(university.trim() ? {university: university.trim()} : {}),
+        } : {})});
+      }
       setForm((current) => ({...current, password: ''}));
       onSaved(!account);
     } catch (failure: unknown) {
@@ -97,21 +107,26 @@ export const UserEditor = ({account, onClose, onSaved}: UserEditorProps) => {
         disabled={busy}
         onChange={(event) => setForm({...form, email: event.target.value})}
       />
-      <div className="ui-field">
-        <label htmlFor="user-role">{t('auth.role')}</label>
-        <Select
-          id="user-role"
-          label={t('auth.role')}
-          placeholder={t('users.selectRole')}
-          value={form.role}
-          disabled={busy}
-          onValueChange={(value) => setForm({...form, role: value as ManagedUserPayload['role']})}
-          options={[
-            {value: 'student', label: t('auth.student')},
-            {value: 'teacher', label: t('auth.teacher')},
-          ]}
-        />
+      <div className={form.role === 'student' ? 'grid grid-cols-1 gap-layout sm:grid-cols-2' : undefined}>
+        <div className="ui-field">
+          <label htmlFor="user-role">{t('auth.role')}</label>
+          <Select
+            id="user-role"
+            label={t('auth.role')}
+            placeholder={t('users.selectRole')}
+            value={form.role}
+            disabled={busy}
+            onValueChange={(value) => setForm({...form, role: value as ManagedUserPayload['role']})}
+            options={[
+              {value: 'student', label: t('auth.student')},
+              {value: 'doctor', label: t('auth.doctor')},
+            ]}
+          />
+        </div>
+        {form.role === 'student' && <SemesterSelect id="user-semester" value={semester} onChange={setSemester} disabled={busy} />}
       </div>
+      {form.role === 'student' && <Field id="user-university" name="university" label={t('auth.university')}
+        value={university} onChange={(event) => setUniversity(event.target.value)} disabled={busy} maxLength={200} />}
       <Field
         id="user-password"
         name="password"

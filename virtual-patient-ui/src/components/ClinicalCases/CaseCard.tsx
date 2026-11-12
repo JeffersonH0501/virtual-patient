@@ -22,7 +22,7 @@ export const CaseCard: FC<CaseCardProps> = ({clinicalCase, caseIndex, expanded, 
   const [hasOpened, setHasOpened] = useState(expanded);
   const displayNumber = caseIndex.toString().padStart(2, '0');
   const panelId = `case-configuration-${clinicalCase.id}`;
-  const isSuperuser = user?.role === 'superuser';
+  const isSuperuser = user?.role === 'admin';
   const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {

@@ -12,7 +12,11 @@ from app.nonverbal.ccdbhg import analyze_nods, NodAnalysis, TARGET_STEP_MS
 
 
 def analyze_guided_checks(observations, intervals, profile, *, environment=None, geometry=None,
-                          protocol="guided_checks_v4_orientation", camera_result=None):
+                          protocol="guided_checks_v4_orientation", camera_result=None, sample_fps=10.0):
+    source_rates = [item.shared.source_fps for item in observations if getattr(item.shared, 'source_fps', None)]
+    effective_fps = min(sample_fps, min(source_rates)) if source_rates else sample_fps
+    if not np.isfinite(effective_fps) or effective_fps <= 0:
+        raise ValueError('Sampling rate must be finite and positive')
     nod_analysis = NodAnalysis((), False, "insufficient_signal")
     if any(item.kind in {"gaze_nod", "nod_still", "nod_three", "head_shake"} for item in intervals):
         try:
@@ -24,7 +28,7 @@ def analyze_guided_checks(observations, intervals, profile, *, environment=None,
     for interval in intervals:
         selected = [item for item in observations
                     if interval.observation_start_ms <= item.shared.timestamp_ms < interval.end_ms]
-        expected = (interval.end_ms - interval.observation_start_ms) / 100
+        expected = (interval.end_ms - interval.observation_start_ms) * effective_fps / 1000
         target = None
         smiles, errors, samples = [], [], []
         gaze_valid = 0

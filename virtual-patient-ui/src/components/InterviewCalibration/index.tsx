@@ -29,8 +29,8 @@ export const InterviewCalibration = () => {
   const resume = state && 'draftInterviewId' in state ? state.resume : undefined;
   const existingId = state && 'draftInterviewId' in state ? state.draftInterviewId : null;
   const routeConfig = state && 'clinicalCaseId' in state ? state : null;
-  const nonverbalTest = routeConfig?.calibrationTest === true && user?.role === 'superuser';
-  const gazeTest = routeConfig?.gazeTest === true && user?.role === 'superuser';
+  const nonverbalTest = routeConfig?.calibrationTest === true && user?.role === 'admin';
+  const gazeTest = routeConfig?.gazeTest === true && user?.role === 'admin';
   const calibrationTest = nonverbalTest || gazeTest;
   const media = useInterviewMedia();
   const calibration = useTechnicalCalibration(media.microphoneStream, media.cameraStream);
@@ -39,7 +39,9 @@ export const InterviewCalibration = () => {
   const draftRequestIdRef = useRef<string | null>(null);
   const testAttemptRef = useRef<string | null>(null);
   const [testVideoUrl, setTestVideoUrl] = useState<string | null>(null);
-  useEffect(() => () => { if (testVideoUrl) URL.revokeObjectURL(testVideoUrl); }, [testVideoUrl]);
+  useEffect(() => () => {
+    if (testVideoUrl) URL.revokeObjectURL(testVideoUrl);
+  }, [testVideoUrl]);
   const calibrationSavedRef = useRef(false);
   const mountedRef = useRef(false);
   const handedOffRef = useRef(false);
@@ -56,16 +58,16 @@ export const InterviewCalibration = () => {
   useEffect(() => {
     mountedRef.current = true;
     const discardOnLeave = () => {
- if (!resume) void discardDraft().catch(() => undefined);
-};
+      if (!resume) void discardDraft().catch(() => undefined);
+    };
     window.addEventListener('pagehide', discardOnLeave);
     return () => {
       mountedRef.current = false;
       window.removeEventListener('pagehide', discardOnLeave);
       // A Strict Mode effect replay remounts before this microtask runs.
       queueMicrotask(() => {
- if (!mountedRef.current) discardOnLeave();
-});
+        if (!mountedRef.current) discardOnLeave();
+      });
     };
   }, [discardDraft, resume]);
   const processedMediaRef = useRef<Blob | null>(null);
@@ -101,21 +103,21 @@ export const InterviewCalibration = () => {
     let current = true;
     void getInterview(String(existingId), language, AbortSignal.timeout(30_000))
       .then((loaded) => {
- if (current) setInterview(loaded);
-})
+        if (current) setInterview(loaded);
+      })
       .catch(() => {
- if (current) setError('load');
-});
+        if (current) setError('load');
+      });
     return () => {
- current = false;
-};
+      current = false;
+    };
   }, [existingId, language, loadAttempt]);
   useEffect(() => {
     if (!missingConfig) void Promise.all([media.startCamera(), media.startMicrophone()]);
   }, [media.startCamera, media.startMicrophone, missingConfig]);
   useEffect(() => {
- titleRef.current?.focus({preventScroll: true});
-}, [view, activeCapture]);
+    titleRef.current?.focus({preventScroll: true});
+  }, [view, activeCapture]);
 
   useEffect(() => {
     const capture = calibration.media;
@@ -151,8 +153,8 @@ export const InterviewCalibration = () => {
           setStageResult(result);
           if (result.status === 'passed') resultsRef.current[result.stage] = result;
           if (result.failureReason === 'geometry') {
- resultsRef.current = {}; setStage('unified');
-}
+            resultsRef.current = {}; setStage('unified');
+          }
         }
         setView('stage-result');
       })
@@ -190,8 +192,8 @@ export const InterviewCalibration = () => {
   const beginStage = useCallback(async (captureStage: CalibrationStage = stage, environment = guidedEnvironment) => {
     if (captureStartingRef.current || starting) return;
     if (draftIdRef.current === null && !routeConfig) {
- navigate(ROUTES.clinicalCases, {replace: true}); return;
-}
+      navigate(ROUTES.clinicalCases, {replace: true}); return;
+    }
     const attempt = ++startAttemptRef.current;
     captureStartingRef.current = true;
     setCaptureStarting(true);
@@ -359,8 +361,8 @@ export const InterviewCalibration = () => {
       {error === 'load' && <div role="alert" className="calibration-friendly-alert">
         <p>{t('calibration.draftLoadError')}</p>
         <Button onClick={() => {
- setError(null); setLoadAttempt((attempt) => attempt + 1);
-}}>{t('calibration.retryLoad')}</Button>
+          setError(null); setLoadAttempt((attempt) => attempt + 1);
+        }}>{t('calibration.retryLoad')}</Button>
       </div>}
       {existingId !== null && !interview && error !== 'load' && <InterviewContentLoading />}
       {error === 'expired' && <p role="alert" className="calibration-friendly-alert">{t('calibration.checkpointsExpired')}</p>}
@@ -379,11 +381,11 @@ export const InterviewCalibration = () => {
           onSelectCamera={media.startCamera}
           onSelectMicrophone={media.startMicrophone}
           onStart={() => {
- void warmUpCalibration().catch(() => undefined); void beginStage('unified');
-}}
+            void warmUpCalibration().catch(() => undefined); void beginStage('unified');
+          }}
           onStartGuided={nonverbalTest ? (environment) => {
- setGuidedEnvironment(environment); void warmUpCalibration().catch(() => undefined); void beginStage('guided', environment);
-} : undefined}
+            setGuidedEnvironment(environment); void warmUpCalibration().catch(() => undefined); void beginStage('guided', environment);
+          } : undefined}
           onBack={() => void leaveCalibration()}
           onRetryCamera={() => void media.startCamera()}
           onRetryMicrophone={() => void media.startMicrophone()}

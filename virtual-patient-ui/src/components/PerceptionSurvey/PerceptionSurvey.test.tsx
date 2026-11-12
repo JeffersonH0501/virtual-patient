@@ -6,7 +6,9 @@ import {loadSurvey, saveSurvey} from '../../services/perceptionSurvey';
 vi.mock('../../hooks', () => ({useUser: () => ({user: {id: 1, role: 'student'}})}));
 vi.mock('react-i18next', () => ({useTranslation: () => ({i18n: {resolvedLanguage: 'es'}, t: (key: string) => key})}));
 vi.mock('../../services/perceptionSurvey', () => ({loadSurvey: vi.fn(), saveSurvey: vi.fn()}));
-afterEach(() => { cleanup(); vi.resetAllMocks(); });
+afterEach(() => {
+  cleanup(); vi.resetAllMocks();
+});
 
 const draft = {eligible: true, status: 'DRAFT' as const, answers: {}, comments: {}, cuq_score: null, created_at: null, submitted_at: null, updated_at: null};
 

@@ -4,16 +4,21 @@ import {apiFetch} from '../../utils/apiFetch';
 import {getAuthHeaders} from '../auth/authHeaders';
 import {transformToCamelCase} from '../../utils/apiTransform';
 import {User} from '../../types/user';
+import {InterviewListItem} from '../../types/interview';
+import {Survey} from '../perceptionSurvey';
 
 export type ManagedUserPayload = {
   name: string;
   email: string;
   password: string;
-  role: 'student' | 'teacher';
+  role: 'student' | 'doctor';
+  semester_range?: User['semesterRange'];
+  university?: string | null;
 };
 export type ManagedUserUpdate = Partial<ManagedUserPayload>;
 export type ManagedUsersPage = {users: User[]; total: number};
 export const MANAGED_USERS_PAGE_SIZE = LIST_PAGE_SIZE;
+export type ManagedActivity = {userId: number; hasInterviews: boolean; hasSubmittedSurvey: boolean};
 
 const requestManagedUsers = async (
   path: string,
@@ -48,6 +53,12 @@ export const listManagedUsers = async (offset = 0, limit = MANAGED_USERS_PAGE_SI
   }
   return {users: transformToCamelCase(await response.json()) as User[], total};
 };
+export const getManagedActivity = async (): Promise<ManagedActivity[]> =>
+  transformToCamelCase(await (await requestManagedUsers('/activity')).json()) as ManagedActivity[];
+export const getManagedInterviews = async (id: number, skip: number): Promise<InterviewListItem[]> =>
+  transformToCamelCase(await (await requestManagedUsers(`/${id}/interviews?skip=${skip}&limit=100`)).json()) as InterviewListItem[];
+export const getManagedSurvey = async (id: number): Promise<Survey> =>
+  (await requestManagedUsers(`/${id}/survey`)).json() as Promise<Survey>;
 export const createManagedUser = async (payload: ManagedUserPayload): Promise<User> =>
   transformToCamelCase(await (await requestManagedUsers('', 'POST', payload)).json()) as User;
 export const updateManagedUser = async (id: number, payload: ManagedUserUpdate): Promise<User> =>

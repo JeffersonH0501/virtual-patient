@@ -52,5 +52,5 @@ docker compose -f docker-compose.local.yml exec -T api python -m pytest \
   app/multimodal/tests/test_processing_jobs.py \
   app/media/tests/test_probe.py app/media/tests/test_retention.py -q
 
-docker compose -f docker-compose.local.yml exec -T video-processing-worker python -m pytest \
+docker compose -f docker-compose.local.yml exec -T media-processing-worker python -m pytest \
   app/nonverbal/tests/test_preprocessing.py app/nonverbal/tests/test_ccdbhg.py -q

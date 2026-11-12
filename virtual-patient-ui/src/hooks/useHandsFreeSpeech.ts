@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {createSpeechInputProvider, SpeechInputProvider, SpeechInputState} from '../speech';
+import {SpeechInputProvider, SpeechInputState} from '../speech/SpeechInputProvider';
+import {ServerSpeechTranscriptionProvider} from '../speech/ServerSpeechTranscriptionProvider';
 import {SpeechTiming} from '../types/recording';
 
 type UseHandsFreeSpeechOptions = {
@@ -8,6 +9,7 @@ type UseHandsFreeSpeechOptions = {
   disabled?: boolean;
   autoStart?: boolean;
   microphoneStream?: MediaStream | null;
+  interviewId?: number;
   onUtteranceCommitted?: () => void;
   onSpeechStart?: () => void;
   onUtteranceFailed?: () => void;
@@ -20,6 +22,7 @@ export const useHandsFreeSpeech = ({
   disabled = false,
   autoStart = false,
   microphoneStream = null,
+  interviewId,
   onUtteranceCommitted,
   onSpeechStart,
   onUtteranceFailed,
@@ -66,69 +69,61 @@ export const useHandsFreeSpeech = ({
   }, []);
 
   useEffect(() => {
-    let provider: SpeechInputProvider;
-    try {
-      provider = createSpeechInputProvider({
-        onInterimTranscript: (text) => {
-          if (acceptingInputRef.current) {
-            setInterimTranscript(text);
-            if (text) setHasPendingUtterance(true);
-          }
-        },
-        onUtteranceCaptured: () => {
-          if (!acceptingInputRef.current) return;
-          acceptingInputRef.current = false;
-          awaitingCommittedTranscriptRef.current = true;
-          setErrorCode(null);
-          setIsSubmittingUtterance(true);
-          onUtteranceCommitted?.();
-        },
-        onSpeechStart: () => {
-          if (acceptingInputRef.current) onSpeechStart?.();
-        },
-        onFinalTranscript: (text, timing) => {
-          if (!acceptingInputRef.current && !awaitingCommittedTranscriptRef.current) return;
-          acceptingInputRef.current = false;
+    const provider: SpeechInputProvider = new ServerSpeechTranscriptionProvider({
+      onInterimTranscript: (text) => {
+        if (acceptingInputRef.current) {
+          setInterimTranscript(text);
+          if (text) setHasPendingUtterance(true);
+        }
+      },
+      onUtteranceCaptured: () => {
+        if (!acceptingInputRef.current) return;
+        acceptingInputRef.current = false;
+        awaitingCommittedTranscriptRef.current = true;
+        setErrorCode(null);
+        setIsSubmittingUtterance(true);
+        onUtteranceCommitted?.();
+      },
+      onSpeechStart: () => {
+        if (acceptingInputRef.current) onSpeechStart?.();
+      },
+      onFinalTranscript: (text, timing) => {
+        if (!acceptingInputRef.current && !awaitingCommittedTranscriptRef.current) return;
+        acceptingInputRef.current = false;
+        awaitingCommittedTranscriptRef.current = false;
+        setHasPendingUtterance(false);
+        bufferRef.current = `${bufferRef.current} ${text}`.trim();
+        if (timing) {
+          bufferTimingRef.current = bufferTimingRef.current
+            ? {
+                startedAt: Math.min(bufferTimingRef.current.startedAt, timing.startedAt),
+                endedAt: Math.max(bufferTimingRef.current.endedAt, timing.endedAt),
+              }
+            : timing;
+        }
+        setInterimTranscript('');
+        flushBuffer();
+      },
+      onStateChange: setState,
+      onAudioLevel: setAudioLevel,
+      onError: (nextErrorCode) => {
+        setErrorCode(nextErrorCode);
+        if (nextErrorCode === 'transcription-failed' || nextErrorCode === 'transcription-empty') {
           awaitingCommittedTranscriptRef.current = false;
-          setHasPendingUtterance(false);
-          bufferRef.current = `${bufferRef.current} ${text}`.trim();
-          if (timing) {
-            bufferTimingRef.current = bufferTimingRef.current
-              ? {
-                  startedAt: Math.min(bufferTimingRef.current.startedAt, timing.startedAt),
-                  endedAt: Math.max(bufferTimingRef.current.endedAt, timing.endedAt),
-                }
-              : timing;
-          }
           setInterimTranscript('');
-          flushBuffer();
-        },
-        onStateChange: setState,
-        onAudioLevel: setAudioLevel,
-        onError: (nextErrorCode) => {
-          setErrorCode(nextErrorCode);
-          if (nextErrorCode === 'transcription-failed' || nextErrorCode === 'transcription-empty') {
-            awaitingCommittedTranscriptRef.current = false;
-            setInterimTranscript('');
-            setAudioLevel(0);
-            setHasPendingUtterance(false);
-            setIsSubmittingUtterance(false);
-            onUtteranceFailed?.();
-          }
-          if (
-            nextErrorCode === 'not-allowed' ||
-            nextErrorCode === 'service-not-allowed' ||
-            nextErrorCode === 'audio-capture'
-          ) {
-            setIsEnabled(false);
-          }
-        },
-      }, microphoneStream);
-    } catch {
-      setIsSupported(false);
-      setErrorCode('unsupported-provider');
-      return;
-    }
+          setAudioLevel(0);
+          setHasPendingUtterance(false);
+          setIsSubmittingUtterance(false);
+          onUtteranceFailed?.();
+        }
+        if (
+          nextErrorCode === 'not-allowed' ||
+          nextErrorCode === 'audio-capture'
+        ) {
+          setIsEnabled(false);
+        }
+      },
+    }, microphoneStream, interviewId);
 
     providerRef.current = provider;
     setIsSupported(provider.isSupported);
@@ -142,7 +137,7 @@ export const useHandsFreeSpeech = ({
       provider.dispose();
       providerRef.current = null;
     };
-  }, [disabled, flushBuffer, isEnabled, language, microphoneStream, onSpeechStart, onUtteranceCommitted, onUtteranceFailed]);
+  }, [disabled, flushBuffer, interviewId, isEnabled, language, microphoneStream, onSpeechStart, onUtteranceCommitted, onUtteranceFailed]);
 
   useEffect(() => {
     const provider = providerRef.current;

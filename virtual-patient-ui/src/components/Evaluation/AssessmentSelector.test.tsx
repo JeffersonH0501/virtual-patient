@@ -3,14 +3,14 @@ import {cleanup, fireEvent, render, screen, waitFor, within} from '@testing-libr
 import {AssessmentSelector} from './AssessmentSelector';
 import {InterviewEvaluationResponse} from '../../types/evaluation';
 
-const mocks = vi.hoisted(() => ({role: 'superuser', request: vi.fn()}));
+const mocks = vi.hoisted(() => ({role: 'admin', request: vi.fn()}));
 vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {id: 3, role: mocks.role}})}));
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (key: string, values?: {name?: string}) => key === 'grading.teacherEvaluation' ? 'Evaluación ' + values?.name : key,
+    t: (key: string, values?: {name?: string}) => key === 'grading.doctorEvaluation' ? 'Evaluación ' + values?.name : key,
   }),
 }));
-vi.mock('../../services/teacherGrading', () => ({gradingRequest: mocks.request}));
+vi.mock('../../services/doctorGrading', () => ({gradingRequest: mocks.request}));
 vi.mock('../../contexts/EvaluationAspectsContext', () => ({
   useEvaluationAspects: () => ({aspects: [], multimodalAspects: []}),
 }));
@@ -37,15 +37,15 @@ const timestamp = '2026-10-20T12:00:00Z';
 const reviewers = [
   {
     assignmentId: 12,
-    teacherId: 2,
-    teacherName: 'Pending teacher',
+    doctorId: 2,
+    doctorName: 'Pending teacher',
     ratingId: null,
     status: 'pending',
   },
   {
     assignmentId: 13,
-    teacherId: 3,
-    teacherName: 'Submitted teacher',
+    doctorId: 3,
+    doctorName: 'Submitted teacher',
     ratingId: 101,
     status: 'submitted',
   },
@@ -53,7 +53,7 @@ const reviewers = [
 const ratings = [
   {
     id: 101,
-    teacherName: 'Submitted teacher',
+    doctorName: 'Submitted teacher',
     overallScore: 2.5,
     submittedAt: timestamp,
     results: [{aspect: 'show_interest', score: 2.5, feedback: 'Teacher feedback', timestamp}],
@@ -75,7 +75,7 @@ const makeData = (id = 42) =>
   }) as unknown as InterviewEvaluationResponse;
 
 beforeEach(() => {
-  mocks.role = 'superuser';
+  mocks.role = 'admin';
   mocks.request
     .mockReset()
     .mockImplementation(async (path: string) =>
@@ -86,7 +86,7 @@ afterEach(cleanup);
 
 const sourceButtons = async () => {
   const group = screen.getByRole('group', {name: 'grading.evaluationSource'});
-  await within(group).findByRole('button', {name: mocks.role === 'superuser' ? 'Evaluación Pending teacher' : 'grading.yourEvaluation'});
+  await within(group).findByRole('button', {name: mocks.role === 'admin' ? 'Evaluación Pending teacher' : 'grading.yourEvaluation'});
   return group;
 };
 const chooseSource = (group: HTMLElement, name: string | RegExp) => {
@@ -135,7 +135,7 @@ it('switches between both automatic conditions and submitted or pending teacher 
 });
 
 it('expands own-rating feedback and edits through the pencil beside the score without a dialog', async () => {
-  mocks.role = 'teacher';
+  mocks.role = 'doctor';
   let savedScore = 2.5;
   const aspects = [
     'coherence',
@@ -147,7 +147,7 @@ it('expands own-rating feedback and edits through the pencil beside the score wi
   ];
   mocks.request.mockImplementation(async (path: string, method?: string) => {
     if (method === 'POST') savedScore = 4;
-    if (path.startsWith('/teacher-assignments/13')) {
+    if (path.startsWith('/doctor-assignments/13')) {
       return {
         status: 'submitted',
         rubric: Object.fromEntries(aspects.map((aspect) => [aspect, ['Criterion']])),
@@ -210,12 +210,9 @@ it('expands own-rating feedback and edits through the pencil beside the score wi
   fireEvent.change(score, {target: {value: '2.5'}});
   expect(save.disabled).toBe(true);
   expect(within(editor).queryByRole('radiogroup')).toBeNull();
-  const criteria = within(editor).getByText('evaluation.evaluationCriteria').closest('summary')!;
-  expect(criteria.getAttribute('aria-expanded')).toBe('true');
+  expect(within(editor).getByRole('region', {name: 'evaluation.evaluationCriteria'})).toBeDefined();
   expect(editor.querySelectorAll('.rating-criteria-list > li')).toHaveLength(1);
   expect(editor.querySelector('.rating-component-criteria')?.textContent).toContain('Criterion');
-  fireEvent.click(criteria);
-  expect(criteria.getAttribute('aria-expanded')).toBe('false');
   expect(within(editor).queryByText('grading.scoreHint')).toBeNull();
   fireEvent.change(score, {target: {value: '3.75'}});
   expect(
@@ -253,11 +250,11 @@ it('expands own-rating feedback and edits through the pencil beside the score wi
 });
 
 it('keeps assignment last and opens it without replacing the selected teacher result', async () => {
-  render(<AssessmentSelector canAssignTeachers evaluationData={makeData()} />);
+  render(<AssessmentSelector canAssignDoctors evaluationData={makeData()} />);
   const select = await sourceButtons();
   chooseSource(select, 'Submitted teacher');
-  expect(within(select).queryByRole('button', {name: 'grading.assignTeacher'})).toBeNull();
-  fireEvent.click(screen.getByRole('button', {name: 'grading.assignTeacher'}));
+  expect(within(select).queryByRole('button', {name: 'grading.assignDoctor'})).toBeNull();
+  fireEvent.click(screen.getByRole('button', {name: 'grading.assignDoctor'}));
   expect(screen.getByRole('dialog')).toBeDefined();
   expect(activeSource(select).textContent).toContain('Submitted teacher');
   expect(screen.getByText('Teacher feedback')).toBeDefined();
@@ -265,15 +262,15 @@ it('keeps assignment last and opens it without replacing the selected teacher re
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
-it.each(['teacher'])(
+it.each(['doctor'])(
   'defaults to multimodal and hides the text-based assessment and assignment for role %s',
   async (role) => {
     mocks.role = role;
-    render(<AssessmentSelector canAssignTeachers evaluationData={makeData()} />);
+    render(<AssessmentSelector canAssignDoctors evaluationData={makeData()} />);
     const select = await sourceButtons();
     expect(activeSource(select).textContent).toContain('grading.automaticEvaluation');
     const options = within(select);
-    expect(screen.queryByRole('button', {name: 'grading.assignTeacher'})).toBeNull();
+    expect(screen.queryByRole('button', {name: 'grading.assignDoctor'})).toBeNull();
     expect(options.queryByRole('button', {name: 'grading.automaticTextBased'})).toBeNull();
   },
 );
@@ -282,11 +279,11 @@ it('requires the assignment capability for a superuser', async () => {
   render(<AssessmentSelector evaluationData={makeData()} />);
   await sourceButtons();
   expect(
-    screen.queryByRole('button', {name: 'grading.assignTeacher'}),
+    screen.queryByRole('button', {name: 'grading.assignDoctor'}),
   ).toBeNull();
 });
 
-it.each(['student', 'teacher'])('shows only automatic and own self-assessment for an interview owner with role %s', async (role) => {
+it.each(['student', 'doctor'])('shows only automatic and own self-assessment for an interview owner with role %s', async (role) => {
   mocks.role = role;
   const data = makeData();
   data.interview.isOwner = true;
@@ -309,7 +306,7 @@ it.each(['student', 'teacher'])('shows only automatic and own self-assessment fo
 
 it('keeps automatic sources and assignment available when no teachers are assigned', async () => {
   mocks.request.mockResolvedValue([]);
-  render(<AssessmentSelector canAssignTeachers evaluationData={makeData()} />);
+  render(<AssessmentSelector canAssignDoctors evaluationData={makeData()} />);
   await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
   const select = screen.getByRole('group');
   expect(
@@ -318,16 +315,16 @@ it('keeps automatic sources and assignment available when no teachers are assign
       .map((option) => option.textContent),
   ).toEqual(['grading.automaticTextBased', 'grading.automaticMultimodalEvidence']);
   expect(screen.getByText('Text-based feedback')).toBeDefined();
-  fireEvent.click(screen.getByRole('button', {name: 'grading.assignTeacher'}));
+  fireEvent.click(screen.getByRole('button', {name: 'grading.assignDoctor'}));
   expect(screen.getByRole('dialog')).toBeDefined();
   expect(activeSource(select).textContent).toContain('grading.automaticTextBased');
 });
 
 it('falls back to the text-based assessment when the selected teacher assignment is removed', async () => {
-  render(<AssessmentSelector canAssignTeachers evaluationData={makeData()} />);
+  render(<AssessmentSelector canAssignDoctors evaluationData={makeData()} />);
   const select = await sourceButtons();
   chooseSource(select, 'Submitted teacher');
-  fireEvent.click(screen.getByRole('button', {name: 'grading.assignTeacher'}));
+  fireEvent.click(screen.getByRole('button', {name: 'grading.assignDoctor'}));
   mocks.request.mockImplementation(async (path: string) =>
     path.endsWith('/reviewers') ? [reviewers[0]] : ratings,
   );

@@ -1,6 +1,6 @@
 import {useReviewRefresh} from './useReviewRefresh';
 import {InterviewContentLoading} from './InterviewContentLoading';
-import {Dialog} from '../common/Dialog';
+import {ResumeSessionDialog} from './ResumeSessionDialog';
 import {FC, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Navigate, useLocation, useNavigate, useParams} from 'react-router-dom';
@@ -74,13 +74,11 @@ const EMPTY_PATIENT: Patient = {
 export const ClinicalChat: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const {user} = useUser();
   const {interviewId} = useParams<{interviewId: string}>();
-  return <ClinicalChatContent key={`${user?.id}:${user?.role}:${user?.organizationId}:${interviewId}:${mode}`} mode={mode} />;
+  return <ClinicalChatContent key={`${user?.id}:${user?.role}:${interviewId}:${mode}`} mode={mode} />;
 };
 
 const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const {t, i18n} = useTranslation();
-  const forcedSessionAction = t('clinicalChat.resumeSession.forcedAction');
-  const resumeSessionCopy = t('clinicalChat.resumeSession.description').split(forcedSessionAction);
   const navigate = useNavigate();
   const location = useLocation();
   const {user} = useUser();
@@ -519,6 +517,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const capturePaused = Boolean(recording.syncPending || (!recording.segmentId && recording.status !== 'failed'));
   const speech = useHandsFreeSpeech({
     language: speechLanguage,
+    interviewId: interviewId ? Number(interviewId) : undefined,
     paused: patientHasFloor || capturePaused || Boolean(messageError),
     disabled: !isSimulationActive || !isOwner || isCompleted || (ending && !patientHasFloor),
     autoStart: Boolean(isSimulationActive && isOwner),
@@ -687,7 +686,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       ...current,
       ...nextEvaluationData.interview,
       isOwner: current.isOwner,
-      reviewAccess: current.isOwner && user?.role !== 'superuser'
+      reviewAccess: current.isOwner && user?.role !== 'admin'
         ? {canViewAssessments: false, assignmentId: null, selfAssessmentRequired: true}
         : current.reviewAccess,
     } : nextEvaluationData.interview);
@@ -727,11 +726,11 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     <>
       {mode === 'review' && interview.reviewAccess?.canViewAssessments !== false && (
         <AssessmentSelector
-          canAssignTeachers={mode === 'review' && user?.role === 'superuser' && interview.reviewAccess?.canAssignTeachers}
+          canAssignDoctors={mode === 'review' && user?.role === 'admin' && interview.reviewAccess?.canAssignDoctors}
           evaluationData={evaluationData ?? {interview, evaluationResults: [], multimodalEvaluationResults: []}}
           isLoading={interview.status === 'processing'}
           className="md:max-xl:col-start-2 md:max-xl:row-start-2 xl:col-start-3 xl:row-start-1"
-          canRegenerate={mode === 'review' && user?.role === 'superuser' && isCompleted}
+          canRegenerate={mode === 'review' && user?.role === 'admin' && isCompleted}
           evaluationStale={recapData?.evaluationProcessing?.status === 'stale'}
           isRegenerating={isRegenerating}
           onRegenerate={() => void handleRefresh(false)}
@@ -767,7 +766,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
             isReview={mode === 'review'}
             caseTitle={interview.clinicalCase?.title}
             personality={interview.personality}
-            headerAction={mode === 'review' && user?.role === 'superuser' ? <CalibrationReferenceDialog key={interviewId} interviewId={interviewId} /> : undefined}
+            headerAction={mode === 'review' && user?.role === 'admin' ? <CalibrationReferenceDialog key={interviewId} interviewId={interviewId} /> : undefined}
           >
             {mode === 'review' && (
               <>
@@ -940,42 +939,14 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         }}
         onCancel={() => navigate(ROUTES.calibration, {replace: true, state: {draftInterviewId: Number(interviewId)}})}
       />
-      <Dialog
-        title={t('clinicalChat.resumeSession.title')}
+      <ResumeSessionDialog
         open={resumePromptOpen}
-        busy={forcingTermination || resumingInterview}
-        hasDismissAction
-        actions={
-          <>
-            <button type="button" className="ui-button ui-button--primary"
-              disabled={forcingTermination || resumingInterview} onClick={() => void handleResume()}>
-              {resumingInterview ? t('common.loading') : t('clinicalChat.resumeSession.resume')}
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleForceTermination()}
-              disabled={forcingTermination || resumingInterview}
-              className="ui-button ui-button--danger"
-            >
-              {forcingTermination
-                ? t('common.loading')
-                : t('clinicalChat.resumeSession.forceTermination')}
-            </button>
-          </>
-        }
-      >
-        <p className="text-neutral-600 default-text">
-          <span className="whitespace-pre-line">{resumeSessionCopy[0]}{resumeSessionCopy.length > 1 && <><strong>{forcedSessionAction}</strong>{resumeSessionCopy[1]}</>}</span>
-        </p>
-        {forceTerminationError && (
-          <p
-            className="ui-notice ui-notice--danger mt-layout"
-            role="alert"
-          >
-            {t('clinicalChat.resumeSession.forceError')}
-          </p>
-        )}
-      </Dialog>
+        forcingTermination={forcingTermination}
+        resumingInterview={resumingInterview}
+        forceTerminationError={forceTerminationError}
+        onResume={() => void handleResume()}
+        onForceTermination={() => void handleForceTermination()}
+      />
     </InterviewLayout>
   );
 };

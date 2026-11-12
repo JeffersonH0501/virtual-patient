@@ -10,6 +10,7 @@ import {Button} from '../common/Button';
 import {InterviewContentLoading} from './InterviewContentLoading';
 import {GuidedCheckResults} from '../InterviewCalibration/CalibrationWizard';
 import {GuidedCheckDiagnostics} from '../../services/interviews/calibration';
+import {getInterviewPerformanceEvents, InterviewPerformanceEvent} from '../../services/interviews/performanceEvents';
 
 const CalibrationVideo = ({source, label}: {source: string; label: string}) => {
   const {t} = useTranslation();
@@ -35,15 +36,18 @@ const QualityResult = ({result, stage}: {result: Record<string, unknown>; stage:
 
 export const CalibrationReferenceDialog = ({interviewId}: {interviewId: number}) => {
   const {user} = useUser();
-  const {t} = useTranslation();
+  const {t, i18n} = useTranslation();
   const [open, setOpen] = useState(false);
   const [reference, setReference] = useState<CalibrationReference | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
+  const [events, setEvents] = useState<InterviewPerformanceEvent[] | null>(null);
+  const [eventsFailed, setEventsFailed] = useState(false);
   useEffect(() => {
-    if (!open || user?.role !== 'superuser') return;
+    if (!open || user?.role !== 'admin') return;
     const controller = new AbortController();
     setReference(null); setFailed(false);
+    setEvents(null); setEventsFailed(false);
     void getCalibrationReference(interviewId, controller.signal)
       .then((data) => {
         if (!controller.signal.aborted) setReference(data);
@@ -51,9 +55,16 @@ export const CalibrationReferenceDialog = ({interviewId}: {interviewId: number})
       .catch(() => {
         if (!controller.signal.aborted) setFailed(true);
       });
+    void getInterviewPerformanceEvents(interviewId, controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) setEvents(data);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setEventsFailed(true);
+      });
     return () => controller.abort();
   }, [open, interviewId, user?.role, attempt]);
-  if (user?.role !== 'superuser') return null;
+  if (user?.role !== 'admin') return null;
   const processingTimes = reference?.captures.map((capture) => capture.result?.processingTimeSeconds);
   const totalProcessingTime = processingTimes?.length && processingTimes.every((value) => typeof value === 'number' && Number.isFinite(value))
     ? processingTimes.reduce<number>((total, value) => total + (value as number), 0) : null;
@@ -67,6 +78,24 @@ export const CalibrationReferenceDialog = ({interviewId}: {interviewId: number})
     </span>
     <Dialog open={open} title={t('calibrationReference.title')} size="large" onClose={() => setOpen(false)}>
       {open && <div className="space-y-layout">
+        <section className="dialog-reading-card dialog-reading-card--compact space-y-2 bg-surface">
+          <h3 className="default-title">{t('interviewPerformance.title')}</h3>
+          {!events && !eventsFailed && <p role="status">{t('interviewPerformance.loading')}</p>}
+          {eventsFailed && <div role="alert"><p>{t('interviewPerformance.loadFailed')}</p><Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t('calibrationReference.retry')}</Button></div>}
+          {events?.length === 0 && <p>{t('interviewPerformance.empty')}</p>}
+          {events && events.length > 0 && <ol className="space-y-2">
+            {events.map((event) => <li key={event.id} className="border-b border-border pb-2">
+              <div className="flex flex-wrap justify-between gap-2">
+                <strong>{event.component} · {event.operation}</strong>
+                <time dateTime={event.createdAt}>{new Intl.DateTimeFormat(i18n.language, {dateStyle: 'short', timeStyle: 'medium'}).format(new Date(event.createdAt))}</time>
+              </div>
+              <p>{event.phase} · {event.status}{event.durationMs != null ? ` · ${new Intl.NumberFormat(i18n.language, {maximumFractionDigits: 2}).format(event.durationMs)} ms` : ''}</p>
+              {Object.keys(event.metadata).length > 0 && <dl className="flex flex-wrap gap-x-4 gap-y-1 secondary-text">
+                {Object.entries(event.metadata).map(([key, value]) => <div key={key} className="flex gap-1"><dt>{key}:</dt><dd className="break-all">{value !== null && typeof value === 'object' ? JSON.stringify(value) : String(value)}</dd></div>)}
+              </dl>}
+            </li>)}
+          </ol>}
+        </section>
         {!reference && !failed && <InterviewContentLoading />}
         {failed && <div role="alert"><p>{t('calibrationReference.loadFailed')}</p><Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t('calibrationReference.retry')}</Button></div>}
         {reference && reference.captures.length === 0 && <p>{t('calibrationReference.empty')}</p>}

@@ -9,7 +9,7 @@ const account = {
   id: 2,
   name: 'Teacher',
   email: 'teacher@example.org',
-  role: 'teacher',
+  role: 'doctor',
   preferred_language: 'es',
 };
 beforeEach(() => mocks.fetch.mockReset());
@@ -24,7 +24,7 @@ it('lists a server page and transforms response keys', async () => {
         id: 2,
         name: 'Teacher',
         email: 'teacher@example.org',
-        role: 'teacher',
+        role: 'doctor',
         preferredLanguage: 'es',
       },
     ],
@@ -40,7 +40,7 @@ it('creates an account while retaining the administrator authorization', async (
     name: 'Teacher',
     email: account.email,
     password: 'password',
-    role: 'teacher',
+    role: 'doctor',
   } as const;
   expect((await createManagedUser(payload)).id).toBe(2);
   expect(mocks.fetch).toHaveBeenCalledWith(

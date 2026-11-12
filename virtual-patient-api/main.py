@@ -1,4 +1,4 @@
-from app.routers import teacher_grading
+from app.routers import doctor_grading
 from app.routers import perception_survey
 import logging
 import asyncio
@@ -9,11 +9,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.core.superuser import synchronize_superuser
+from app.core.admin_account import synchronize_admin
 from app.speech.azure_openai import close_speech_clients
 from app.routers import (
-    auth, users, organizations, clinical_cases, 
-    medical_interviews, medical_interview_session_notes, medical_interview_teacher_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, recording_segments, calibration
+    auth, users, clinical_cases, 
+    medical_interviews, medical_interview_session_notes, medical_interview_doctor_feedback, interview_messages, interview_hypotheses, summary, personalities, evaluations, speech, interview_recordings, recording_segments, calibration, interview_performance
 )
 
 # Uvicorn configures its own handlers, but application loggers otherwise keep
@@ -25,7 +25,7 @@ logging.getLogger("app").setLevel(logging.INFO)
 async def lifespan(_: FastAPI):
     """Synchronize deployment-managed accounts whenever the API starts."""
     with SessionLocal() as session:
-        print(synchronize_superuser(session))
+        print(synchronize_admin(session))
     from app.multimodal.processing_jobs import run_processing_jobs
     processor = asyncio.create_task(run_processing_jobs())
     try:
@@ -50,7 +50,6 @@ app = FastAPI(
     * **Progress Monitoring**: Live progress summaries and session notes
     * **Clinical Cases**: Manage default and custom clinical cases
     * **User Authentication**: Secure JWT-based authentication
-    * **WebSocket Support**: Real-time communication for live updates
     
     ## Getting Started
     
@@ -59,15 +58,6 @@ app = FastAPI(
     3. **Send Messages**: Exchange messages with the virtual patient
     4. **Submit Hypotheses**: Submit up to 3 diagnostic hypotheses
     5. **Monitor Progress**: Track interview progress in real-time
-    
-    ## WebSocket Events
-    
-    Connect to `/ws/medical-interviews/{interview_id}?token={token}` for real-time updates:
-    
-    * `gpt_typing_started` - Patient is thinking/generating response
-    * `gpt_typing_stopped` - Patient finished generating response
-    * `message_received` - New message received
-    * `summary_updated` - Progress summary updated
     """,
     version="1.0.0",
     contact={
@@ -86,10 +76,6 @@ app = FastAPI(
         {
             "name": "users",
             "description": "User account management"
-        },
-        {
-            "name": "organizations",
-            "description": "Educational institution management"
         },
         {
             "name": "clinical-cases",
@@ -120,12 +106,8 @@ app = FastAPI(
             "description": "Personality management for virtual patients"
         },
         {
-            "name": "medical-interview-teacher-feedback",
-            "description": "Teacher feedback management for medical interviews"
-        },
-        {
-            "name": "websocket",
-            "description": "Real-time WebSocket communication for live updates"
+            "name": "medical-interview-doctor-feedback",
+            "description": "Doctor feedback management for medical interviews"
         }
     ]
 )
@@ -142,19 +124,24 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Total-Count"],
+    expose_headers=["X-Total-Count", "X-Trace-Id"],
 )
 
+# Bind the per-request trace id (from the UI's X-Trace-Id header) so
+# performance_event lines correlate frontend -> API -> worker.
+from app.core.trace import TraceIdMiddleware
+app.add_middleware(TraceIdMiddleware)
+
 # Include routers
-app.include_router(teacher_grading.router)
+app.include_router(doctor_grading.router)
 app.include_router(perception_survey.router)
 app.include_router(auth.router, tags=["authentication"])
 app.include_router(users.router, tags=["users"])
-app.include_router(organizations.router, tags=["organizations"])
 app.include_router(clinical_cases.router, tags=["clinical-cases"])
 app.include_router(medical_interviews.router, tags=["medical-interviews"])
+app.include_router(interview_performance.router)
 app.include_router(medical_interview_session_notes.router, tags=["medical-interview-session-notes"])
-app.include_router(medical_interview_teacher_feedback.router, tags=["medical-interview-teacher-feedback"])
+app.include_router(medical_interview_doctor_feedback.router, tags=["medical-interview-doctor-feedback"])
 app.include_router(interview_messages.router, tags=["interview-messages"])
 app.include_router(interview_hypotheses.router, tags=["interview-hypotheses"])
 app.include_router(summary.router, tags=["summary"])

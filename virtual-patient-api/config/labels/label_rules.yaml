@@ -14,15 +14,13 @@
 # not clinical or psychological judgments. To retune the categories, edit the
 # `value` names and the base-label values referenced under `all` / `any` (those
 # must match the labels produced by thresholds.yaml).
-version: "label_rules_v3_interaction_vad"
+version: "label_rules_v4_speech_rate_priority"
 
 families:
   # PARAVERBAL — temporal. Slots: global_rate, articulation, pause_load,
   # pause_duration, pause_frequency (base labels from thresholds.speech_timing).
   speech_timing:
     rules:
-      - value: no_reportable_pauses
-        all: {pause_present: pause_absent}
       - value: intermittent_by_long_pauses
         all: {pause_duration: pause_duration_long}
         any: {pause_load: [pause_load_high, pause_load_typical]}
@@ -32,6 +30,8 @@ families:
         all: {global_rate: speech_rate_high, pause_load: pause_load_low}
       - value: slow_speech_few_pauses
         all: {global_rate: speech_rate_low, pause_load: pause_load_low}
+      - value: no_reportable_pauses
+        all: {pause_present: pause_absent}
     fallback: mixed_speech_timing_pattern_unclassified
     unavailable: unavailable
 
@@ -70,8 +70,7 @@ families:
     fallback: mixed_prosodic_variability_unclassified
     unavailable: unavailable
 
-  # NONVERBAL — visual orientation. Slots: alignment (visual_alignment_ratio),
-  # dwell (median_visual_alignment_dwell_ms).
+  # NONVERBAL — visual orientation. Slot: alignment (interaction_gaze_ratio).
   gaze_orientation:
     rules:
       - value: interaction_gaze_inside

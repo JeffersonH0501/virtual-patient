@@ -15,13 +15,18 @@ def mediapipe_eye_observation(shared):
     landmarks = getattr(shared, "landmarks", None)
     valid = bool(shared.face_valid and landmarks is not None and len(landmarks) >= 478
                  and shared.frame_width and shared.frame_height)
+    openness_values = []
     if valid:
         for indices in ((33,160,158,133,153,144), (362,385,387,263,373,380)):
             points = np.asarray([[landmarks[i].x * shared.frame_width,
                                   landmarks[i].y * shared.frame_height] for i in indices])
             width = np.linalg.norm(points[0] - points[3])
             openness = (np.linalg.norm(points[1]-points[5]) + np.linalg.norm(points[2]-points[4])) / (2 * width) if width > 0 else 0
-            valid &= bool(np.isfinite(points).all() and openness >= MEDIAPIPE_EYE_OPENNESS)
+            valid &= bool(np.isfinite(points).all() and width > 0)
+            openness_values.append(openness)
+    if valid and all(value < MEDIAPIPE_EYE_OPENNESS for value in openness_values):
+        return GazeObservation(shared.timestamp_ms, False, "eyes_closed")
+    valid = bool(valid and all(value >= MEDIAPIPE_EYE_OPENNESS for value in openness_values))
     seed = GazeObservation(shared.timestamp_ms, valid, "mediapipe_geometry" if valid else "eyes_unobservable")
     return iris_observation(shared, seed)
 

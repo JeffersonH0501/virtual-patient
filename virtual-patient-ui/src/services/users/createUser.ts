@@ -4,7 +4,9 @@ export type CreateUserPayload = {
   email: string;
   // The registration form collects a single "Name" value.
   name: string;
-  role: 'student' | 'teacher';
+  role: 'student' | 'doctor';
+  semester_range?: 'first_four' | 'fifth_eighth' | 'ninth_plus';
+  university?: string;
   password: string;
   captcha: string;
 };

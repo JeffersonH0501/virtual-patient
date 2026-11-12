@@ -36,7 +36,7 @@ def prepare(state):
         db.commit()
 
 
-@pytest.mark.parametrize('role', [UserRole.STUDENT, UserRole.TEACHER])
+@pytest.mark.parametrize('role', [UserRole.STUDENT, UserRole.DOCTOR])
 def test_survey_access_draft_submit_and_edit(lifecycle_api, role):
     state = lifecycle_api
     state.client.app.include_router(perception_survey.router)
@@ -76,11 +76,11 @@ def test_survey_rejects_invalid_answers_and_other_roles(lifecycle_api):
         assert state.client.put('/perception-survey', json={'answers': answers, 'action': 'save'}).status_code == 422
     with Session(state.engine) as db:
         owner = db.get(UserDB, state.actor.id)
-        other = UserDB(name='Other', email='other@example.org', hashed_password='unused', role=UserRole.STUDENT, organization_id=owner.organization_id)
+        other = UserDB(name='Other', email='other@example.org', hashed_password='unused', role=UserRole.STUDENT)
         db.add(other); db.commit(); other_id = other.id
     state.client.put('/perception-survey', json={'answers': {'CUQ-01': 3}, 'action': 'save'})
     state.actor.id = other_id
     response = state.client.get('/perception-survey').json()
     assert response['eligible'] is False and response['answers'] == {}
-    state.actor.role = UserRole.SUPERUSER
+    state.actor.role = UserRole.ADMIN
     assert state.client.get('/perception-survey').status_code == 403

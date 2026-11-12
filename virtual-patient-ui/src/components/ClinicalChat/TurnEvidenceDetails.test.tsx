@@ -14,7 +14,7 @@ const explanation = 'clinicalChat.recap.gazeOutsideCalibration';
 
 it('explains unavailable gaze from the explicit reason', () => {
   render(<TurnEvidenceDetails turn={{...turn, nonverbalFeatures: {
-    baseLabels: {gazeOrientation: {visualAlignmentRatio: {status: 'unavailable', reason: 'outside_calibrated_geometry'}}},
+    baseLabels: {gazeOrientation: {interactionGazeRatio: {status: 'unavailable', reason: 'outside_calibrated_geometry'}}},
   }}} />);
   expect(screen.queryByText(explanation)).not.toBeNull();
 });

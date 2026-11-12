@@ -3,7 +3,7 @@ import {FC} from 'react';
 import {Badge} from '../common/Badge';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
-import {OrganizationInterview} from '../../types/interview';
+import {InterviewListItem, AdminInterview} from '../../types/interview';
 import {formatDuration} from '../../utils/duration';
 import {interviewPath} from '../../utils/routes';
 import {Button, EvaluationScore} from '../common';
@@ -11,21 +11,24 @@ import {ClinicalCaseCell} from '../common/ClinicalCaseCell';
 import {Trash2} from 'lucide-react';
 
 type Props = {
-  interview: OrganizationInterview;
+  interview: AdminInterview;
   canDelete: boolean;
   busy: boolean;
   onDelete: () => void;
+  target?: InterviewListItem;
 };
 export const StudentsTableRow: FC<Props> = ({
   interview,
   canDelete,
   busy,
   onDelete,
+  target,
 }) => {
   const navigate = useNavigate();
   const {t} = useTranslation();
+  const awaitingRating = target && (interview.status === 'completed' || interview.status === 'processing') && target.manualRatingStatus !== 'submitted';
   const statusVariant =
-    interview.status === 'completed'
+    interview.status === 'completed' && !awaitingRating
       ? 'success'
       : interview.status === 'interrupted'
         ? 'danger'
@@ -57,7 +60,7 @@ export const StudentsTableRow: FC<Props> = ({
         <div className="ui-text-pair">
           <span className="text-content default-text">{interview.userName}</span>
           <span className="text-content-muted secondary-text">
-            {t(interview.ownerRole === 'teacher' ? 'auth.teacher' : 'auth.student')}
+            {t(interview.ownerRole === 'doctor' ? 'auth.doctor' : 'auth.student')}
           </span>
         </div>
       </td>
@@ -71,8 +74,9 @@ export const StudentsTableRow: FC<Props> = ({
         {interview.totalDuration == null ? t('conversations.notAvailable') : formatDuration(interview.totalDuration)}
       </td>
       <td>
+        {target?.isAssigned && <Badge tone="info">{t('conversations.assigned')}</Badge>}
         <Badge tone={statusVariant}>
-          {interview.status === 'processing' && interview.reviewProgress != null
+          {awaitingRating ? t('conversations.pendingEvaluation') : interview.status === 'processing' && interview.reviewProgress != null
             ? t('clinicalChat.processingProgress', {percentage: interview.reviewProgress})
             : t('clinicalChat.' + interview.status)}
         </Badge>

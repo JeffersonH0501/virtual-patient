@@ -143,8 +143,14 @@ def test_recovery_messages_can_page_beyond_first_hundred(capture):
 
 def test_block_upload_is_immutable_and_fences_stale_capture(capture, tmp_path):
     from app.routers import recording_blocks
+    from app.models.medical_interview import InterviewMessageDB, InterviewTurnDB
     state = capture
     state.client.app.include_router(recording_blocks.router)
+    with Session(state.engine) as db:
+        student = InterviewMessageDB(interview_id=state.id, sender_type='user', content='Synthetic speech')
+        db.add(student)
+        db.commit()
+        student_id = student.id
     path = tmp_path / "block.webm"
     subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i",
         "color=c=black:s=64x64:r=10:d=2", "-f", "lavfi", "-i",
@@ -156,13 +162,16 @@ def test_block_upload_is_immutable_and_fences_stale_capture(capture, tmp_path):
     metadata = {"capture_attempt_id": state.segment_id, "order": 0,
         "duration_ms": 2000, "patient_message_id": state.greeting_id,
         "patient_playback": {"start_ms": 500, "end_ms": 1800},
-        "student_message_id": None, "student_speech": None,
+        "student_message_id": student_id, "student_speech": {"start_ms": 0, "end_ms": 500},
         "patient_audio_missing": True, "recovery": False}
     def upload(payload=metadata, data=original):
         return state.client.put(endpoint, data={"metadata": json.dumps(payload)},
             files={"file": ("block.webm", data, "video/webm")})
     first = upload()
     assert first.status_code == 200, first.text
+    with Session(state.engine) as db:
+        student_turn = db.query(InterviewTurnDB).filter_by(message_id=student_id).one()
+        assert student_turn.timing_quality == 'provisional'
     assert first.json()["duration_ms"] >= 1900
     assert "storage_key" not in first.json()
     assert upload().json() == first.json()
@@ -398,12 +407,12 @@ def test_ten_interviews_preserve_independent_originals_and_finalize_without_anal
     with Session(state.engine) as db:
         for index in range(10):
             user = UserDB(name='Synthetic block concurrency', email=uuid4().hex + '@example.org', hashed_password='unused',
-                role=UserRole.STUDENT, organization_id=state.actor.organization_id)
+                role=UserRole.STUDENT)
             db.add(user); db.flush()
             interview = MedicalInterviewDB(user_id=user.id, clinical_case_id=state.case_id, status=InterviewStatus.IN_PROGRESS,
                 interview_metadata={'calibration': calibration_payload(), 'recording_transport': 'reusable_blocks_v1'})
             db.add(interview); db.flush()
-            actors[str(index)] = SimpleNamespace(id=user.id, role=UserRole.STUDENT, organization_id=state.actor.organization_id, preferred_language='en')
+            actors[str(index)] = SimpleNamespace(id=user.id, role=UserRole.STUDENT, preferred_language='en')
             interviews.append(interview.id)
         db.commit()
     def actor(x_test_actor: str = Header()):

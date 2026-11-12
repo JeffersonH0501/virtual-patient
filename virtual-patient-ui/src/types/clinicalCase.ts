@@ -10,7 +10,6 @@ export type ClinicalCaseBase = {
   title: string;
   description: string;
   caseType: CaseType;
-  organizationId: number | null;
   active?: boolean;
   createdBy?: CreatedByUser | null; // Only for custom cases
   icon?: string | null;
@@ -89,12 +88,10 @@ export type ClinicalCase = ClinicalCaseBase &
   PatientFields & {
     createdAt: string;
     updatedAt: string;
-    organization: any | null;
   };
 
   export type ClinicalCaseWithTranslations = ClinicalCaseBase &
   PatientFields & TranslatedClinicalCase & {
     createdAt: string;
     updatedAt: string;
-    organization: any | null;
   };

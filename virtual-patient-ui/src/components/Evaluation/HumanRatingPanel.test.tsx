@@ -4,8 +4,8 @@ import {HumanRatingPanel} from './HumanRatingPanel';
 import type {CompleteInterviewResponse} from '../../types/interview';
 
 const request = vi.hoisted(() => vi.fn());
-vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {id: 1, role: 'teacher'}})}));
-vi.mock('../../services/teacherGrading', () => ({gradingRequest: request}));
+vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {id: 1, role: 'doctor'}})}));
+vi.mock('../../services/doctorGrading', () => ({gradingRequest: request}));
 vi.mock('../../contexts/EvaluationAspectsContext', () => ({
   useEvaluationAspects: () => ({aspects: {}, multimodalAspects: []}),
 }));
@@ -57,14 +57,14 @@ it('shows the private rubric table immediately and starts grading from its penci
   expect(save.disabled).toBe(true);
   fireEvent.change(score, {target: {value: '0'}});
   expect(save.disabled).toBe(false);
-  expect(request).toHaveBeenLastCalledWith('/teacher-assignments/1/start', 'POST', undefined);
+  expect(request).toHaveBeenLastCalledWith('/doctor-assignments/1/start', 'POST', undefined);
   request.mockResolvedValue({...workspace, status: 'in_progress', results: [
     {aspect: 'completeness', score: 0, feedback: 'Draft comment'},
   ]});
   fireEvent.click(screen.getByRole('button', {name: 'common.save'}));
   await screen.findByLabelText('0.0/5');
   expect(screen.queryByRole('status')).toBeNull();
-  expect(request).toHaveBeenLastCalledWith('/teacher-assignments/1/draft', 'PUT', {
+  expect(request).toHaveBeenLastCalledWith('/doctor-assignments/1/draft', 'PUT', {
     results: expect.arrayContaining([{aspect: 'completeness', score: 0, feedback: 'Draft comment'}]),
   });
   expect(screen.getByLabelText('0.0/5')).toBeTruthy();
@@ -103,7 +103,7 @@ it.each(['assigned', 'self'])('requires all six scores and nonblank comments for
   expect(screen.queryByRole('dialog')).toBeNull();
   await waitFor(() => expect(submitted).toHaveBeenCalledTimes(1));
   const sent = request.mock.calls.at(-1)!;
-  expect(sent[0]).toBe(mode === 'self' ? '/medical-interviews/7/self-rating/submit' : '/teacher-assignments/1/submit');
+  expect(sent[0]).toBe(mode === 'self' ? '/medical-interviews/7/self-rating/submit' : '/doctor-assignments/1/submit');
   expect(sent[2].results).toHaveLength(6);
   expect(sent[2].results[0].score).toBe(0);
   expect(sent[2].results[0].feedback).toBe('Independent rationale');
@@ -130,7 +130,7 @@ it('edits completed ratings and saves all six scores while keeping the form avai
   fireEvent.click(screen.getByRole('button', {name: 'common.save'}));
   await screen.findByText('grading.ratingSaved');
   expect(updated).toHaveBeenCalledTimes(1);
-  expect(request).toHaveBeenLastCalledWith('/teacher-assignments/1/submit', 'POST', {
+  expect(request).toHaveBeenLastCalledWith('/doctor-assignments/1/submit', 'POST', {
     results: expect.arrayContaining([{aspect: 'coherence', score: 0, feedback: 'Revised comment'}]),
   });
   expect(screen.getAllByRole('spinbutton')).toHaveLength(6);

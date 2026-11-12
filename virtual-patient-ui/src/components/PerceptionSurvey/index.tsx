@@ -4,7 +4,6 @@ import {cuq, evaluation, evaluationTitles} from './questions';
 import {loadSurvey, saveSurvey, Survey} from '../../services/perceptionSurvey';
 import {useUser} from '../../hooks';
 import {PageHeader} from '../common/PageHeader';
-import './survey.css';
 
 export function PerceptionSurvey() {
   const {t, i18n} = useTranslation();
@@ -20,10 +19,22 @@ export function PerceptionSurvey() {
   useEffect(() => {
     let active = true;
     setSurvey(null); setAnswers({}); setComments({}); setError(false);
-    if (!user || user.role === 'superuser') return () => { active = false; };
-    void loadSurvey().then((data) => { if (active) { setSurvey(data); setAnswers(data.answers); setComments(data.comments); } })
-      .catch(() => { if (active) setError(true); });
-    return () => { active = false; };
+    if (!user || user.role === 'admin') {
+      return () => {
+        active = false;
+      };
+    }
+    void loadSurvey().then((data) => {
+      if (active) {
+        setSurvey(data); setAnswers(data.answers); setComments(data.comments);
+      }
+    })
+      .catch(() => {
+        if (active) setError(true);
+      });
+    return () => {
+      active = false;
+    };
   }, [user?.id, user?.role, reload]);
   const complete = [...cuq, ...evaluation].every(({id}) => answers[id] != null);
   const dirty = survey !== null && (
@@ -32,10 +43,15 @@ export function PerceptionSurvey() {
   );
   const persist = async (action: 'save' | 'submit') => {
     setSaving(true); setError(false); setSaved(false);
-    try { const result = await saveSurvey(answers, comments, action); setSurvey(result); setSaved(true); }
-    catch { setError(true); } finally { setSaving(false); }
+    try {
+      const result = await saveSurvey(answers, comments, action); setSurvey(result); setSaved(true);
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
   };
-  if (user?.role === 'superuser') return <div className="survey-page">{t('perceptionRoleDenied')}</div>;
+  if (user?.role === 'admin') return <div className="survey-page">{t('perceptionRoleDenied')}</div>;
   if (!survey) return <div className="survey-page" role="status">{error ? <><p role="alert">{t('perception.error')}</p><button className="ui-button ui-button--secondary" onClick={() => setReload((n) => n + 1)}>{t('perception.retry')}</button></> : t('common.loading')}</div>;
   if (!survey.eligible) return <div className="survey-page">{t('perception.locked')}</div>;
   return <div className="ui-page survey-page">
@@ -46,9 +62,13 @@ export function PerceptionSurvey() {
         <thead><tr><th scope="col">{t(section === 'CUQ' ? 'perceptionCuqTableTitle' : 'perceptionEvaTableTitle')}</th>{[1, 2, 3, 4, 5].map((value) => <th scope="col" key={value}><span>{value}</span>{t(`perception.scale.${value}`)}</th>)}</tr></thead>
         <tbody>{(section === 'CUQ' ? cuq : evaluation).map((question, index) => <tr key={question.id}>
           <th scope="row"><span className="survey-id">{question.id}.</span>{' '}{section === 'EVA' && <>{evaluationTitles[index][language]}.{' '}</>}<span className="survey-statement">{question.text[language]}</span>{question.caption && <span className="survey-caption">{question.caption[language]}</span>}{question.criteria && <details className="survey-criteria"><summary>{t('perception.criteria')}</summary><ul>{question.criteria.map((item) => <li key={item.es}>{item[language]}</li>)}</ul></details>}</th>
-          {[1, 2, 3, 4, 5].map((value) => <td key={value}><label className="survey-table-choice"><input type="radio" name={question.id} value={value} aria-label={`${question.id}: ${value}. ${t(`perception.scale.${value}`)}`} checked={answers[question.id] === value} onChange={() => {setAnswers({...answers, [question.id]: value}); setSaved(false);}} /></label></td>)}
+          {[1, 2, 3, 4, 5].map((value) => <td key={value}><label className="survey-table-choice"><input type="radio" name={question.id} value={value} aria-label={`${question.id}: ${value}. ${t(`perception.scale.${value}`)}`} checked={answers[question.id] === value} onChange={() => {
+            setAnswers({...answers, [question.id]: value}); setSaved(false);
+          }} /></label></td>)}
         </tr>)}</tbody>
-        <tfoot><tr><td colSpan={6}><label className="survey-comment"><span className="survey-comment-label">{t('perception.openQuestion')} ({t('perception.optional')})</span><textarea rows={3} maxLength={10000} value={comments[section] ?? ''} onChange={(event) => {setComments({...comments, [section]: event.target.value}); setSaved(false);}} /></label></td></tr></tfoot>
+        <tfoot><tr><td colSpan={6}><label className="survey-comment"><span className="survey-comment-label">{t('perception.openQuestion')} ({t('perception.optional')})</span><textarea rows={3} maxLength={10000} value={comments[section] ?? ''} onChange={(event) => {
+          setComments({...comments, [section]: event.target.value}); setSaved(false);
+        }} /></label></td></tr></tfoot>
       </table>
     </div>)}
     {error && <p role="alert">{t('perception.error')}</p>}{saved && <p role="status">{t('perception.saved')}</p>}

@@ -14,16 +14,16 @@ from app.models.calibration_capture import CalibrationCaptureDB
 from app.models.medical_interview import MedicalInterviewDB
 from app.models.user import UserDB, UserRole
 from app.routers import calibration, interview_recordings
-from app.routers.tests.test_organization_interview_history import history_api
+from app.routers.tests.test_admin_interview_history import history_api
 from app.multimodal.tests.test_calibration import _valid_metadata_json, _VIDEO_RESULT_PASS
 
 
 @pytest.fixture
 def reference_api(history_api, tmp_path, monkeypatch):
-    client, admin, _, _ = history_api
+    client, admin = history_api
     db = client.history_db
-    interview = db.query(MedicalInterviewDB).join(UserDB).filter(MedicalInterviewDB.start_time.is_(None), UserDB.organization_id == admin.organization_id).first()
-    owner = SimpleNamespace(id=interview.user_id, role=UserRole.STUDENT, organization_id=admin.organization_id)
+    interview = db.query(MedicalInterviewDB).join(UserDB).filter(MedicalInterviewDB.start_time.is_(None), MedicalInterviewDB.user_id.in_(client.fixture_user_ids)).first()
+    owner = SimpleNamespace(id=interview.user_id, role=UserRole.STUDENT)
     actor = SimpleNamespace(user=admin)
     from sqlalchemy import event
     from sqlalchemy.orm import with_loader_criteria
@@ -59,7 +59,7 @@ def upload(api, interview_id, content=b'synthetic calibration reference', **over
     return api.post('/calibration/process-stage', data=fields, files={'media': ('capture.webm', content, 'video/webm')})
 
 
-@pytest.mark.parametrize("role,test_mode,allowed",[(UserRole.STUDENT,True,False),(UserRole.SUPERUSER,False,False),(UserRole.SUPERUSER,True,True)])
+@pytest.mark.parametrize("role,test_mode,allowed",[(UserRole.STUDENT,True,False),(UserRole.ADMIN,False,False),(UserRole.ADMIN,True,True)])
 def test_quality_bypass_is_server_scoped_to_owned_superuser_tests(reference_api,role,test_mode,allowed):
     from app.nonverbal.tests.test_independent_mediapipe import poor_calibration,frame
     from app.nonverbal.mediapipe_calibration import build_profile,build_camera_reference
@@ -109,7 +109,7 @@ def test_quality_bypass_is_server_scoped_to_owned_superuser_tests(reference_api,
 def test_separate_guided_capture_requires_accepted_server_checkpoints(reference_api, monkeypatch):
     from app.nonverbal.tests.test_guided_checks import guided_metadata
     api, db, interview, owner, _, _, worker = reference_api
-    owner.role = UserRole.SUPERUSER
+    owner.role = UserRole.ADMIN
     interview.interview_metadata = {**(interview.interview_metadata or {}), "calibration_test": True}
     db.commit()
     assert upload(api, interview.id).status_code == 200
@@ -164,7 +164,7 @@ def test_saved_calibration_tests_are_listed_only_for_the_authenticated_superuser
     interview.interview_metadata = {**interview.interview_metadata, 'calibration_test': True}
     db.commit()
     assert api.get('/calibration/tests').status_code == 403
-    owner.role = UserRole.SUPERUSER
+    owner.role = UserRole.ADMIN
     assert api.get('/calibration/tests').json()['tests'][0]['interview_id'] == interview.id
     owner.id += 1
     assert api.get('/calibration/tests').json()['tests'] == []
@@ -234,7 +234,7 @@ def test_failed_analysis_keeps_original_and_outcome(reference_api, worker_failur
     assert capture.result['passed'] is False
 
 
-def test_capture_and_inspection_enforce_owner_role_and_organization(reference_api):
+def test_capture_and_inspection_enforce_owner_and_admin_roles(reference_api):
     api, db, interview, owner, actor, _, _ = reference_api
     owner.id += 1000000
     assert upload(api, interview.id).status_code == 404
@@ -245,9 +245,8 @@ def test_capture_and_inspection_enforce_owner_role_and_organization(reference_ap
     actor.user = owner
     for url in urls:
         assert api.get(url).status_code == 403
-    actor.user = SimpleNamespace(id=owner.id + 1, role=UserRole.SUPERUSER, organization_id=owner.organization_id + 1)
-    for url in urls:
-        assert api.get(url).status_code == 403
+    actor.user = SimpleNamespace(id=owner.id + 1, role=UserRole.ADMIN)
+    assert api.get(urls[0]).status_code == 200
     interview.start_time = datetime.now(timezone.utc)
     db.commit()
     assert upload(api, interview.id, b'new upload').status_code == 409

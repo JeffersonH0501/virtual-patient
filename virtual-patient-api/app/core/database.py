@@ -8,7 +8,20 @@ from app.core.config import settings
 
 SQLALCHEMY_DATABASE_URL = settings.database_url
 
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+# Pool sized for concurrent interviews: each turn briefly uses several pooled
+# connections (claim tx, checkpointer reads, commit) across threadpool hops.
+# Each Python process can open up to pool_size + max_overflow connections.
+# Account for API workers, visual workers, and isolated child processes when
+# sizing PostgreSQL. pre_ping drops dead connections; recycle avoids stale idle
+# connections.
+engine = create_engine(
+    SQLALCHEMY_DATABASE_URL,
+    pool_size=10,
+    max_overflow=10,
+    pool_timeout=30,
+    pool_pre_ping=True,
+    pool_recycle=1800,
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()

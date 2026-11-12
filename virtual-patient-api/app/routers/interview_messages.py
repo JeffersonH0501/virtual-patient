@@ -23,7 +23,7 @@ from app.controllers.interview_lifecycle import lock_row, require_capture_open
 from app.models.medical_interview.medical_interview import MedicalInterviewDB
 from app.models.user import User
 from app.speech.storage import persist_patient_audio
-from app.core.config import settings
+from app.utils.perf import perf_event, active_gauge, gauge_value
 
 
 logger = logging.getLogger(__name__)
@@ -67,6 +67,8 @@ async def send_message(
     started_at = time.monotonic()
     result = None
     claim_token = None
+    _turn_gauge = active_gauge("active_interview_turns")
+    _turn_gauge.__enter__()
     try:
         request_id = str(message_data.client_request_id) if message_data.client_request_id else None
         claim_token, segment_id, previous = await run_in_threadpool(
@@ -112,22 +114,27 @@ async def send_message(
         response_read_started_at = time.perf_counter()
         messages = message_controller.get_interview_messages(interview_id)
         response_read_elapsed = time.perf_counter() - response_read_started_at
-        if settings.patient_response_timing_logging:
-            logger.info(
-                "patient_response_timing interview_id=%s request_id=%s stage=request "
-                "generation_ms=%.1f persistence_and_optional_tts_ms=%.1f "
-                "response_read_ms=%.1f total_ms=%.1f",
-                interview_id,
-                request_id,
-                generation_elapsed * 1000,
-                persistence_elapsed * 1000,
-                response_read_elapsed * 1000,
-                (time.monotonic() - started_at) * 1000,
-            )
+        perf_event(
+            "conversation", "patient_response_request", interview_id=interview_id,
+            request_id=request_id, generation_ms=generation_elapsed * 1000,
+            persistence_and_optional_tts_ms=persistence_elapsed * 1000,
+            response_read_ms=response_read_elapsed * 1000,
+            total_ms=(time.monotonic() - started_at) * 1000,
+        )
         logger.info(
             "Processed interview %s message in %.3f seconds",
             interview_id,
             time.monotonic() - started_at,
+        )
+        # P0 interactive latency breakdown,
+        # with the concurrent-turn gauge for this API worker.
+        perf_event(
+            "conversation", "patient_reply", phase="complete", status="success",
+            priority="P0", interview_id=interview_id,
+            active_interview_turns=gauge_value("active_interview_turns"),
+            generation_ms=round(generation_elapsed * 1000, 1),
+            persistence_ms=round(persistence_elapsed * 1000, 1),
+            total_ms=round((time.monotonic() - started_at) * 1000, 1),
         )
         return SendMessageResponse(
             messages=messages,
@@ -146,6 +153,8 @@ async def send_message(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to process message",
         ) from error
+    finally:
+        _turn_gauge.__exit__(None, None, None)
 
 
 @router.get("/{interview_id}/messages", response_model=MessagesResponse)
@@ -172,37 +181,6 @@ async def get_messages(
     if not can_read_assessments(db, db.get(MedicalInterviewDB, interview_id), current_user):
         messages = [message.model_copy(update={"message_metadata": {}}) for message in messages]
     return MessagesResponse(messages=messages)
-
-
-@router.get("/{interview_id}/messages/{message_id}", response_model=InterviewMessage)
-async def get_message(
-    interview_id: int,
-    message_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db),
-):
-    """Return one message after validating interview access and ownership."""
-    interview_controller = MedicalInterviewController(db)
-    if not interview_controller.validate_interview_access(interview_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this interview",
-        )
-
-    message = MessageController(db).get_message(message_id)
-    if not message:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Message not found",
-        )
-    if message.interview_id != interview_id:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Message does not belong to this interview",
-        )
-    if not can_read_assessments(db, db.get(MedicalInterviewDB, interview_id), current_user):
-        message = message.model_copy(update={"message_metadata": {}})
-    return message
 
 
 def _claim_message_request(db, interview_id, message_data, user_id, request_id):

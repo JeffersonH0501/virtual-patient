@@ -100,7 +100,7 @@ def test_checkpointed_reply_survives_exchange_commit_failure(lifecycle_api, chec
             raise RuntimeError("Synthetic database failure after checkpoint commit")
         return persist(*args, **kwargs)
     monkeypatch.setattr(messages, "_create_exchange_messages", fail_once)
-    payload = {"content": "Synthetic checkpoint question", "client_request_id": str(uuid4())}
+    payload = {"content": "Synthetic checkpoint question", "client_request_id": str(uuid4()), "segment_id": state.segment_id}
     assert state.client.post(f"/medical-interviews/{state.id}/messages", json=payload).status_code == 500
     retry = state.client.post(f"/medical-interviews/{state.id}/messages", json=payload)
     assert retry.status_code == 200
@@ -150,7 +150,7 @@ def test_rewrite_failure_preserves_original_checkpoint_and_same_request_recovery
     from unittest.mock import Mock
     audio_metadata = Mock(return_value=SimpleNamespace(synthesis_metadata={}, audio_url=None))
     monkeypatch.setattr(messages, 'persist_patient_audio', audio_metadata)
-    payload = {'content': 'Synthetic recoverable question', 'client_request_id': str(uuid4())}
+    payload = {'content': 'Synthetic recoverable question', 'client_request_id': str(uuid4()), 'segment_id': state.segment_id}
     failed = state.client.post(f'/medical-interviews/{state.id}/messages', json=payload)
     assert failed.status_code == 500
     audio_metadata.assert_not_called()
@@ -220,6 +220,6 @@ def test_controller_postprocessing_failure_drains_background(lifecycle_api, monk
         raise RuntimeError('Synthetic postprocessing failure')
     monkeypatch.setattr(MedicalInterviewController,'create_agent_message_object',fail)
     response=state.client.post(f'/medical-interviews/{state.id}/messages',json={
-        'content':'Synthetic question','client_request_id':str(uuid4())})
+        'content':'Synthetic question','client_request_id':str(uuid4()),'segment_id':state.segment_id})
     assert response.status_code==500
     assert stopped==[True]

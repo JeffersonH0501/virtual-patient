@@ -25,12 +25,24 @@ export const Header: FC = () => {
   useEffect(() => {
     let active = true;
     setSurvey(null);
-    if (!user || user.role === 'superuser') return () => { active = false; };
-    const refresh = () => { void loadSurvey().then((data) => { if (active) setSurvey(data); }).catch(() => { if (active) setSurvey(null); }); };
+    if (!user || user.role === 'admin') {
+      return () => {
+        active = false;
+      };
+    }
+    const refresh = () => {
+      void loadSurvey().then((data) => {
+        if (active) setSurvey(data);
+      }).catch(() => {
+        if (active) setSurvey(null);
+      });
+    };
     refresh();
     window.addEventListener('focus', refresh);
     window.addEventListener('perception-survey-updated', refresh);
-    return () => { active = false; window.removeEventListener('focus', refresh); window.removeEventListener('perception-survey-updated', refresh); };
+    return () => {
+      active = false; window.removeEventListener('focus', refresh); window.removeEventListener('perception-survey-updated', refresh);
+    };
   }, [user?.id, user?.role, pathname]);
   const activeSection = getNavigationSection(pathname, user?.role);
   const navigationClass = (section: NavigationSection) =>
@@ -76,12 +88,12 @@ export const Header: FC = () => {
         >
           {t('navigation.conversations')}
         </Link>
-        {user && user.role !== 'superuser' && (survey?.eligible ?
+        {user && user.role !== 'admin' && (survey?.eligible ?
           <Link to={ROUTES.perceptionSurvey} className={`${navigationClass('perception')} relative`} aria-current={activeSection === 'perception' ? 'page' : undefined}>
             {t('perception.title')}{survey.status === 'DRAFT' && <span className="survey-pending" role="img" aria-label={t('perception.pending')} />}
           </Link> :
           <button type="button" className={`${navigationClass('perception')} opacity-50`} disabled title={t('perception.locked')}>{t('perception.title')}</button>)}
-        {user?.role === 'superuser' && (
+        {user?.role === 'admin' && (
           <Link to={ROUTES.users} className={navigationClass('users')} aria-current={activeSection === 'users' ? 'page' : undefined}>
             {t('navigation.users')}
           </Link>

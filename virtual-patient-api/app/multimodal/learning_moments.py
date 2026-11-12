@@ -20,6 +20,17 @@ def _hash(value):
     return hashlib.sha256(json.dumps(value, sort_keys=True, default=str, ensure_ascii=False).encode()).hexdigest()
 
 
+def model_context(context):
+    """Use short turn references for generation while retaining original IDs for storage."""
+    aliases = {turn_id: f"T{index}" for index, turn_id in enumerate(context["turn_ids"], 1)}
+    transcript = context["transcript"]
+    for turn_id, alias in aliases.items():
+        transcript = transcript.replace(f"[TURN id={turn_id} ", f"[TURN id={alias} ")
+    return {**context, "transcript": transcript, "turn_ids": list(aliases.values()),
+            "evidence": {category: {aliases[turn_id]: families for turn_id, families in turns.items() if turn_id in aliases}
+                         for category, turns in context["evidence"].items()}}, {alias: turn_id for turn_id, alias in aliases.items()}
+
+
 def build_context(db, interview_id, recording):
     evaluations = db.query(InterviewEvaluationDB).filter(InterviewEvaluationDB.medical_interview_id == interview_id).all()
     conditions = {row.evaluation_condition: row for row in evaluations}
@@ -108,7 +119,8 @@ async def generate_learning_moments(interview_id, recording_id, force=False):
             agent = EvaluationAgent(target_language=context["response_language"])
             provenance = []
             model = agent.llm.with_structured_output(LearningMomentsOutput, method="function_calling", include_raw=True)
-            messages = [SystemMessage(content=PROMPT), HumanMessage(content=json.dumps(context, ensure_ascii=False))]
+            model_input, turn_ids = model_context(context)
+            messages = [SystemMessage(content=PROMPT), HumanMessage(content=json.dumps(model_input, ensure_ascii=False))]
             for attempt in range(2):
                 response = await model.ainvoke(messages,
                     config={"callbacks": [EvaluationProvenanceCallback(provenance, "learning_moments", PROMPT)]})
@@ -121,7 +133,7 @@ async def generate_learning_moments(interview_id, recording_id, force=False):
                     else:
                         raise ValueError("Learning moments structured output failed") from response.get("parsing_error")
                 try:
-                    output = validate_references(LearningMomentsOutput.model_validate(parsed), context)
+                    output = validate_references(LearningMomentsOutput.model_validate(parsed), model_input)
                 except LearningMomentReferenceError as exc:
                     if attempt:
                         raise
@@ -129,10 +141,13 @@ async def generate_learning_moments(interview_id, recording_id, force=False):
                     messages.append(HumanMessage(content=(
                         f"The previous output failed validation: {exc}. Generate a replacement using only "
                         "IDs from turn_ids and evidence keys present for the chosen category and cited turns. "
-                        "Use only improvements with cited multimodal evidence on every referenced turn. Omit unsupported moments."
+                        "Use only improvements with cited multimodal evidence on every referenced turn. "
+                        "Select at most three relevant turns and do not mention turn IDs or numbers in feedback text. Omit unsupported moments."
                     )))
                 else:
                     break
+            for moment in output.moments:
+                moment.turn_ids = [turn_ids[turn_id] for turn_id in moment.turn_ids]
             # Re-read after the network call; never publish feedback for superseded inputs.
             db.expire_all()
             recording = recording_for(db, interview_id, lock=True)

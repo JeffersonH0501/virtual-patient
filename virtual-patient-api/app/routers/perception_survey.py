@@ -60,8 +60,8 @@ def serialize(record, enabled):
 
 
 def require_role(actor):
-    if actor.role not in (UserRole.STUDENT, UserRole.TEACHER):
-        raise HTTPException(403, "Survey is available to students and teachers")
+    if actor.role not in (UserRole.STUDENT, UserRole.DOCTOR):
+        raise HTTPException(403, "Survey is available to students and doctors")
 
 
 @router.get("")

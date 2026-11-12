@@ -15,7 +15,18 @@ def render_family_evidence(payload: dict, family: str) -> str | None:
     processed = payload.get("processed") or {}
     raw = payload.get("raw") or {}
     if family == "gaze_orientation" and processed.get("interaction_gaze_ratio") is not None:
-        return f"Estimated gaze inside the interaction area or toward the calibrated camera: {processed['interaction_gaze_ratio'] * 100:.1f}% of evaluable visual time."
+        text = f"Estimated gaze inside the interaction area or toward the calibrated camera: {processed['interaction_gaze_ratio'] * 100:.1f}% of evaluable visual time."
+        samples = raw.get("gaze_semantic_observations") or []
+        fps = raw.get("sample_fps")
+        end = (raw.get("extractor") or {}).get("window_end_ms")
+        if samples and isinstance(fps, (int, float)) and fps > 0 and isinstance(end, (int, float)):
+            from app.nonverbal.preprocessing import time_weighted_states
+            for reason, label in (("eyes_closed", "closed eyes"), ("face_not_detected", "face not detected")):
+                states = [{"timestamp_ms": item["timestamp_ms"], "state": "INSIDE" if item.get("reason") == reason and item.get("state") == "OUTSIDE" else "UNAVAILABLE"} for item in samples]
+                totals, _ = time_weighted_states(states, end_ms=end, max_support_ms=min(200., 1000. / fps))
+                if totals["INSIDE"]:
+                    text += f" Outside interaction due to {label}: {totals['INSIDE'] / 1000:.2f} seconds."
+        return text
     if family == "head_nods" and processed.get("nod_count") is not None and raw.get("turn_duration_ms") is not None:
         return f"Detected {processed['nod_count']} nods during a {raw['turn_duration_ms'] / 1000:.1f} second turn."
     if family == "smile_activity" and processed.get("smile_activity_ratio") is not None:
@@ -30,7 +41,10 @@ def render_family_evidence(payload: dict, family: str) -> str | None:
             metrics.append(f"median pause {processed['median_pause_duration_ms'] / 1000:.2f} seconds")
         if processed.get("pause_time_ratio") is not None:
             metrics.append(f"{processed['pause_time_ratio'] * 100:.1f}% of the speech window in reportable pauses")
-        return description + (" " + "; ".join(metrics) + "." if metrics else "")
+        issues = (payload.get("quality") or {}).get("issues", [])
+        boundary_note = (" Speech was detected at a window boundary; completeness of the speech and transcript is uncertain."
+                         if "speech_at_window_start" in issues or "speech_at_window_end" in issues else "")
+        return description + (" " + "; ".join(metrics) + "." if metrics else "") + boundary_note
     if family == "prosodic_variability" and processed.get("f0_p20_p80_range_semitones") is not None:
         return f"{description} F0 P20–P80 range: {processed['f0_p20_p80_range_semitones']:.2f} semitones."
     return description

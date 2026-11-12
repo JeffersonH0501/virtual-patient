@@ -261,7 +261,7 @@ beforeEach(() => {
   document.body.innerHTML = '';
 });
 afterEach(() => {
- cleanup(); vi.useRealTimers();
+  cleanup(); vi.useRealTimers();
 });
 const open = async () => {
   const view = render(<ClinicalChat mode="session" />);
@@ -288,7 +288,9 @@ it('holds a committed transcript during capture pause and sends it once capture 
   flow.recording.syncPending = true;
   flow.recording.segmentId = '';
   view.rerender(<ClinicalChat mode="session" />);
-  await act(async () => { await flow.speechOptions.onUtterance('Synthetic deferred transcript'); });
+  await act(async () => {
+    await flow.speechOptions.onUtterance('Synthetic deferred transcript');
+  });
   expect(flow.send).not.toHaveBeenCalled();
   flow.recording.syncPending = false;
   flow.recording.segmentId = 'synthetic-segment';
@@ -302,7 +304,9 @@ it('waits for the last local fragment before reconciling a live block capture', 
   flow.interview.lifecycle = {phase: 'active', canComplete: false, canRetryCompletion: false,
     canResumeCapture: true, recordingTransport: 'reusable_blocks_v1'};
   let stopped!: () => void;
-  flow.recording.stopForRecovery.mockReturnValue(new Promise<void>((resolve) => { stopped = resolve; }));
+  flow.recording.stopForRecovery.mockReturnValue(new Promise<void>((resolve) => {
+    stopped = resolve;
+  }));
   flow.resumeBlock.mockResolvedValue({resumeAttemptId: 'resume-attempt'});
   render(<ClinicalChat mode="session" />);
   fireEvent.click(await screen.findByText('clinicalChat.resumeSession.resume'));
@@ -324,7 +328,9 @@ it('continues frozen media from the safe lifecycle even before automatic assessm
   flow.interview.lifecycle = {phase: 'capture_finalized', canComplete: true, canRetryCompletion: false,
     canResumeCapture: false, recordingTransport: 'reusable_blocks_v1'};
   flow.interview.reviewAccess = {canViewAssessments: false, assignmentId: null, selfAssessmentRequired: true};
-  flow.complete.mockImplementation(async () => { flow.interview.status = 'processing'; return {}; });
+  flow.complete.mockImplementation(async () => {
+    flow.interview.status = 'processing'; return {};
+  });
   render(<ClinicalChat mode="review" />);
   fireEvent.click(await screen.findByText('common.retry'));
   await waitFor(() => expect(flow.complete).toHaveBeenCalledWith('7'));
@@ -496,13 +502,15 @@ it('discards an unsent intervention and seals once before allowing cancellation'
   await open();
   expect(flow.toolbar.endDisabled).toBe(false);
   await act(async () => {
- flow.toolbar.onEndInterview(); flow.toolbar.onEndInterview();
-});
+    flow.toolbar.onEndInterview(); flow.toolbar.onEndInterview();
+  });
   expect(flow.speech.stop).toHaveBeenCalled();
   expect(flow.recording.discardStudentTurn).toHaveBeenCalledOnce();
   expect(flow.recording.sealForEnding).toHaveBeenCalledOnce();
   expect(flow.hypotheses.canCancel).toBe(true);
-  await act(async () => { await flow.hypotheses.onCancel(); });
+  await act(async () => {
+    await flow.hypotheses.onCancel();
+  });
   expect(flow.recording.restartAfterCancel).toHaveBeenCalledOnce();
   expect(screen.queryByTestId('hypotheses')).toBeNull();
 });
@@ -551,7 +559,9 @@ it('keeps completion open until sealing and preservation succeed', async () => {
   fireEvent.click(screen.getByText('End'));
   expect(screen.queryByTestId('hypotheses')).not.toBeNull();
   await waitFor(() => expect(flow.hypotheses.preparingCapture).toBe(false));
-  await act(async () => { await flow.hypotheses.onCancel(); });
+  await act(async () => {
+    await flow.hypotheses.onCancel();
+  });
   expect(flow.recording.restartAfterCancel).not.toHaveBeenCalled();
   expect(screen.queryByTestId('hypotheses')).not.toBeNull();
 });
@@ -688,20 +698,20 @@ it('loads the saved progress summary in review without generating it again', asy
 });
 
 it('serializes review regeneration and reloads only after terminal evaluation', async () => {
-  flow.role = 'superuser';
+  flow.role = 'admin';
   flow.interview.status = 'completed';
   render(<ClinicalChat mode="review" />);
   await screen.findByText('Regenerate');
   vi.useFakeTimers();
   await act(async () => {
- flow.review.onRegenerate?.(); flow.review.onRegenerate?.();
-});
+    flow.review.onRegenerate?.(); flow.review.onRegenerate?.();
+  });
   expect(flow.regenerate).toHaveBeenCalledOnce();
   expect(flow.review.isRegenerating).toBe(true);
   const loaded = flow.fetchCount;
   await act(async () => {
- await vi.advanceTimersByTimeAsync(3000);
-});
+    await vi.advanceTimersByTimeAsync(3000);
+  });
   expect(flow.recap).toHaveBeenCalledWith(7, expect.any(AbortSignal));
   expect(flow.fetchCount).toBe(loaded + 1);
   expect(flow.review.isRegenerating).toBe(false);
@@ -709,17 +719,19 @@ it('serializes review regeneration and reloads only after terminal evaluation', 
 });
 
 it('stops review polling after unmount without reopening capture', async () => {
-  flow.role = 'superuser';
+  flow.role = 'admin';
   flow.interview.status = 'completed';
   const view = render(<ClinicalChat mode="review" />);
   await screen.findByText('Regenerate');
   vi.useFakeTimers();
   await act(async () => {
- flow.review.onRegenerate?.();
-});
+    flow.review.onRegenerate?.();
+  });
 
   view.unmount();
-  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
   expect(flow.recap).not.toHaveBeenCalled();
   expect(flow.captureOptions.enabled).toBe(false);
 });
@@ -730,7 +742,9 @@ it.each(['interview', 'account'])('never renders previous profile during a chang
   const view = render(<ClinicalChat mode="review" />);
   await screen.findByText('Previous private profile');
   let resolve!: (value: typeof flow.interview) => void;
-  flow.load.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  flow.load.mockReturnValueOnce(new Promise((done) => {
+    resolve = done;
+  }));
   flow.profiles = [];
   if (identity === 'interview') flow.routeId = '8';
   else flow.userId = 2;
@@ -744,16 +758,24 @@ it('waits for a slow detail poll before scheduling the next request and retains 
   flow.interview.status = 'processing';
   flow.interview.progressSummary = {summaryText: 'Confirmed profile'};
   vi.useFakeTimers();
-  await act(async () => { render(<ClinicalChat mode="review" />); });
+  await act(async () => {
+    render(<ClinicalChat mode="review" />);
+  });
   expect(screen.queryByText('Confirmed profile')).not.toBeNull();
   let resolve!: (value: typeof flow.interview) => void;
-  flow.load.mockReturnValueOnce(new Promise((done) => { resolve = done; }));
-  await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
+  flow.load.mockReturnValueOnce(new Promise((done) => {
+    resolve = done;
+  }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(15000);
+  });
   expect(flow.fetchCount).toBe(2);
   expect(screen.queryByText('Confirmed profile')).not.toBeNull();
   await act(async () => resolve({...flow.interview, status: 'completed', progressSummary: {summaryText: 'Finished profile'}}));
   expect(screen.queryByText('Finished profile')).not.toBeNull();
-  await act(async () => { await vi.advanceTimersByTimeAsync(10000); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(10000);
+  });
   expect(flow.fetchCount).toBe(2);
 });
 

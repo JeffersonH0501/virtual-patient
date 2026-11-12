@@ -7,7 +7,7 @@ const reads = vi.hoisted(() => ({detail: vi.fn(), recap: vi.fn(), own: vi.fn(), 
 vi.mock('../services/interviews/getInterview', () => ({getInterview: reads.detail}));
 vi.mock('../services/recordings', () => ({getInterviewRecap: reads.recap}));
 vi.mock('../services/interviews/getInterviews', () => ({getInterviews: reads.own}));
-vi.mock('../services/interviews/getOrganizationInterviews', () => ({getOrganizationInterviews: reads.organization}));
+vi.mock('../services/interviews/getAdminInterviews', () => ({getAdminInterviews: reads.organization}));
 vi.mock('../services/clinicalCases', () => ({getDefaultCases: async () => []}));
 vi.mock('../services/personalities', () => ({getPersonalities: async () => []}));
 vi.mock('../services/users/manageUsers', () => ({listManagedUsers: async () => ({users: [], total: 0})}));
@@ -40,12 +40,12 @@ it('does not start background review preloads during an active interview', async
   expect(reads.detail).not.toHaveBeenCalled();
 });
 
-it('uses the organization history for a superuser without loading another account own history', async () => {
-  reads.detail.mockResolvedValue({id: 22, userId: 2, status: 'completed', reviewAccess: {canViewAssessments: true, canAssignTeachers: true}});
-  const user = {id: 1, role: 'superuser', organizationId: 42} as User;
+it('uses the admin history for an admin without loading another account own history', async () => {
+  reads.detail.mockResolvedValue({id: 22, userId: 2, status: 'completed', reviewAccess: {canViewAssessments: true, canAssignDoctors: true}});
+  const user = {id: 1, role: 'admin'} as User;
   render(<SessionListsProvider user={user} interviewFlow={false}><span>Ready</span></SessionListsProvider>);
   await waitFor(() => expect(reads.request).toHaveBeenCalledTimes(3));
-  expect(reads.organization).toHaveBeenCalledWith('42', 0, 100);
+  expect(reads.organization).toHaveBeenCalledWith(0, 100);
   expect(reads.detail).toHaveBeenCalledWith('22', 'en');
   expect(reads.own).not.toHaveBeenCalled();
 });

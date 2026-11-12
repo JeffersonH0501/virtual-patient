@@ -4,7 +4,7 @@ import {getClinicalCaseById} from '../../services/clinicalCases';
 import {Button} from '../common/Button';
 import {CaseRecord} from './CaseRecord';
 import {Dialog} from '../common/Dialog';
-import {gradingRequest} from '../../services/teacherGrading';
+import {gradingRequest} from '../../services/doctorGrading';
 
 type CaseDetailsDialogProps = ({caseId: number; interviewId?: never} | {interviewId: number; caseId?: never}) & {onClose: () => void};
 

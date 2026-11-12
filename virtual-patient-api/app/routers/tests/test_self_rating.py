@@ -4,7 +4,7 @@ import pytest
 from app.models.medical_interview import MedicalInterviewDB
 from app.models.user import UserDB, UserRole
 from app.models.self_rating import SelfRatingDB
-from app.routers.tests.test_teacher_grading import grading_api, history_api, payload
+from app.routers.tests.test_doctor_grading import grading_api, history_api, payload
 
 
 @pytest.fixture
@@ -26,7 +26,7 @@ def test_owner_is_blinded_until_complete_self_submission(owner_api):
     assert response.status_code == 200
     assert response.json()["review_access"]["self_assessment_required"] is True
     assert "AUTOMATIC_SECRET" not in response.text
-    assert client.get(base + "/teacher-ratings").status_code == 403
+    assert client.get(base + "/doctor-ratings").status_code == 403
     assert client.get(base + "/reviewers").status_code == 403
     workspace = base + "/self-rating"
     assert client.get(workspace).json()["status"] == "pending"
@@ -76,10 +76,10 @@ def test_self_rating_is_owner_only_and_available_during_processing(owner_api):
         assert response.status_code == 404
 
 
-def test_teacher_can_self_assess_own_interview_and_submission_updates_are_atomic(owner_api):
+def test_doctor_can_self_assess_own_interview_and_submission_updates_are_atomic(owner_api):
     client, actor, db, interview = owner_api
-    actor.role = UserRole.TEACHER
-    db.get(UserDB, actor.id).role = UserRole.TEACHER
+    actor.role = UserRole.DOCTOR
+    db.get(UserDB, actor.id).role = UserRole.DOCTOR
     db.commit()
     base = f"/medical-interviews/{interview.id}/self-rating"
     assert client.post(base + "/start").status_code == 200

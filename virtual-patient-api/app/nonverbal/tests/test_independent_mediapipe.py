@@ -14,11 +14,34 @@ from app.nonverbal.mediapipe_calibration import SOURCE, build_profile, build_cam
 
 def test_live_gaze_state_keeps_invalid_observations_indeterminate():
     from types import SimpleNamespace
-    from app.nonverbal.mediapipe_calibration import gaze_screen_state
-    assert gaze_screen_state(SimpleNamespace(valid=True, unclipped_x=.5, unclipped_y=.5)) == 'inside'
-    assert gaze_screen_state(SimpleNamespace(valid=True, unclipped_x=1.1, unclipped_y=.5)) == 'outside'
-    assert gaze_screen_state(SimpleNamespace(valid=False, unclipped_x=.5, unclipped_y=.5)) == 'indeterminate'
-    assert gaze_screen_state(SimpleNamespace(valid=True, unclipped_x=float('nan'), unclipped_y=.5)) == 'indeterminate'
+    from app.nonverbal.mediapipe_calibration import gaze_interaction_state
+    area = {'x_normalized': .2, 'y_normalized': .2, 'width_normalized': .6, 'height_normalized': .6}
+    def sample(x, valid=True, state='mediapipe_five_point_v1'):
+        return SimpleNamespace(valid=valid, unclipped_x=x, unclipped_y=.5, state=state)
+    assert gaze_interaction_state(sample(.5), {}, area) == 'inside'
+    assert gaze_interaction_state(sample(.1), {}, area) == 'outside'
+    assert gaze_interaction_state(sample(.1, state='mediapipe_camera'), {}, area) == 'inside'
+    assert gaze_interaction_state(sample(.5, valid=False), {}, area) == 'indeterminate'
+    assert gaze_interaction_state(sample(float('nan')), {}, area) == 'indeterminate'
+    assert gaze_interaction_state(sample(.5, valid=False, state='eyes_closed'), {}, area) == 'outside'
+    assert gaze_interaction_state(sample(.5, valid=False, state='face_not_detected'), {}, area) == 'outside'
+
+
+def test_missing_face_requires_a_usable_nonuniform_frame():
+    shared = replace(frame(0, face=False).shared, reason='face_not_detected')
+    assert gaze_observation(shared, {}).state == 'face_not_detected'
+    assert gaze_observation(replace(shared, frame_brightness_std=0), {}).state == 'capture_quality'
+    assert gaze_observation(replace(shared, frame_brightness_mean=0), {}).state == 'capture_quality'
+
+
+def test_closed_eyes_are_distinct_from_missing_landmarks():
+    shared = frame(0).shared
+    landmarks = list(shared.landmarks)
+    for upper, lower in ((160, 144), (158, 153), (385, 380), (387, 373)):
+        landmarks[upper] = replace_landmark = type(landmarks[upper])(x=landmarks[upper].x, y=.4, z=0.)
+        landmarks[lower] = type(replace_landmark)(x=landmarks[lower].x, y=.4, z=0.)
+    assert gaze_observation(replace(shared, landmarks=landmarks), {}).state == 'eyes_closed'
+    assert gaze_observation(replace(shared, landmarks=[]), {}).state == 'eyes_unobservable'
 
 
 def calibration():

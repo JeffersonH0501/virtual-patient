@@ -27,7 +27,7 @@ const transcriptTurns = (messages: Message[] = []): RecapTurn[] => messages.map(
 
 export const InterviewRecap = (props: Props) => {
   const {user} = useUser();
-  return <InterviewRecapContent key={`${user?.id}:${user?.role}:${user?.organizationId}:${props.interviewId}`} {...props} />;
+  return <InterviewRecapContent key={`${user?.id}:${user?.role}:${props.interviewId}`} {...props} />;
 };
 
 const InterviewRecapContent = ({interviewId, messages, patientName, patientAvatar, infoDisabled = false, onRecapLoaded,
@@ -46,14 +46,19 @@ const InterviewRecapContent = ({interviewId, messages, patientName, patientAvata
     let active = true;
     const controller = new AbortController();
     let timer: number | undefined;
+    // Bound the processing poll so a status stuck at queued/processing cannot
+    // poll forever (~20 min at 3s). The user can retry after that.
+    let polls = 0;
+    const MAX_POLLS = 400;
     setLoadFailed(false);
     const load = async () => {
       try {
         const next = await getInterviewRecap(interviewId, controller.signal);
         if (!active) return;
         setRecap(next);
-        if ([next.observationProcessing?.status, next.evaluationProcessing?.status]
+        if (polls < MAX_POLLS && [next.observationProcessing?.status, next.evaluationProcessing?.status]
           .some((status) => status === 'queued' || status === 'processing')) {
+          polls += 1;
           timer = window.setTimeout(() => void load(), 3000);
         }
       } catch {

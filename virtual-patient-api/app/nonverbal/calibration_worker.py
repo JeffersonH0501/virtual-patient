@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from app.models.calibration import CameraCalibrationMetadata, GazeCalibrationMetadata, UnifiedCalibrationMetadata
 
-CALIBRATION_SAMPLE_FPS = 10.0
+CALIBRATION_SAMPLE_FPS = 15.0
 
 
 def process_gaze(path: Path, metadata: GazeCalibrationMetadata, *, landmarker=None, observations=None) -> dict:
@@ -43,7 +43,7 @@ def process_unified(path: Path, metadata: UnifiedCalibrationMetadata) -> dict:
             from app.nonverbal.guided_checks import analyze_guided_checks
             result["guided_checks"] = analyze_guided_checks(observations, metadata.guided_checks, None,
                 environment=metadata.guided_environment.model_dump(mode="json"), geometry=metadata.geometry.model_dump(mode="json"),
-                protocol=metadata.guided_protocol)
+                protocol=metadata.guided_protocol, sample_fps=CALIBRATION_SAMPLE_FPS)
         return result
     profile = gaze["profile"]
     camera_metadata = CameraCalibrationMetadata(affine_matrix=profile["affine_matrix"], geometry=metadata.geometry,
@@ -70,5 +70,5 @@ def process_unified(path: Path, metadata: UnifiedCalibrationMetadata) -> dict:
                 diagnostic_profile["camera_eye_reference"] = camera["camera_eye_reference"]
         result["guided_checks"] = analyze_guided_checks(observations, metadata.guided_checks, diagnostic_profile,
             environment=metadata.guided_environment.model_dump(mode="json"), geometry=metadata.geometry.model_dump(mode="json"),
-            protocol=metadata.guided_protocol, camera_result=camera)
+            protocol=metadata.guided_protocol, camera_result=camera, sample_fps=CALIBRATION_SAMPLE_FPS)
     return result

@@ -9,8 +9,7 @@ import {useUser} from '../../hooks/useUser';
 import {EvaluationCondition, InterviewEvaluationResponse} from '../../types/evaluation';
 import {ClinicalCaseComparison} from './ClinicalCaseComparison';
 import {EvaluationCriteriaTooltip} from './EvaluationCriteriaTooltip';
-import {requestLearningMoments} from '../../services/evaluations/learningMoments';
-import {LearningMoment} from '../../types/learningMoments';
+import {useLearningMoments} from './useLearningMoments';
 import {getAspectDisplayName, getScoreTone, getScoreLabel, sortEvaluationResults} from './helpers';
 import {TableHeader} from '../common/Table/TableHeader';
 import {readDesignNumber} from '../../utils/designTokens';
@@ -74,7 +73,7 @@ export const EvaluationResultsPanel = ({
 }: EvaluationResultsPanelProps) => {
   const {t} = useTranslation();
   const {user} = useUser();
-  const canRegenerate = regenerationAllowed && user?.role === 'superuser';
+  const canRegenerate = regenerationAllowed && user?.role === 'admin';
   const refreshActionLabel = t(onReprocess ? 'evaluation.refreshActions' : 'evaluation.regenerateEvaluation');
   const panelElement = useRef<HTMLElement>(null);
   const editingFocus = useRef<string | null>(null);
@@ -105,7 +104,6 @@ export const EvaluationResultsPanel = ({
     setExpandedFor(evaluationKey);
     setExpandedAspects(new Set());
   }
-  const [learningMoments, setLearningMoments] = useState<LearningMoment[]>([]);
   const feedbackId = useId();
   const staleTooltipId = useId();
   const regenerateControl = useRef<HTMLSpanElement>(null);
@@ -168,31 +166,7 @@ export const EvaluationResultsPanel = ({
   const isPending = isLoading || isRegenerating;
   const showLearningMoments = condition === 'TEXT_PLUS_MULTIMODAL' && !draftResults && !humanLabel
     && editorContent == null && sortedResults.length > 0 && !isPending && !refreshDisabled;
-  const sourceRevision = interview.multimodalInterviewEvaluation?.updatedAt;
-  useEffect(() => {
-    setLearningMoments([]);
-    if (!showLearningMoments) return;
-    let disposed = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    async function load() {
-      try {
-        const result = await requestLearningMoments(interview.id);
-        if (disposed) return;
-        if (result.status === 'pending' || result.status === 'processing') {
-          timer = setTimeout(() => void load(), 2000);
-        } else if (result.status === 'completed' && !result.stale) {
-          setLearningMoments(result.moments.slice(0, 3));
-        }
-      } catch {
-        // The category feedback remains available if its supplemental moments cannot load.
-      }
-    }
-    void load();
-    return () => {
-      disposed = true;
-      clearTimeout(timer);
-    };
-  }, [interview.id, sourceRevision, showLearningMoments]);
+  const learningMoments = useLearningMoments(interview.id, interview.multimodalInterviewEvaluation?.updatedAt, showLearningMoments);
   const hasOverallScore = sortedResults.length > 0 && typeof overallScore === 'number';
   const tableHeader = (
     <TableHeader

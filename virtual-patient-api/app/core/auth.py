@@ -57,7 +57,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
 def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
     """
-    Get current user from token string (for WebSocket authentication)
+    Get current user from a raw token string (used for media access authentication).
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -107,7 +107,7 @@ async def get_current_active_user(current_user: User = Depends(get_current_user)
     return current_user
 
 
-def require_superuser(current_user: User = Depends(get_current_active_user)) -> User:
-    if current_user.role != UserRole.SUPERUSER:
-        raise HTTPException(status_code=403, detail="Superuser access required")
+def require_admin(current_user: User = Depends(get_current_active_user)) -> User:
+    if current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="Admin access required")
     return current_user

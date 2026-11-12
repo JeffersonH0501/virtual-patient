@@ -13,7 +13,7 @@ from app.models.medical_interview import MedicalInterviewDB, InterviewRecordingD
 from app.models.processing_job import InterviewProcessingJobDB
 from app.models.user import UserDB
 from app.models.clinical_case import ClinicalCaseDB
-from app.models.teacher_feedback import TeacherFeedbackDB
+from app.models.doctor_feedback import DoctorFeedbackDB
 
 logger = logging.getLogger(__name__)
 
@@ -68,8 +68,6 @@ def delete_parent(db, parent, kind):
         db.rollback()
         raise HTTPException(409, "Another interview operation is in progress; retry") from error
     identifiers = [item.id for item in interviews]
-    if kind == "case" and any(item.user.organization_id != parent.organization_id for item in interviews):
-        raise HTTPException(409, "Case has interviews outside the permitted organization")
     if any(
         item.status == InterviewStatus.PROCESSING or (
             item.status == InterviewStatus.IN_PROGRESS and not (
@@ -104,7 +102,7 @@ def delete_parent(db, parent, kind):
             delete_interview_graph(db, interview)
         if kind == "user":
             db.query(ClinicalCaseDB).filter(ClinicalCaseDB.created_by == parent.id).update({"created_by": None}, synchronize_session=False)
-            db.query(TeacherFeedbackDB).filter(TeacherFeedbackDB.teacher_id == parent.id).delete(synchronize_session=False)
+            db.query(DoctorFeedbackDB).filter(DoctorFeedbackDB.doctor_id == parent.id).delete(synchronize_session=False)
         db.flush()
         if kind != "interview":
             db.delete(parent)

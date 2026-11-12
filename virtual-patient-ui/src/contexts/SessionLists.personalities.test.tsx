@@ -1,6 +1,7 @@
 import {cleanup, render, screen, waitFor} from '@testing-library/react';
 import {afterEach, expect, it, vi} from 'vitest';
-import {SessionListsProvider, useSessionList} from './SessionLists';
+import {SessionListsProvider} from './SessionLists';
+import {useSessionList} from '../hooks/useSessionList';
 import type {User} from '../types/user';
 
 const read = vi.hoisted(() => vi.fn());

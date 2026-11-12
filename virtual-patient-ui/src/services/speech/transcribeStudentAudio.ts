@@ -13,10 +13,12 @@ export const transcribeStudentAudio = async (
   audio: Blob,
   filename: string,
   language?: 'en' | 'es',
+  interviewId?: number,
 ): Promise<TranscriptionResponse> => {
   const form = new FormData();
   form.append('audio', audio, filename);
   if (language) form.append('language', language);
+  if (interviewId) form.append('interview_id', String(interviewId));
 
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45000);

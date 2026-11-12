@@ -90,3 +90,20 @@ def test_extracts_acoustic_samples_only_inside_vad_intervals(tmp_path, monkeypat
     assert raw.loudness_timestamps_ms == [5110., 5210.]
     assert raw.vad_speech_intervals_ms == [(100, 250)]
     assert raw.audio_quality['vad_speech_duration_ms'] == 150
+
+
+def test_speech_at_window_boundary_is_reported_without_claiming_truncation(tmp_path, monkeypatch):
+    import wave
+    from app.paraverbal import silero_vad
+    from app.paraverbal.opensmile_extractor import _extract_raw_features
+    path = tmp_path / 'audio.wav'
+    with wave.open(str(path), 'wb') as output:
+        output.setnchannels(1)
+        output.setsampwidth(2)
+        output.setframerate(16000)
+        output.writeframes(bytes(32000))
+    monkeypatch.setattr(silero_vad, 'detect_speech', lambda samples: ([(0, 1000)], [.9]))
+    smile = type('Extractor', (), {'process_file': lambda self, path: None})()
+    raw = _extract_raw_features(path, [0.] * 16000, 1000, 'two words', smile=smile, min_voiced_duration_ms=300)
+    assert {'speech_at_window_start', 'speech_at_window_end'} <= set(raw.audio_quality['issues'])
+    assert 'truncated_audio' not in raw.audio_quality['issues']

@@ -345,25 +345,4 @@ class VirtualPatientAgent:
         memory_context = self.enhanced_memory.get_contextual_memory(query)
         return self.enhanced_memory.format_enhanced_memories(memory_context)
     
-    def collect_doctor_feedback(self, session_id: str, question: str, patient_response: str, 
-                               doctor_feedback: str, feedback_type: str = "improvement") -> Dict[str, Any]:
-        """
-        Collect feedback from a doctor and process it for learning
-        
-        Args:
-            session_id: Session identifier
-            question: Original question asked
-            patient_response: Response given by the patient
-            doctor_feedback: Feedback from the doctor
-            feedback_type: Type of feedback (improvement, correction, praise)
-            
-        Returns:
-            Processing result with optimization status
-        """
-        return self.feedback_collector.collect_feedback(
-            session_id=session_id,
-            question=question,
-            patient_response=patient_response,
-            doctor_feedback=doctor_feedback,
-            feedback_type=feedback_type
-        )
+

@@ -74,15 +74,32 @@ beforeEach(() => {
   }));
 });
 
+it('checkpoints the interaction area while a block is still recording', async () => {
+  const area = document.createElement('div');
+  area.setAttribute('data-interaction-area', '');
+  area.getBoundingClientRect = () => ({x: 100, y: 100, right: 600, bottom: 500, width: 500, height: 400}) as DOMRect;
+  document.body.append(area);
+  const {result, unmount} = renderHook(() => useBlockInterviewRecording(options()));
+  await waitFor(() => expect(result.current.segmentId).toBe('capture'));
+  await waitFor(() => expect([...flow.rows.values()][0].metadata.interaction_area_snapshots).toHaveLength(1));
+  expect([...flow.rows.values()][0].state).toBe('capturing');
+  unmount();
+  area.remove();
+});
+
 it('retries local startup with the same server capture grant', async () => {
   flow.create.mockRejectedValueOnce(new Error('Synthetic OPFS start failure'));
   const {result, unmount} = renderHook(() => useBlockInterviewRecording(options()));
   await waitFor(() => expect(result.current.canRetryStart).toBe(true));
-  await act(async () => { window.dispatchEvent(new Event('online')); });
+  await act(async () => {
+    window.dispatchEvent(new Event('online'));
+  });
   expect(result.current.segmentId).toBeNull();
   expect(result.current.syncPending).toBe(true);
   expect(flow.request).toHaveBeenCalledTimes(1);
-  await act(async () => { await result.current.retryStart(); });
+  await act(async () => {
+    await result.current.retryStart();
+  });
   await waitFor(() => expect(result.current.segmentId).toBe('capture'));
   expect(flow.request).toHaveBeenCalledTimes(1);
   unmount();
@@ -107,7 +124,9 @@ it('requires recalibration after the viewport changes and online cannot clear it
   act(() => window.dispatchEvent(new Event('resize')));
   await waitFor(() => expect(result.current.segmentId).toBeNull());
   expect(result.current.errorCode).toBe('capture-geometry-changed');
-  await act(async () => { window.dispatchEvent(new Event('online')); });
+  await act(async () => {
+    window.dispatchEvent(new Event('online'));
+  });
   expect(result.current.syncPending).toBe(true);
   unmount();
 });
@@ -150,7 +169,9 @@ it('requires recalibration when the device changes while hypotheses are open', a
   const captureOptions = {...options(), cameraStream: stream('one')};
   const {result, rerender, unmount} = renderHook((value) => useBlockInterviewRecording(value), {initialProps: captureOptions});
   await waitFor(() => expect(result.current.segmentId).toBe('capture'));
-  await act(async () => { await result.current.sealForEnding(); });
+  await act(async () => {
+    await result.current.sealForEnding();
+  });
   rerender({...captureOptions, cameraStream: stream('two')});
   expect(result.current.canRestartWithCurrentGeometry()).toBe(false);
   unmount();
@@ -160,7 +181,9 @@ it('does not discard a confirmed exchange when sealing after storage fails', asy
   const {result, unmount} = renderHook(() => useBlockInterviewRecording(options()));
   await waitFor(() => expect(result.current.segmentId).toBe('capture'));
   act(() => result.current.beginPatientTurn(10));
-  await act(async () => { expect(await result.current.sealForEnding()).toBe(false); });
+  await act(async () => {
+    expect(await result.current.sealForEnding()).toBe(false);
+  });
   expect(flow.rows.size).toBe(1);
   unmount();
 });
@@ -169,7 +192,9 @@ it('flushes the final fragment before same-tab recovery without discarding the o
   const {result, unmount} = renderHook(() => useBlockInterviewRecording(options()));
   await waitFor(() => expect(result.current.segmentId).toBe('capture'));
   act(() => result.current.beginPatientTurn(10));
-  await act(async () => { await result.current.stopForRecovery(); });
+  await act(async () => {
+    await result.current.stopForRecovery();
+  });
   const block = [...flow.rows.values()][0];
   expect(block.chunks).toBe(1);
   expect(block.state).toBe('capturing');

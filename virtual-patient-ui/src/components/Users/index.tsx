@@ -1,10 +1,10 @@
 import {Badge} from '../common/Badge';
 import {DateTime} from '../common/DateTime';
 import {AdministrativeDeleteDialog} from '../common/AdministrativeDeleteDialog';
-import {useState} from 'react';
-import {Navigate} from 'react-router-dom';
+import {useEffect, useState} from 'react';
+import {Navigate, useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
-import {useSessionList} from '../../contexts/SessionLists';
+import {useSessionList} from '../../hooks/useSessionList';
 import {useUser} from '../../hooks/useUser';
 import {ROUTES} from '../../utils/routes';
 import {User} from '../../types/user';
@@ -14,15 +14,18 @@ import {useManagedUsers} from './useManagedUsers';
 import {MotionPresence} from '../common/Motion';
 import {TableLoadingState} from '../common/Table/TableLoadingState';
 import {PageHeader} from '../common/PageHeader';
-import {Trash2} from 'lucide-react';
+import {ClipboardList, MessageSquareText, Trash2} from 'lucide-react';
+import {getManagedActivity, ManagedActivity} from '../../services/users/manageUsers';
+import {SubmittedSurveyDialog} from './SubmittedSurveyDialog';
 
 export const Users = () => {
   const {user, isLoading} = useUser();
   const {t} = useTranslation();
+  const navigate = useNavigate();
   const {users, total, offset, loading, error, reload, setOffset, pageSize} = useManagedUsers(
-    user?.role === 'superuser',
+    user?.role === 'admin',
   );
-  const {load: refreshOrganization} = useSessionList('organization', false);
+  const {load: refreshHistory} = useSessionList('adminHistory', false);
   const columnHeaders = [
     'users.registeredAt',
     'auth.name',
@@ -33,8 +36,27 @@ export const Users = () => {
   const [editor, setEditor] = useState<{account?: User} | null>(null);
   const [notice, setNotice] = useState('');
   const [deleting, setDeleting] = useState<User | null>(null);
+  const [surveyAccount, setSurveyAccount] = useState<User | null>(null);
+  const [activity, setActivity] = useState<ManagedActivity[]>([]);
+  const [activityError, setActivityError] = useState(false);
+  const [activityVersion, setActivityVersion] = useState(0);
+  useEffect(() => {
+    if (user?.role !== 'admin') return;
+    let active = true;
+    setActivityError(false);
+    void getManagedActivity().then((result) => {
+      if (active) setActivity(result);
+    }).catch(() => {
+      if (active) {
+        setActivity([]); setActivityError(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [user?.id, user?.role, activityVersion]);
   if (isLoading) return <p role="status">{t('common.loading')}</p>;
-  if (user?.role !== 'superuser') return <Navigate to={ROUTES.home} replace />;
+  if (user?.role !== 'admin') return <Navigate to={ROUTES.home} replace />;
   return (
     <section className="ui-page" aria-labelledby="users-title">
       <PageHeader
@@ -58,6 +80,9 @@ export const Users = () => {
           {t(notice)}
         </p>
       )}
+      {activityError && <div role="alert" className="ui-notice ui-notice--warning">
+        {t('users.activityError')} <Button variant="text" onClick={() => setActivityVersion((value) => value + 1)}>{t('common.retry')}</Button>
+      </div>}
       <ListPanel
         titleId="users-title"
         pagination={
@@ -95,11 +120,9 @@ export const Users = () => {
           <TableLoadingState
             columns={columnHeaders.map((key) => t(key))}
             stackedColumns={[0]}
-            actionCount={1}
+            actionCount={3}
             label={t('common.loading')}
           />
-        ) : users.length === 0 ? (
-          <p className="ui-empty-state">{t('users.empty')}</p>
         ) : (
           <div aria-busy={loading}>
             <div className="ui-table-scroll" tabIndex={0}>
@@ -119,7 +142,13 @@ export const Users = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((account) => (
+                  {users.length === 0 ? (
+                    <tr>
+                      <td colSpan={columnHeaders.length} className="text-center">
+                        {t('users.empty')}
+                      </td>
+                    </tr>
+                  ) : users.map((account) => (
                     <tr key={account.id} className={!loading && !error ? 'ui-interactive-row' : undefined}
                       tabIndex={!loading && !error ? 0 : undefined}
                       aria-label={t('users.editAccount', {name: account.name})}
@@ -144,6 +173,22 @@ export const Users = () => {
                       </td>
                       <td>
                         <div className="ui-table-options ui-table-options--icons">
+                          <Button variant="secondary" className="ui-icon-button"
+                            disabled={loading || Boolean(error) || !activity.find((item) => item.userId === account.id)?.hasInterviews}
+                            aria-label={t('users.viewInterviews')} title={t('users.viewInterviews')}
+                            onClick={(event) => {
+                              event.stopPropagation(); navigate(`${ROUTES.interviews}?user=${account.id}`, {state: {accountName: account.name}});
+                            }}>
+                            <MessageSquareText aria-hidden="true" />
+                          </Button>
+                          <Button variant="secondary" className="ui-icon-button"
+                            disabled={loading || Boolean(error) || !activity.find((item) => item.userId === account.id)?.hasSubmittedSurvey}
+                            aria-label={t('users.viewSurvey')} title={t('users.viewSurvey')}
+                            onClick={(event) => {
+                              event.stopPropagation(); setSurveyAccount(account);
+                            }}>
+                            <ClipboardList aria-hidden="true" />
+                          </Button>
                           <Button
                             variant="secondary"
                             className="ui-icon-button ui-button--hover-danger"
@@ -176,7 +221,8 @@ export const Users = () => {
             onDeleted={() => {
               setDeleting(null);
               reload();
-              if (user.organizationId != null) void refreshOrganization(true);
+              setActivityVersion((value) => value + 1);
+              void refreshHistory(true);
             }}
           />
         )}
@@ -190,10 +236,14 @@ export const Users = () => {
               setEditor(null);
               setNotice(created ? 'users.created' : 'users.updated');
               reload(created);
-              if (!created && user.organizationId != null) void refreshOrganization(true);
+              setActivityVersion((value) => value + 1);
+              if (!created) void refreshHistory(true);
             }}
           />
         )}
+      </MotionPresence>
+      <MotionPresence visible={Boolean(surveyAccount)}>
+        {surveyAccount && <SubmittedSurveyDialog account={surveyAccount} onClose={() => setSurveyAccount(null)} />}
       </MotionPresence>
     </section>
   );

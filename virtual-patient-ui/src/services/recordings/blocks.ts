@@ -168,6 +168,7 @@ export const resumeBlockInterview = async (id: number, requestId: string, force 
       const playback = block.metadata.patient_playback;
       const confirmedPlayback = playback && playback.start_ms < duration ? {start_ms: playback.start_ms, end_ms: duration} : null;
       const metadata = {...block.metadata, duration_ms: duration, student_message_id: studentId, patient_message_id: patientId,
+        interaction_area_snapshots: block.metadata.interaction_area_snapshots?.filter((sample) => sample.timestampMs <= duration),
         patient_playback: confirmedPlayback,
         student_speech: studentId && block.metadata.student_speech && block.metadata.student_speech.start_ms < duration
           ? {...block.metadata.student_speech, end_ms: Math.min(duration, block.metadata.student_speech.end_ms)} : null,

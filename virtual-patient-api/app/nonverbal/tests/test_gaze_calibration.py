@@ -1,6 +1,6 @@
 import numpy as np
 
-from app.nonverbal.gaze_calibration import apply_affine, classify_gaze, fit_affine
+from app.nonverbal.gaze_calibration import apply_affine, fit_affine
 
 
 def test_affine_fit_recovers_known_mapping():
@@ -20,23 +20,6 @@ def test_interaction_gaze_includes_calibrated_camera_and_real_region():
     assert classify_interaction_gaze(None, {}, area, camera_match=True) == 'UNAVAILABLE'
     assert classify_interaction_gaze((.5, .5), {}, None) == 'UNAVAILABLE'
     assert classify_interaction_gaze((float('nan'), .5), {}, area) == 'UNAVAILABLE'
-
-
-def test_semantic_gaze_states_use_calibration_and_dynamic_patient_roi():
-    profile = {"camera_reference_center": [.5, .1], "camera_radius_normalized": .08}
-    roi = {"x_normalized": .25, "y_normalized": .25, "width_normalized": .3, "height_normalized": .4}
-    assert classify_gaze((.5, .1), profile, roi) == "CAMERA"
-    assert classify_gaze((.4, .4), profile, roi) == "PATIENT"
-    assert classify_gaze((.9, .5), profile, roi) == "OTHER_INTERFACE"
-    assert classify_gaze((1.2, .5), profile, roi) == "AWAY_OR_OUTSIDE"
-    assert classify_gaze(None, profile, roi) == "UNAVAILABLE"
-
-
-def test_unknown_patient_region_does_not_imply_gaze_at_other_interface():
-    profile = {"camera_reference_center": [.5, .1]}
-    assert classify_gaze((.4, .4), profile, None) == "UNAVAILABLE"
-    assert classify_gaze((.5, .1), profile, None) == "CAMERA"
-    assert classify_gaze((1.2, .5), profile, None) == "AWAY_OR_OUTSIDE"
 
 
 def test_affine_fit_rejects_collinear_or_nonfinite_samples():

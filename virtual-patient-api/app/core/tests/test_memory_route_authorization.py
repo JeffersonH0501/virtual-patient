@@ -15,7 +15,6 @@ from app.core.auth import get_current_active_user
 from app.core.config import settings
 from app.core.database import Base, get_db
 from app.core.memory_store import PostgresStore
-from app.models.organization import OrganizationDB
 from app.models.user import UserDB, UserRole
 from app.models.clinical_case import ClinicalCaseDB
 from app.models.medical_interview import MedicalInterviewDB, InterviewStatus
@@ -32,12 +31,8 @@ def route_api(database, monkeypatch):
     with engine.connect() as connection:
         assert connection.scalar(text("SELECT n.nspname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE c.oid='medical_interviews'::regclass")) == database.schema
     with Session(engine, expire_on_commit=False) as session:
-        organizations = [OrganizationDB(name='Synthetic organization '+str(i), active=True) for i in range(2)]
-        session.add_all(organizations)
-        session.flush()
         users = [UserDB(name='Synthetic user', email=uuid4().hex+'@example.invalid',
-            hashed_password='unused-synthetic', role=UserRole.STUDENT,
-            organization_id=organizations[0 if index < 2 else 1].id) for index in range(3)]
+            hashed_password='unused-synthetic', role=UserRole.STUDENT) for index in range(3)]
         session.add_all(users)
         case = ClinicalCaseDB(title='Synthetic case', description='Synthetic case only')
         session.add(case)
@@ -84,7 +79,7 @@ def route_api(database, monkeypatch):
 
 @pytest.mark.parametrize('actor_index', [0, 1, 2])
 @pytest.mark.parametrize('target', [1, 12, 123])
-def test_user_and_organization_authorization_precedes_memory_access(route_api, actor_index, target):
+def test_owner_authorization_precedes_memory_access(route_api, actor_index, target):
     client, actor, users, calls, database, _ = route_api
     actor[0] = users[actor_index]
     own = (1, 12, 123)[actor_index] == target

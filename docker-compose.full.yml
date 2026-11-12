@@ -8,9 +8,10 @@ x-api-environment: &api-environment
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.full}
   SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env.full}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
-  SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:?Set SUPERUSER_EMAIL in .env.full}
-  SUPERUSER_NAME: ${SUPERUSER_NAME:?Set SUPERUSER_NAME in .env.full}
-  SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:?Set SUPERUSER_PASSWORD in .env.full}
+  # ADMIN_EMAIL / ADMIN_NAME / ADMIN_PASSWORD are intentionally NOT set here.
+  # They come from the .env.full env_file below so the administrator account
+  # always reflects that file, regardless of how compose is invoked. A service
+  # `environment:` value would override env_file, so it is omitted here.
   RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:?Set RECAPTCHA_SECRET_KEY in .env.full}
   ENV: production
   AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:?Set AZURE_OPENAI_API_KEY in .env.full}
@@ -21,22 +22,22 @@ x-api-environment: &api-environment
   AZURE_OPENAI_STT_DEPLOYMENT_NAME: ${AZURE_OPENAI_STT_DEPLOYMENT_NAME:?Set AZURE_OPENAI_STT_DEPLOYMENT_NAME in .env.full}
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:?Set AZURE_OPENAI_TTS_DEPLOYMENT_NAME in .env.full}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:?Set AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME in .env.full}
-  VIDEO_PROCESSING_WORKER_URL: http://video-processing-worker:8010
+  MEDIA_PROCESSING_WORKER_URL: http://media-processing-worker:8010
 
 x-deployment-files: &deployment-files
   configs:
     - source: deployment_policy
       target: /app/config/deployment.json
   secrets:
-    - video_processing_worker_token
+    - media_processing_worker_token
 
 configs:
   deployment_policy:
     file: ./config/deployment.json
 
 secrets:
-  video_processing_worker_token:
-    file: ./config/secrets/video-processing-worker-token.txt
+  media_processing_worker_token:
+    file: ./config/secrets/media-processing-worker-token.txt
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -61,7 +62,10 @@ services:
   setup:
     <<: *deployment-files
     build: *api-build
-    env_file: ./virtual-patient-api/config/native-runtime.conf
+    env_file:
+      - ./virtual-patient-api/config/native-runtime.conf
+      - path: .env.full
+        required: false
     environment: *api-environment
     command: ["python", "scripts/setup_db.py"]
     depends_on:
@@ -73,10 +77,13 @@ services:
   api:
     <<: *deployment-files
     build: *api-build
-    env_file: ./virtual-patient-api/config/native-runtime.conf
+    env_file:
+      - ./virtual-patient-api/config/native-runtime.conf
+      - path: .env.full
+        required: false
     environment: *api-environment
-    cpus: 3.0
-    mem_limit: 4g
+    # Interactive API has no CPU or memory limit. Heavy visual processing is
+    # constrained in the separate worker service below.
     expose:
       - "8000"
     volumes:
@@ -93,16 +100,21 @@ services:
       retries: 5
       start_period: 30s
 
-  video-processing-worker:
+  media-processing-worker:
     <<: *deployment-files
     build: *api-build
-    env_file: ./virtual-patient-api/config/native-runtime.conf
+    env_file:
+      - ./virtual-patient-api/config/native-runtime.conf
+      - path: .env.full
+        required: false
     environment: *api-environment
-    cpus: 3.0
-    mem_limit: 4g
+    # Fixed resource limits keep deferred visual processing from starving the API.
+    # Native work is serialized (concurrency=1) with 300s idle model release.
+    cpus: ${WORKER_CPUS:-3.0}
+    mem_limit: ${WORKER_MEM_LIMIT:-4g}
     expose:
       - "8010"
-    command: ["uvicorn", "app.multimodal.video_processing_worker:app", "--host", "0.0.0.0", "--port", "8010"]
+    command: ["uvicorn", "app.multimodal.media_processing_worker:app", "--host", "0.0.0.0", "--port", "8010"]
     volumes:
       - ./virtual-patient-api/logs:/app/logs
       - interview_media:/app/media
@@ -126,7 +138,6 @@ services:
         VITE_API_HOST: ""
         VITE_API_PORT: ""
         VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:?Set VITE_RECAPTCHA_SITE_KEY in .env.full}
-        VITE_SPEECH_INPUT_PROVIDER: ${VITE_SPEECH_INPUT_PROVIDER:-server}
     ports:
       - "127.0.0.1:${HTTP_PORT:-8091}:80"
     depends_on:

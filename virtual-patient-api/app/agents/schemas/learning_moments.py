@@ -1,5 +1,6 @@
 """Independent pedagogical feedback; historical critical turns remain readable."""
 from typing import Literal
+import re
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 Category = Literal["show_interest", "show_empathy", "speak_clearly"]
@@ -36,6 +37,10 @@ class LearningMomentReferenceError(ValueError):
 def validate_references(output, context):
     """Reject unknown turns and unsupported category/speaker/quality evidence."""
     for moment in output.moments:
+        if len(moment.turn_ids) > 3:
+            raise LearningMomentReferenceError("Select at most three relevant turns per moment")
+        if re.search(r"\b(?:T\s*\d+|turn(?:o|s|os)?\s*(?:#|n[úu]m(?:ero)?\.?\s*)?\d+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b", f"{moment.observation} {moment.recommendation}", re.IGNORECASE):
+            raise LearningMomentReferenceError("Do not mention turn identifiers or numbers in feedback text")
         if moment.type != "improvement" or not (set(moment.evidence_used) - {"text"}):
             raise LearningMomentReferenceError("Learning moments must describe an improvement supported by multimodal evidence")
         if not set(moment.turn_ids).issubset(context["turn_ids"]):

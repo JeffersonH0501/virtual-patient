@@ -1,7 +1,6 @@
-from typing import List, Dict, Any
+from typing import List
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
 from app.core.database import get_db
 from app.core.auth import get_current_active_user
 from app.models.user import User
@@ -18,12 +17,6 @@ router = APIRouter(
     tags=["interview-hypotheses"],
     responses={404: {"description": "Interview or hypothesis not found"}},
 )
-
-class HypothesisStatusResponse(BaseModel):
-    submitted_count: int
-    required_count: int = 1
-    is_complete: bool
-    hypotheses: List[UserHypothesis]
 
 @router.post("/{interview_id}/hypotheses", response_model=List[UserHypothesis])
 def submit_hypotheses(
@@ -266,42 +259,4 @@ async def delete_hypothesis(
     
     return None
 
-@router.get("/{interview_id}/hypotheses/status", response_model=HypothesisStatusResponse)
-async def get_hypothesis_status(
-    interview_id: int,
-    current_user: User = Depends(get_current_active_user),
-    db: Session = Depends(get_db)
-):
-    """
-    Get the status of hypothesis submission for an interview.
-    
-    - **interview_id**: Unique identifier for the interview
-    
-    Returns the count of submitted hypotheses and completion status.
-    """
-    interview_service = MedicalInterviewController(db)
-    hypothesis_service = HypothesisController(db)
-    
-    # Validate access
-    if not interview_service.validate_interview_access(interview_id, current_user.id):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Access denied to this interview"
-        )
-    
-    # Validate interview exists
-    if not interview_service.get_interview(interview_id):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Interview not found"
-        )
-    
-    hypotheses = hypothesis_service.get_interview_hypotheses(interview_id)
-    submitted_count = len(hypotheses)
-    is_complete = submitted_count >= 1
-    
-    return HypothesisStatusResponse(
-        submitted_count=submitted_count,
-        is_complete=is_complete,
-        hypotheses=hypotheses
-    )
+

@@ -14,7 +14,7 @@ type Props = {recap: InterviewRecap; messages?: Message[]; patientName?: string;
 
 export const BlockInterviewRecap = (props: Props) => {
   const {user} = useUser();
-  return <BlockInterviewRecapContent key={`${user?.id}:${user?.role}:${user?.organizationId}:${props.recap.interviewId}`} {...props} />;
+  return <BlockInterviewRecapContent key={`${user?.id}:${user?.role}:${props.recap.interviewId}`} {...props} />;
 };
 
 const BlockInterviewRecapContent = ({recap, messages, patientName, patientAvatar, infoDisabled, seekRequest}: Props) => {
@@ -65,7 +65,7 @@ const BlockInterviewRecapContent = ({recap, messages, patientName, patientAvatar
     <div className="recap-transcript-scroll min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-hidden" aria-live="polite">
       <div className="recap-transcript-list flex flex-col gap-layout">
       {recap.turns.map((turn, index) => <div className={`flex items-center justify-end gap-layout ${turn.speaker === 'student' ? 'ml-layout sm:ml-layout' : 'mr-layout flex-row-reverse sm:mr-layout'}`} key={turn.turnId}>
-        {user?.role === 'superuser' && <button type="button" className="ui-icon-button ui-icon-button--plain [&_svg]:h-4 [&_svg]:w-4" disabled={infoDisabled} onClick={() => setDetail(turn)} aria-label={t('clinicalChat.recap.turnInfo')} title={t('clinicalChat.recap.turnInfo')}><Expand aria-hidden="true" /></button>}
+        {user?.role === 'admin' && <button type="button" className="ui-icon-button ui-icon-button--plain [&_svg]:h-4 [&_svg]:w-4" disabled={infoDisabled} onClick={() => setDetail(turn)} aria-label={t('clinicalChat.recap.turnInfo')} title={t('clinicalChat.recap.turnInfo')}><Expand aria-hidden="true" /></button>}
         <button type="button" className={`recap-turn-bubble ${turn.speaker === 'student' ? 'recap-turn-bubble--student' : ''}`} data-selected={activeId === turn.messageId || undefined} aria-current={activeId === turn.messageId ? 'true' : undefined}
           disabled={turn.startMs == null} onClick={() => seek((turn.startMs ?? 0) / 1000)}>
           <span className="whitespace-pre-wrap text-neutral-800 default-text">{turn.transcript}</span>

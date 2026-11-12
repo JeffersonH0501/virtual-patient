@@ -7,17 +7,17 @@ from app.models.clinical_case import CaseType, ClinicalCaseDB
 from app.models.medical_interview import MedicalInterviewDB
 from app.models.user import UserRole
 from app.routers import clinical_cases
-from app.routers.tests.test_organization_interview_history import history_api
+from app.routers.tests.test_admin_interview_history import history_api
 
 
 @pytest.fixture
 def catalog(history_api):
-    client, actor, organization, _ = history_api
+    client, actor = history_api
     client.app.include_router(clinical_cases.router)
     db = client.history_db
     cases = [
         ClinicalCaseDB(title="Default catalog fixture", description="Synthetic", case_type=CaseType.DEFAULT, active=True),
-        ClinicalCaseDB(title="Custom catalog fixture", description="Synthetic", case_type=CaseType.CUSTOM, organization_id=organization, active=True),
+        ClinicalCaseDB(title="Custom catalog fixture", description="Synthetic", case_type=CaseType.CUSTOM, active=True),
         ClinicalCaseDB(title="Inactive catalog fixture", description="Synthetic", case_type=CaseType.DEFAULT, active=False),
     ]
     db.add_all(cases)
@@ -53,7 +53,6 @@ def test_case_authoring_endpoints_are_absent_for_every_role(catalog, role):
             assert client.request(method, f"/clinical-cases/{case.id}", json={}).status_code == 405
         assert client.post(f"/clinical-cases/{case.id}/translations/title", json={}).status_code == 404
     assert client.post("/clinical-cases", json={}).status_code == 405
-    assert client.get(f"/clinical-cases/organization/{actor.organization_id}").status_code == 404
 
 
 @pytest.mark.parametrize("index", [1, 2])

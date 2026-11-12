@@ -62,18 +62,18 @@ def verify_audio_runtime() -> dict:
                 "vad_frames": len(raw.vad_probabilities), "vad_model_sha256": MODEL_SHA256}
 
 
-def verify_video_worker() -> None:
+def verify_media_worker() -> None:
     import requests
     from app.core.config import settings
-    response = requests.get(f"{settings.video_processing_worker_url}/health", timeout=10)
+    response = requests.get(f"{settings.media_processing_worker_url}/health", timeout=10)
     response.raise_for_status()
     if response.json().get("status") != "healthy":
-        raise RuntimeError("Video processing worker is not healthy")
+        raise RuntimeError("Media processing worker is not healthy")
 
 
 def main() -> None:
     audio = verify_audio_runtime()
-    verify_video_worker()
+    verify_media_worker()
     case_count = scalar("SELECT COUNT(*) FROM clinical_cases")
     personality_count = scalar("SELECT COUNT(*) FROM personalities")
     alembic_revision = scalar("SELECT version_num FROM alembic_version")
@@ -94,7 +94,7 @@ def main() -> None:
     print(f"Alembic revision: {alembic_revision}")
     print("LangGraph persistence tables: ready")
     print(f"Native audio extraction: ready ({audio['feature_frames']} frames)")
-    print("Internal video processing worker: ready")
+    print("Internal media processing worker: ready")
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from app.core.database import SessionLocal, engine
 from sqlalchemy import text
 from app.models.medical_interview import InterviewRecordingDB
 from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.utils.perf import perf_event
 
 logger = logging.getLogger(__name__)
 PIPELINE_LOCK_BASE = 846217310
@@ -71,6 +72,8 @@ async def _process_multimodal_interview_isolated(interview_id, recording_id, *, 
         "interview_id=%s recording_id=%s parent_pid=%s parent_rss_mb=%s",
         interview_id, recording_id, process_id(), current_rss_mb(),
     )
+    perf_event("multimodal_pipeline", "isolated_process", phase="start", status="running",
+               interview_id=interview_id, recording_id=recording_id)
     process = await asyncio.create_subprocess_exec(
         sys.executable,
         "-m",
@@ -102,6 +105,9 @@ async def _process_multimodal_interview_isolated(interview_id, recording_id, *, 
             "interview_id=%s recording_id=%s duration_ms=%.3f return_code=0 parent_rss_mb=%s",
             interview_id, recording_id, (perf_counter() - started_at) * 1000, current_rss_mb(),
         )
+        perf_event("multimodal_pipeline", "isolated_process", phase="complete", status="success",
+                   duration_ms=(perf_counter() - started_at) * 1000,
+                   interview_id=interview_id, recording_id=recording_id, return_code=return_code)
         return
 
     logger.error(
@@ -113,6 +119,9 @@ async def _process_multimodal_interview_isolated(interview_id, recording_id, *, 
         (perf_counter() - started_at) * 1000,
         current_rss_mb(),
     )
+    perf_event("multimodal_pipeline", "isolated_process", phase="failed", status="error",
+               duration_ms=(perf_counter() - started_at) * 1000,
+               interview_id=interview_id, recording_id=recording_id, return_code=return_code)
     db = SessionLocal()
     try:
         recording = db.query(InterviewRecordingDB).filter(

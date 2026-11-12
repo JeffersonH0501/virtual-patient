@@ -174,26 +174,4 @@ class ProgressSummaryController:
         self.db.refresh(db_summary)
         return ProgressSummary.model_validate(db_summary)
     
-    def delete_progress_summary(self, interview_id: int) -> bool:
-        """Delete the progress summary for an interview"""
-        summary = self.db.query(ProgressSummaryDB).filter(
-            ProgressSummaryDB.medical_interview_id == interview_id
-        ).first()
-        
-        if summary:
-            self.db.delete(summary)
-            self.db.commit()
-            return True
-        
-        return False
-    
-    async def store_summary_async(
-        self, 
-        interview_id: int, 
-        summary_data: ProgressSummarySchema,
-        message_id: Optional[int] = None
-    ) -> ProgressSummary:
-        """Async wrapper for storing progress summary"""
-        # For now, we'll use the sync method since SQLAlchemy operations are sync
-        # In a real async implementation, you'd use async SQLAlchemy
-        return self.update_progress_summary(interview_id, summary_data, message_id)
+

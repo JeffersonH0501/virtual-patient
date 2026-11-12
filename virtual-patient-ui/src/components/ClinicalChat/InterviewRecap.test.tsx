@@ -1,8 +1,8 @@
 import {afterEach, expect, it, vi} from 'vitest';
-import {act, cleanup, fireEvent, render, screen, waitFor} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen} from '@testing-library/react';
 import {InterviewRecap} from './InterviewRecap';
 import {getInterviewRecap} from '../../services/recordings';
-const actor = vi.hoisted(() => ({role: 'superuser'}));
+const actor = vi.hoisted(() => ({role: 'admin'}));
 vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: actor})}));
 vi.mock('react-i18next', async (importOriginal) => ({
   ...(await importOriginal<typeof import('react-i18next')>()),
@@ -19,7 +19,7 @@ vi.mock('../../services/recordings', () => ({
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
-  actor.role = 'superuser';
+  actor.role = 'admin';
   vi.useRealTimers();
 });
 it('allows the superuser to open turn details and closes them when that role is lost', async () => {
@@ -87,7 +87,9 @@ it('does not show the previous recap while the next interview is loading', async
   const {rerender} = render(<InterviewRecap interviewId={7} />);
   await screen.findByText('A concern');
   let resolve!: (value: Awaited<ReturnType<typeof getInterviewRecap>>) => void;
-  vi.mocked(getInterviewRecap).mockReturnValueOnce(new Promise((done) => { resolve = done; }));
+  vi.mocked(getInterviewRecap).mockReturnValueOnce(new Promise((done) => {
+    resolve = done;
+  }));
   rerender(<InterviewRecap interviewId={8} />);
   expect(screen.queryByText('A concern')).toBeNull();
   await act(async () => resolve({interviewId: 8, recordingStatus: 'unavailable', turns: []}));
@@ -100,13 +102,19 @@ it('keeps confirmed recap media on a polling error and offers a retry', async ()
   vi.mocked(getInterviewRecap).mockResolvedValueOnce(saved).mockRejectedValueOnce(new Error('Synthetic network failure'));
   vi.useFakeTimers();
   let container!: HTMLElement;
-  await act(async () => { container = render(<InterviewRecap interviewId={7} />).container; });
+  await act(async () => {
+    container = render(<InterviewRecap interviewId={7} />).container;
+  });
   const video = container.querySelector('video');
-  await act(async () => { await vi.advanceTimersByTimeAsync(3000); });
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
   expect(container.querySelector('video')).toBe(video);
   expect(screen.getByRole('alert').textContent).toContain('clinicalChat.recap.loadFailed');
   vi.mocked(getInterviewRecap).mockResolvedValueOnce({...saved, observationProcessing: {status: 'complete'}});
-  await act(async () => { fireEvent.click(screen.getByRole('button', {name: 'common.retry'})); });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', {name: 'common.retry'}));
+  });
   expect(screen.queryByRole('alert')).toBeNull();
   expect(container.querySelector('video')).toBe(video);
 });

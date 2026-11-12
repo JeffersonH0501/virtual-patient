@@ -200,7 +200,7 @@ export const TurnEvidenceDetails = ({turn: detailTurn}: {turn: RecapTurn}) => {
   const nonverbalBase = detailTurn?.nonverbalFeatures?.baseLabels;
   const gazeObservations = detailTurn.nonverbalFeatures?.raw?.gazeObservations;
   const gazeOutsideCalibration = nonverbal?.interactionGazeRatio == null && (
-    nonverbalBase?.gazeOrientation?.visualAlignmentRatio?.reason === 'outside_calibrated_geometry' ||
+    nonverbalBase?.gazeOrientation?.interactionGazeRatio?.reason === 'outside_calibrated_geometry' ||
     (Array.isArray(gazeObservations) && gazeObservations.length > 0 &&
       gazeObservations.filter((observation) => observation?.state === 'outside_calibrated_geometry').length > gazeObservations.length / 2)
   );
@@ -366,12 +366,12 @@ export const TurnEvidenceDetails = ({turn: detailTurn}: {turn: RecapTurn}) => {
               'gazeOrientation',
               [
                 renderMetricRow(
-                  'clinicalChat.recap.metrics.visualAlignmentRatio',
+                  'clinicalChat.recap.metrics.interactionGazeRatio',
                   nonverbal?.interactionGazeRatio,
                   'clinicalChat.recap.units.ratio',
                 ),
                 renderMetricRow(
-                  'clinicalChat.recap.metrics.medianVisualAlignmentDwellMs',
+                  'clinicalChat.recap.metrics.medianInteractionDwellMs',
                   nonverbal?.medianInteractionDwellMs,
                   'clinicalChat.recap.units.milliseconds',
                 ),
@@ -380,7 +380,7 @@ export const TurnEvidenceDetails = ({turn: detailTurn}: {turn: RecapTurn}) => {
               [
                 {
                   featureKey: 'interactionGazeRatio',
-                  labelKey: 'clinicalChat.recap.baseLabels.visualAlignment',
+                  labelKey: 'clinicalChat.recap.baseLabels.interactionGaze',
                 },
               ],
               nonverbalLabels?.gazeOrientation,

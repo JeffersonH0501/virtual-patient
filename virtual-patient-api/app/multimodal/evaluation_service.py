@@ -29,6 +29,9 @@ def validate_text_control(results):
 
 
 async def evaluate_and_store_multimodal(db, interview_id, agent, *, canonical_messages=None):
+    from time import perf_counter
+    from app.utils.perf import perf_event
+    _eval_started = perf_counter()
     controller = InterviewEvaluationController(db)
     original = controller.get_evaluation_by_interview_id(interview_id)
     if original is None:
@@ -110,4 +113,10 @@ async def evaluate_and_store_multimodal(db, interview_id, agent, *, canonical_me
             except Exception:
                 db.rollback()  # Even failure-status persistence cannot invalidate scoring.
             logging.getLogger(__name__).error("Learning moments scheduling failed interview_id=%s", interview_id)
+    perf_event(
+        "evaluation", "multimodal_evaluation", phase="complete", status="success",
+        duration_ms=(perf_counter() - _eval_started) * 1000,
+        interview_id=interview_id, available_aspects=len(available),
+        enriched_aspects=len(enriched_by_aspect), run_id=run_id,
+    )
     return results

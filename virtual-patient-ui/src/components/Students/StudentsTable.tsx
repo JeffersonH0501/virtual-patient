@@ -2,15 +2,16 @@ import {useEffect, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Button, ListPanel, Pagination} from '../common';
 import {TableHeader} from '../common/Table/TableHeader';
-import {useSessionList} from '../../contexts/SessionLists';
+import {useSessionList} from '../../hooks/useSessionList';
 import {StudentsTableRow} from './StudentsTableRow';
 import {LIST_PAGE_SIZE} from '../../utils/pagination';
 import {useUser} from '../../hooks/useUser';
 import {deleteInterview} from '../../services/interviews';
 import {InterviewDeleteDialog} from '../Chats/InterviewDeleteDialog';
 import {TableLoadingState} from '../common/Table/TableLoadingState';
+import {InterviewListItem} from '../../types/interview';
 
-export const StudentsTable = () => {
+export const StudentsTable = ({filteredItems, onFilteredChange}: {filteredItems?: InterviewListItem[]; onFilteredChange?: () => void} = {}) => {
   const {t} = useTranslation();
   const {user} = useUser();
   const [requestedPage, setRequestedPage] = useState(1);
@@ -18,7 +19,7 @@ export const StudentsTable = () => {
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleting = useRef(false);
-  const organizationId = user?.organizationId;
+
   const columnHeaders = [
     'ID',
     t('conversations.date'),
@@ -29,11 +30,16 @@ export const StudentsTable = () => {
     t('students.score'),
     t('conversations.action'),
   ];
-  const {items, loading, error, load} = useSessionList('organization', organizationId != null, organizationId);
-  const total = items?.length ?? 0;
+  const {items, loading, error, load} = useSessionList('adminHistory', user?.role === 'admin');
+  const displayed = filteredItems && items
+    ? filteredItems.flatMap((target) => {
+      const interview = items.find((item) => item.id === target.id);
+      return interview ? [{...interview, evaluationScore: target.evaluationScore, target}] : [];
+    }) : items?.map((interview) => ({...interview, target: undefined}));
+  const total = displayed?.length ?? 0;
   const currentPage = Math.min(requestedPage, Math.max(1, Math.ceil(total / LIST_PAGE_SIZE)));
   const offset = (currentPage - 1) * LIST_PAGE_SIZE;
-  const interviews = items?.slice(offset, offset + LIST_PAGE_SIZE) ?? [];
+  const interviews = displayed?.slice(offset, offset + LIST_PAGE_SIZE) ?? [];
   const isLoading = loading && items === undefined;
   const busy = isLoading;
   useEffect(() => {
@@ -51,8 +57,9 @@ export const StudentsTable = () => {
       await deleteInterview(interviewToDelete);
       setInterviewToDelete(null);
       await load(true);
+      onFilteredChange?.();
     } catch (failure) {
-      console.error('Failed to delete organization interview:', failure);
+      console.error('Failed to delete interview:', failure);
       setDeleteError(t('conversations.deleteFailed'));
     } finally {
       deleting.current = false;
@@ -118,8 +125,9 @@ export const StudentsTable = () => {
                     <StudentsTableRow
                       key={interview.id}
                       interview={interview}
+                      target={interview.target}
                       busy={busy || isDeleting || Boolean(error)}
-                      canDelete={user?.role === 'superuser' || user?.id === interview.userId}
+                      canDelete={user?.role === 'admin' || user?.id === interview.userId}
                       onDelete={() => {
                         setDeleteError(null);
                         setInterviewToDelete(interview.id);

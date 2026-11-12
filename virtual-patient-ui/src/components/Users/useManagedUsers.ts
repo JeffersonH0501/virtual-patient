@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {useSessionList} from '../../contexts/SessionLists';
+import {useSessionList} from '../../hooks/useSessionList';
 import {MANAGED_USERS_PAGE_SIZE as pageSize} from '../../services/users/manageUsers';
 
 export const useManagedUsers = (enabled: boolean) => {

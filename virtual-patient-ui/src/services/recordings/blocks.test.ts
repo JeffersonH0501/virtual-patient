@@ -176,6 +176,7 @@ it('marks playback unavailable when its checkpoint is beyond the durable origina
   block.state = 'capturing';
   block.confirmedEndMs = 100;
   block.metadata.patient_playback = {start_ms: 100, end_ms: 100};
+  block.metadata.interaction_area_snapshots = [{timestampMs: 0, xNormalized: .1}, {timestampMs: 150, xNormalized: .2}];
   state.original.mockResolvedValue(new File(['partial'], 'block.webm', {type: 'video/webm'}));
   await resumeBlockInterview(1, 'resume-request');
   const upload = fetch.mock.calls.find((call) => call[1].method === 'PUT')!;
@@ -183,6 +184,7 @@ it('marks playback unavailable when its checkpoint is beyond the durable origina
   expect(metadata.patient_playback).toBeNull();
   expect(metadata.patient_audio_missing).toBe(true);
   expect(metadata.patient_playback_complete).toBe(false);
+  expect(metadata.interaction_area_snapshots).toEqual([{timestampMs: 0, xNormalized: .1}]);
 });
 
 it('reconciles a pending exchange after the first hundred messages', async () => {

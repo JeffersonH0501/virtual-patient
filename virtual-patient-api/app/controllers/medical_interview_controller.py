@@ -18,7 +18,7 @@ from app.controllers.progress_summary_controller import ProgressSummaryControlle
 from app.controllers.interview_lifecycle import lock_row
 from app.core.review_access import can_read_assessments
 from app.models.self_rating import SelfRatingDB
-from app.models.teacher_grading import TeacherAssignmentDB, TeacherRatingDB
+from app.models.doctor_grading import DoctorAssignmentDB, DoctorRatingDB
 from app.utils.language import resolve_patient_response_language
 
 # Milestones represent completed work, not elapsed time. Evaluation still follows labeling.
@@ -152,15 +152,12 @@ class MedicalInterviewController:
         score_relation = MedicalInterviewDB.multimodal_interview_evaluation
         actor = self.db.get(UserDB, user_id)
         visibility = MedicalInterviewDB.user_id == user_id
-        if include_assigned and actor and actor.role == UserRole.TEACHER and actor.organization_id is not None:
-            assigned = self.db.query(TeacherAssignmentDB.id).filter(
-                TeacherAssignmentDB.interview_id == MedicalInterviewDB.id,
-                TeacherAssignmentDB.teacher_id == user_id,
+        if include_assigned and actor and actor.role == UserRole.DOCTOR:
+            assigned = self.db.query(DoctorAssignmentDB.id).filter(
+                DoctorAssignmentDB.interview_id == MedicalInterviewDB.id,
+                DoctorAssignmentDB.doctor_id == user_id,
             ).exists()
-            same_organization = MedicalInterviewDB.user_id.in_(
-                self.db.query(UserDB.id).filter(UserDB.organization_id == actor.organization_id)
-            )
-            visibility = or_(visibility, and_(assigned, same_organization))
+            visibility = or_(visibility, assigned)
         query = self.db.query(MedicalInterviewDB).options(joinedload(score_relation)).filter(
             visibility,
             # Only interviews that actually started (passed calibration) are kept in
@@ -179,9 +176,9 @@ class MedicalInterviewController:
             SelfRatingDB.interview_id.in_(interview_ids),
             SelfRatingDB.interview_id.in_(self.db.query(MedicalInterviewDB.id).filter(MedicalInterviewDB.user_id == user_id)),
         ).all()} if interview_ids else {}
-        assigned_ratings = dict(self.db.query(TeacherAssignmentDB.interview_id, TeacherRatingDB).outerjoin(
-            TeacherRatingDB, TeacherRatingDB.assignment_id == TeacherAssignmentDB.id,
-        ).filter(TeacherAssignmentDB.teacher_id == user_id, TeacherAssignmentDB.interview_id.in_(interview_ids)).all()) if interview_ids else {}
+        assigned_ratings = dict(self.db.query(DoctorAssignmentDB.interview_id, DoctorRatingDB).outerjoin(
+            DoctorRatingDB, DoctorRatingDB.assignment_id == DoctorAssignmentDB.id,
+        ).filter(DoctorAssignmentDB.doctor_id == user_id, DoctorAssignmentDB.interview_id.in_(interview_ids)).all()) if interview_ids else {}
         progress_by_interview: Dict[int, Dict[str, int]] = {}
         if interview_ids:
             progress_rows = self.db.query(
@@ -517,27 +514,6 @@ class MedicalInterviewController:
             message_metadata=message_metadata
         )
     
-    def extract_summary_for_response(self, workflow_result: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Extract translated summary for response from workflow result"""
-        summary_result = workflow_result.get("translated_summary")
-        
-        if summary_result:
-            try:
-                # Convert summary_result to dict for response
-                if hasattr(summary_result, 'model_dump'):
-                    return summary_result.model_dump()
-                elif hasattr(summary_result, '__dict__'):
-                    return summary_result.__dict__
-                else:
-                    return summary_result
-                
-            except Exception as e:
-                return None
-        
-        return None
-    
-    
-    
     def get_interview_evaluation_data(self, interview_id: int) -> Dict[str, Any]:
         """Get all data needed for interview evaluation"""
         # Get complete interview context
@@ -585,8 +561,8 @@ class MedicalInterviewController:
         
         return formatted_messages
     
-    def organization_interviews_query(self, organization_id: int, current_user: User):
-        """Use the same role and organization scope for rows and interview counts."""
+    def admin_interviews_query(self, current_user: User):
+        """Use the same role scope for rows and interview counts."""
         from sqlalchemy.orm import joinedload
         from app.models.clinical_case import ClinicalCaseDB
         from app.models.user import UserDB, UserRole
@@ -596,33 +572,35 @@ class MedicalInterviewController:
             joinedload(MedicalInterviewDB.multimodal_interview_evaluation),
             joinedload(MedicalInterviewDB.clinical_case),
             joinedload(MedicalInterviewDB.user),
-            joinedload(MedicalInterviewDB.teacher_feedback)
+            joinedload(MedicalInterviewDB.doctor_feedback)
         ).join(ClinicalCaseDB, MedicalInterviewDB.clinical_case_id == ClinicalCaseDB.id).join(
             UserDB, MedicalInterviewDB.user_id == UserDB.id
-        ).filter(MedicalInterviewDB.start_time.isnot(None), UserDB.organization_id == organization_id)
+        ).filter(MedicalInterviewDB.start_time.isnot(None))
         
-        # Filter by role only if user is not a superuser
-        if current_user.role != UserRole.SUPERUSER.value:
-            query = query.filter(UserDB.role == UserRole.STUDENT.value)
+        # Filter by role only if the user is not an administrator
+        if current_user.role != UserRole.ADMIN:
+            query = query.filter(UserDB.role == UserRole.STUDENT)
         
         return query
 
-    def count_organization_interviews(self, organization_id: int, current_user: User) -> int:
-        return self.organization_interviews_query(organization_id, current_user).count()
+    def count_admin_interviews(self, current_user: User) -> int:
+        return self.admin_interviews_query(current_user).count()
 
-    def get_organization_interview_counts(self, organization_id: int, current_user: User):
+    def get_admin_interview_counts(self, current_user: User):
         """Count interviews, including multiple interviews owned by the same person."""
-        query = self.organization_interviews_query(organization_id, current_user)
+        query = self.admin_interviews_query(current_user)
         return {
             "active_interviews_count": query.filter(MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS).count(),
             "completed_interviews_count": query.filter(MedicalInterviewDB.status == InterviewStatus.COMPLETED).count(),
         }
 
-    def get_interviews_by_organization(self, organization_id: int, current_user: User, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
-        """List organization interviews; superusers may also review teachers."""
-        query = self.organization_interviews_query(organization_id, current_user)
+    def get_admin_interviews(self, current_user: User, skip: int = 0, limit: int = 100) -> List[Dict[str, Any]]:
+        """List interviews available to an administrator."""
+        query = self.admin_interviews_query(current_user)
 
-        interviews = query.order_by(MedicalInterviewDB.start_time.desc()).offset(skip).limit(limit).all()
+        interviews = query.order_by(
+            MedicalInterviewDB.start_time.desc(), MedicalInterviewDB.id.desc()
+        ).offset(skip).limit(limit).all()
         review_progress = self._get_review_progress(interviews)
         durations = self._recorded_durations(interviews)
         
@@ -636,25 +614,24 @@ class MedicalInterviewController:
             evaluation = interview.multimodal_interview_evaluation
             evaluation_score = evaluation.overall_score if evaluation and can_read_assessments(self.db, interview, current_user) else None
 
-            # Get teacher feedback data
-            teacher_feedback = []
-            if interview.teacher_feedback:
-                for feedback in interview.teacher_feedback:
-                    teacher_feedback.append({
+            # Get doctor feedback data
+            doctor_feedback = []
+            if interview.doctor_feedback:
+                for feedback in interview.doctor_feedback:
+                    doctor_feedback.append({
                         "id": feedback.id,
                         "feedback": feedback.feedback,
                         "created_at": feedback.created_at.isoformat() if feedback.created_at else None,
-                        "reviewed_by_you": feedback.teacher_id == current_user.id
+                        "reviewed_by_you": feedback.doctor_id == current_user.id
                     })
             
-            # Create the response with score and additional organization context
+            # Include the participant and evaluation context for the list.
             interview_with_score = {
                 **interview_data.model_dump(),
                 "total_duration": durations.get(interview.id),
                 "evaluation_score": evaluation_score,
-                "teacher_feedback": teacher_feedback,
+                "doctor_feedback": doctor_feedback,
                 "review_progress": review_progress.get(interview.id),
-                "organization_id": organization_id,  # Keep in response for compatibility
                 "clinical_case_title": interview.clinical_case.title if interview.clinical_case else None,
                 "owner_role": interview.user.role if interview.user else None,
                 "user_name": interview.user.name if interview.user else None
@@ -664,7 +641,7 @@ class MedicalInterviewController:
         return result
     
     def validate_interview_access(self, interview_id: str, user_id: int) -> bool:
-        """Allow owners and authorized staff within the owner's organization."""
+        """Allow owners and authorized staff to review an interview."""
         from app.models.user import UserDB, UserRole
         
         # Get user role
@@ -687,89 +664,6 @@ class MedicalInterviewController:
             MedicalInterviewDB.id == interview_id, MedicalInterviewDB.user_id == user_id,
         ).first() is not None
     
-    def count_active_student_conversations_by_organization(self, organization_id: int) -> int:
-        """Count students with active interviews in this organization."""
-        from sqlalchemy import distinct
-        from app.models.user import UserDB, UserRole
-        
-        # Count distinct students within the organization.
-        count = self.db.query(distinct(MedicalInterviewDB.user_id)).join(
-            UserDB, MedicalInterviewDB.user_id == UserDB.id
-        ).filter(
-            MedicalInterviewDB.status == InterviewStatus.IN_PROGRESS,
-            MedicalInterviewDB.start_time.isnot(None),
-            UserDB.role == UserRole.STUDENT.value,
-            UserDB.organization_id == organization_id,
-        ).count()
-        
-        return count
-    
-    def count_completed_student_conversations_by_organization(self, organization_id: int) -> int:
-        """Count students with completed interviews in this organization."""
-        from sqlalchemy import distinct
-        from app.models.user import UserDB, UserRole
-        
-        # Count distinct students within the organization.
-        count = self.db.query(distinct(MedicalInterviewDB.user_id)).join(
-            UserDB, MedicalInterviewDB.user_id == UserDB.id
-        ).filter(
-            MedicalInterviewDB.status == InterviewStatus.COMPLETED,
-            UserDB.role == UserRole.STUDENT.value,
-            UserDB.organization_id == organization_id,
-        ).count()
-        
-        return count
-    
-    def get_average_score_by_organization(self, organization_id: int) -> Dict[str, Any]:
-        """Average the textual control for completed organization interviews."""
-        from sqlalchemy import func
-        from app.models.medical_interview.interview_evaluation import InterviewEvaluationDB
-        from app.models.user import UserDB, UserRole
-        
-        # Only completed interviews in the organization count:
-        # interrupted interviews carry no evaluation and must never contribute
-        # to the overall score.
-        result = self.db.query(
-            func.avg(InterviewEvaluationDB.overall_score).label('average_score'),
-            func.count(InterviewEvaluationDB.id).label('total_evaluations')
-        ).join(
-            MedicalInterviewDB, InterviewEvaluationDB.medical_interview_id == MedicalInterviewDB.id
-        ).join(
-            UserDB, MedicalInterviewDB.user_id == UserDB.id
-        ).filter(
-            MedicalInterviewDB.status == InterviewStatus.COMPLETED,
-            InterviewEvaluationDB.overall_score.isnot(None),
-            InterviewEvaluationDB.evaluation_condition == "TEXT_ONLY",
-            UserDB.role == UserRole.STUDENT.value,
-            UserDB.organization_id == organization_id,
-        ).first()
-        
-        if result and result.average_score is not None:
-            return {
-                "organization_id": organization_id,  # Keep in response for compatibility
-                "average_score": round(float(result.average_score), 2),
-                "total_evaluations": result.total_evaluations,
-                "has_data": True
-            }
-        else:
-            return {
-                "organization_id": organization_id,  # Keep in response for compatibility
-                "average_score": None,
-                "total_evaluations": 0,
-                "has_data": False
-            }
-
-    def count_completed_cases_for_user(self, user_id: int) -> int:
-        """Count the number of completed cases for a specific user"""
-        from app.models.medical_interview.enums import InterviewStatus
-        
-        count = self.db.query(MedicalInterviewDB).filter(
-            MedicalInterviewDB.user_id == user_id,
-            MedicalInterviewDB.status == InterviewStatus.COMPLETED
-        ).count()
-        
-        return count
-
     def get_average_duration_for_user(self, user_id: int) -> Dict[str, Any]:
         """Get the average duration of completed cases for a specific user"""
         from app.models.medical_interview.enums import InterviewStatus

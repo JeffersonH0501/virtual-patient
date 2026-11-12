@@ -36,16 +36,6 @@ class PersonalityController:
         personality = self.db.query(PersonalityDB).filter(PersonalityDB.id == personality_id).first()
         return Personality.from_orm(personality) if personality else None
     
-    def get_personality_by_namespace_key(self, namespace_key: str) -> Optional[Personality]:
-        """Get personality by namespace key"""
-        personality = self.db.query(PersonalityDB).filter(PersonalityDB.namespace_key == namespace_key).first()
-        return Personality.from_orm(personality) if personality else None
-
-    def get_all_personalities(self, skip: int = 0, limit: int = 100) -> List[Personality]:
-        """Get all personalities with pagination"""
-        personalities = self.db.query(PersonalityDB).offset(skip).limit(limit).all()
-        return [Personality.from_orm(personality) for personality in personalities]
-
     def update_personality(self, personality_id: int, personality_data: PersonalityUpdate) -> Optional[Personality]:
         """Update personality"""
         personality = self.db.query(PersonalityDB).filter(PersonalityDB.id == personality_id).first()
@@ -83,15 +73,6 @@ class PersonalityController:
         self.db.delete(personality)
         self.db.commit()
         return True
-
-    def search_personalities(self, query: str, skip: int = 0, limit: int = 100) -> List[Personality]:
-        """Search personalities by name or description"""
-        personalities = self.db.query(PersonalityDB).filter(
-            PersonalityDB.name.ilike(f"%{query}%") | 
-            PersonalityDB.description.ilike(f"%{query}%")
-        ).offset(skip).limit(limit).all()
-        
-        return [Personality.from_orm(personality) for personality in personalities]
 
     def _get_translated_name(self, personality: PersonalityDB, preferred_language: str = "en") -> str:
         """Get the name in the preferred language, fallback to default name"""
@@ -166,14 +147,4 @@ class PersonalityController:
             name=translated_name
         )
 
-    def get_personality_by_namespace_key_simplified(self, namespace_key: str, preferred_language: str = "en") -> Optional[PersonalityListResponse]:
-        """Get personality by namespace key with simplified response (id and name only) in preferred language"""
-        personality = self.db.query(PersonalityDB).filter(PersonalityDB.namespace_key == namespace_key).first()
-        if not personality:
-            return None
-        
-        translated_name = self._get_translated_name(personality, preferred_language)
-        return PersonalityListResponse(
-            id=personality.id,
-            name=translated_name
-        )
+

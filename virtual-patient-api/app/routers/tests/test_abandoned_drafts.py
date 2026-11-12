@@ -7,11 +7,11 @@ from sqlalchemy.orm import with_loader_criteria
 from app.media.calibration_cleanup import cleanup_abandoned_interview_drafts
 from app.media.storage import LocalMediaStorage
 from app.models.medical_interview import MedicalInterviewDB, InterviewStatus
-from app.routers.tests.test_organization_interview_history import history_api
+from app.routers.tests.test_admin_interview_history import history_api
 
 
 def test_cleanup_removes_discarded_and_expired_drafts_but_keeps_active(history_api, tmp_path, monkeypatch):
-    client, _, organization, _ = history_api
+    client, _ = history_api
     db = client.history_db
     source = db.query(MedicalInterviewDB).filter(MedicalInterviewDB.start_time.is_(None)).first()
     now = datetime.now(timezone.utc)

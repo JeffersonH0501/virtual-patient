@@ -34,13 +34,11 @@ Azure's versioned deployment endpoint. The configured normal LLM, mini LLM,
 STT, TTS, and embedding values are deployment names from the same Azure
 resource.
 
-Speech behavior is selected independently from Azure credentials. The backend
-uses Azure OpenAI for patient TTS and student STT. The active interview input is
-`VITE_SPEECH_INPUT_PROVIDER=server`: the browser delimits provisional audio
-segments and sends them to the authenticated API without persisting them as
-part of the transcription request. `VITE_SPEECH_INPUT_PROVIDER=browser` remains
-available as a fallback behind the same UI contract. Permission, device, codec,
-and provider failures leave written input available.
+Speech input always uses the authenticated server transcription endpoint. The
+browser captures provisional audio segments and sends them to the API, which
+uses Azure OpenAI for student STT; patient TTS also uses Azure OpenAI. Audio
+segments are not persisted as part of the transcription request. Permission,
+device, codec, and provider failures leave written input available.
 
 Virtual-patient personality is split between semantic behavior and vocal delivery. Agent prompts determine what the patient says. A provider-neutral vocal-style policy determines pace, pause frequency, energy, intonation, hesitation, and configured delivery tone. The Azure OpenAI adapter translates that structured profile into `gpt-4o-mini-tts` `instructions` while requiring the supplied transcript to remain unchanged. The policy version and synthesis parameters are recorded in message metadata; durable audio is reused only when its policy version is current.
 

@@ -54,6 +54,7 @@ from app.paraverbal.opensmile_extractor import (
 )
 from app.paraverbal.preprocessing import preprocess_paraverbal
 from app.utils.runtime_metrics import current_rss_mb, process_id
+from app.utils.perf import perf_event
 
 
 logger = logging.getLogger(__name__)
@@ -469,6 +470,10 @@ def _run_pipeline(
         len(turns), len(student_turns), json.dumps(timings_ms, sort_keys=True),
         process_id(), current_rss_mb(),
     )
+    perf_event("multimodal_pipeline", "stages", phase="complete", status="success",
+               duration_ms=(perf_counter() - pipeline_started) * 1000, interview_id=interview_id,
+               recording_id=recording_id, turn_count=len(turns), student_turn_count=len(student_turns),
+               timings_ms=timings_ms)
 
 
 # ---------------------------------------------------------------------------

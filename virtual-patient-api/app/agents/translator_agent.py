@@ -13,10 +13,7 @@ from .schemas.progress_summary import ProgressSummarySchema
 if TYPE_CHECKING:
     from .schemas.progress_summary import ProgressSummarySchema
 
-from .prompts.translator import (
-    BASIC_TRANSLATE_PROMPT,
-    STRUCTURED_TRANSLATE_PROMPT
-)
+from .prompts.translator import STRUCTURED_TRANSLATE_PROMPT
 from .prompts.personalities import build_personality_prompt
 from .schemas.clinical_case import ClinicalCaseTranslatableFields
 from app.core.azure_openai import create_chat_model
@@ -38,37 +35,6 @@ class TranslatorAgent:
     def __init__(self):
         self.llm = llm
         self.llm_personality = llm_personality
-    
-    async def basic_translate(
-        self, 
-        message: str, 
-        target_language: str
-    ) -> str:
-        """
-        Basic translation from language A to language B (ASYNC)
-        
-        Args:
-            message: Original message to translate
-            target_language: Target language (e.g., "Spanish", "French", "English")
-            
-        Returns:
-            Translated message
-        """
-        try:
-            # Format the prompt
-            formatted_prompt = BASIC_TRANSLATE_PROMPT.format(
-                target_language=target_language,
-                message=message
-            )
-            
-            # Create message and get response ASYNC
-            messages = [HumanMessage(content=formatted_prompt)]
-            response = await self.llm.ainvoke(messages)
-            
-            return response.content.strip()
-            
-        except Exception as e:
-            return f"Translation error: {str(e)}"
     
     async def translate_patient_with_personality(
         self, 
@@ -228,11 +194,4 @@ class TranslatorAgent:
             # Return original data if translation fails
             return clinical_case_fields
     
-    def get_supported_languages(self) -> List[str]:
-        """
-        Get a list of supported languages
-        
-        Returns:
-            List of language names
-        """
-        return ["Spanish", "English", "French", "German", "Italian"]
+

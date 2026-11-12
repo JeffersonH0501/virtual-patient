@@ -68,7 +68,7 @@ def _run_turn_video_server() -> None:
                     import cv2
                     import mediapipe as mp
                     from app.nonverbal.mediapipe_extractor import create_face_landmarker, observation_from_result
-                    from app.nonverbal.mediapipe_calibration import gaze_observation, gaze_screen_state
+                    from app.nonverbal.mediapipe_calibration import gaze_observation, gaze_interaction_state
                     if live_landmarker is None:
                         live_landmarker = create_face_landmarker(image_mode=True)
                     frame = cv2.imread(command["media_path"])
@@ -82,18 +82,19 @@ def _run_turn_video_server() -> None:
                         image = mp.Image(image_format=mp.ImageFormat.SRGB, data=cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
                         shared = observation_from_result(0, frame, live_landmarker.detect(image))
                         gaze = gaze_observation(shared, profile)
-                        result = {"state": gaze_screen_state(gaze)}
+                        result = {"state": gaze_interaction_state(gaze, profile, command["metadata"]["interaction_area"])}
                 elif stage == "guided":
                     from app.nonverbal.video_observations import extract_nonverbal_video_observations
                     from app.nonverbal.guided_checks import analyze_guided_checks
+                    from app.nonverbal.calibration_worker import CALIBRATION_SAMPLE_FPS
                     metadata = GuidedOnlyMetadata.model_validate(command["metadata"])
                     stage_durations = {}
                     observations = extract_nonverbal_video_observations(Path(command["media_path"]),
-                        stage_durations=stage_durations, calibration_profile=metadata.profile)
+                        stage_durations=stage_durations, calibration_profile=metadata.profile, sample_fps=CALIBRATION_SAMPLE_FPS)
                     result = {"passed": True, "guided_checks": analyze_guided_checks(observations,
                         metadata.guided_checks, metadata.profile, camera_result=metadata.camera_result,
                         protocol="guided_checks_v4_orientation", environment=metadata.guided_environment.model_dump(mode="json"),
-                        geometry=metadata.geometry.model_dump(mode="json"))}
+                        geometry=metadata.geometry.model_dump(mode="json"), sample_fps=CALIBRATION_SAMPLE_FPS)}
                     result["guided_checks"]["processing_costs"] = stage_durations
                 elif stage == "unified":
                     metadata = UnifiedCalibrationMetadata.model_validate(command["metadata"])

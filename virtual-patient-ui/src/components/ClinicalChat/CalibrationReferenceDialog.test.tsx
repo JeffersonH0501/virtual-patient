@@ -5,14 +5,16 @@ import {I18nextProvider} from 'react-i18next';
 import en from '../../i18n/locales/en.json';
 import {CalibrationReferenceDialog} from './CalibrationReferenceDialog';
 
-const api = vi.hoisted(() => ({load: vi.fn(), role: 'superuser'}));
+const api = vi.hoisted(() => ({load: vi.fn(), role: 'admin'}));
 vi.mock('../../hooks/useUser', () => ({useUser: () => ({user: {role: api.role}})}));
 vi.mock('../../services/interviews/calibrationReference', () => ({getCalibrationReference: api.load}));
 vi.mock('../common/Dialog', () => ({Dialog: ({open, onClose, children}: {open: boolean; onClose: () => void; children: React.ReactNode}) => open ? <div role="dialog"><button onClick={onClose}>Close</button>{children}</div> : null}));
 const i18n = createInstance();
 await i18n.init({lng: 'en', resources: {en: {translation: en}}, interpolation: {escapeValue: false}});
 const view = () => render(<I18nextProvider i18n={i18n}><CalibrationReferenceDialog interviewId={76} /></I18nextProvider>);
-afterEach(() => {cleanup(); vi.clearAllMocks(); api.role = 'superuser';});
+afterEach(() => {
+cleanup(); vi.clearAllMocks(); api.role = 'admin';
+});
 
 it('retains a not-passed checkpoint label when an experiment was allowed to continue', async () => {
   api.load.mockResolvedValue({calibration:null,captures:[{id:'experimental',stage:'gaze',durationMs:15000,
@@ -61,7 +63,7 @@ it('keeps diagnostics available when video retention has expired', async () => {
   expect(container.querySelector('video')).toBeNull();
 });
 
-it.each(['student', 'teacher'])('does not expose inspection or fetch data for %s', (role) => {
+it.each(['student', 'doctor'])('does not expose inspection or fetch data for %s', (role) => {
   api.role = role;
   view();
   expect(screen.queryByRole('button')).toBeNull();

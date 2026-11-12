@@ -180,7 +180,7 @@ case "$action" in
     compose --profile tools run --rm setup
 
     # Start application using the already-built images.
-    compose up -d --no-build api video-processing-worker ui
+    compose up -d --no-build api media-processing-worker ui
 
     verify
     ;;
@@ -191,7 +191,7 @@ case "$action" in
     # is a fast start in the common case.
     echo "Starting local development environment..."
     build_if_needed
-    compose up -d --no-build api video-processing-worker ui
+    compose up -d --no-build api media-processing-worker ui
     ;;
 
   build)
@@ -205,7 +205,7 @@ case "$action" in
 
     compose build "${@:2}" api ui
     record_all_hashes
-    compose up -d --force-recreate api video-processing-worker ui
+    compose up -d --force-recreate api media-processing-worker ui
 
     verify
     ;;
@@ -213,8 +213,8 @@ case "$action" in
   restart)
     echo "Restarting application containers without rebuilding..."
 
-    compose up -d --no-build api video-processing-worker ui
-    compose restart api video-processing-worker ui
+    compose up -d --no-build api media-processing-worker ui
+    compose restart api media-processing-worker ui
 
     verify
     ;;

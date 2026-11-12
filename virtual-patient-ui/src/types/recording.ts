@@ -114,8 +114,6 @@ export type ParaverbalObservation = {
 export type NonverbalProcessed = {
   interactionGazeRatio?: number | null;
   medianInteractionDwellMs?: number | null;
-  visualAlignmentRatio?: number | null;
-  medianVisualAlignmentDwellMs?: number | null;
   nodCount?: number | null;
   nodRateMin?: number | null;
   smileActivityRatio?: number | null;

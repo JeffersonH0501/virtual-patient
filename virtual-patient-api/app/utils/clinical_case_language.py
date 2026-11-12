@@ -18,7 +18,7 @@ TRANSLATABLE_FIELDS = [
 
 # List of non-translatable fields
 NON_TRANSLATABLE_FIELDS = [
-    'id', 'case_key', 'case_type', 'organization_id', 'active', 'icon',
+    'id', 'case_key', 'case_type', 'active', 'icon',
     'age', 'weight_in_kg', 'created_at', 'updated_at',
     'female_photo', 'male_photo', 'gender_restriction'
 ]

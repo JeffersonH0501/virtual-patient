@@ -8,9 +8,12 @@ x-api-environment: &api-environment
   POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-virtual_patient_local}
   SECRET_KEY: ${SECRET_KEY:-local-development-secret-change-me}
   ACCESS_TOKEN_EXPIRE_MINUTES: ${ACCESS_TOKEN_EXPIRE_MINUTES:-480}
-  SUPERUSER_EMAIL: ${SUPERUSER_EMAIL:-superuser@example.com}
-  SUPERUSER_NAME: ${SUPERUSER_NAME:-Super User}
-  SUPERUSER_PASSWORD: ${SUPERUSER_PASSWORD:-local-superuser-change-me}
+  # ADMIN_EMAIL / ADMIN_NAME / ADMIN_PASSWORD are intentionally NOT set here.
+  # They come from the .env.local env_file below so the administrator account
+  # always reflects that file, regardless of how compose is invoked (a bare
+  # `docker compose -f docker-compose.local.yml ...` without --env-file would
+  # otherwise fall back to a placeholder because interpolation has no source).
+  # A service `environment:` value would override env_file, so it is omitted.
   RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:-}
   ENV: development
   AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-local-not-configured}
@@ -21,7 +24,7 @@ x-api-environment: &api-environment
   AZURE_OPENAI_STT_DEPLOYMENT_NAME: ${AZURE_OPENAI_STT_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_TTS_DEPLOYMENT_NAME: ${AZURE_OPENAI_TTS_DEPLOYMENT_NAME:-local-not-configured}
   AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME: ${AZURE_OPENAI_EMBEDDING_DEPLOYMENT_NAME:-local-not-configured}
-  VIDEO_PROCESSING_WORKER_URL: http://video-processing-worker:8010
+  MEDIA_PROCESSING_WORKER_URL: http://media-processing-worker:8010
 
 x-api-build: &api-build
   context: ./virtual-patient-api
@@ -48,7 +51,10 @@ services:
   setup:
     image: *api-image
     build: *api-build
-    env_file: ./virtual-patient-api/config/native-runtime.conf
+    env_file:
+      - ./virtual-patient-api/config/native-runtime.conf
+      - path: .env.local
+        required: false
     environment: *api-environment
     command: ["python", "scripts/setup_db.py"]
     volumes:
@@ -63,10 +69,13 @@ services:
   api:
     image: *api-image
     build: *api-build
-    env_file: ./virtual-patient-api/config/native-runtime.conf
+    env_file:
+      - ./virtual-patient-api/config/native-runtime.conf
+      - path: .env.local
+        required: false
     environment: *api-environment
-    cpus: 3.0
-    mem_limit: 4g
+    # Interactive requests are not CPU- or memory-limited; heavy visual work
+    # runs in the separately constrained media-processing-worker container.
     command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     ports:
       - "127.0.0.1:8000:8000"
@@ -83,14 +92,20 @@ services:
       retries: 12
       start_period: 20s
 
-  video-processing-worker:
+  media-processing-worker:
     image: *api-image
     build: *api-build
-    env_file: ./virtual-patient-api/config/native-runtime.conf
+    env_file:
+      - ./virtual-patient-api/config/native-runtime.conf
+      - path: .env.local
+        required: false
     environment: *api-environment
-    cpus: 3.0
-    mem_limit: 4g
-    command: ["uvicorn", "app.multimodal.video_processing_worker:app", "--host", "0.0.0.0", "--port", "8010"]
+    # P2 deferred processing yields CPU/RAM to live sessions. Native visual work
+    # is serialized (concurrency=1) and releases its models after 300s idle, so a
+    # smaller cap is safe and keeps the host from being overcommitted.
+    cpus: ${WORKER_CPUS:-2.0}
+    mem_limit: ${WORKER_MEM_LIMIT:-2560m}
+    command: ["uvicorn", "app.multimodal.media_processing_worker:app", "--host", "0.0.0.0", "--port", "8010"]
     expose:
       - "8010"
     volumes:
@@ -116,7 +131,6 @@ services:
       VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:-6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI}
       VITE_API_HOST: ${VITE_API_HOST:-http://127.0.0.1}
       VITE_API_PORT: ${VITE_API_PORT:-8000}
-      VITE_SPEECH_INPUT_PROVIDER: ${VITE_SPEECH_INPUT_PROVIDER:-server}
     ports:
       - "127.0.0.1:5173:5173"
     volumes:

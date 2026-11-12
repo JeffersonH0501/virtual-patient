@@ -449,7 +449,7 @@ class MultimodalPipelineTests(unittest.TestCase):
             )
             self.assertEqual(turn.nonverbal_features["status"], "ok")
             self.assertEqual(
-                turn.nonverbal_features["quality"]["feature_reasons"]["visual_alignment_ratio"],
+                turn.nonverbal_features["quality"]["feature_reasons"]["interaction_gaze_ratio"],
                 "gaze_calibration_pending",
             )
             self.assertEqual(

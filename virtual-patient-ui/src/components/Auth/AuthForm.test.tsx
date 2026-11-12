@@ -33,9 +33,9 @@ it.each([
 });
 
 describe('public registration', () => {
-  it.each(['student', 'teacher'])('requires a role and registers a %s with one password', async (role) => {
+  it.each(['student', 'doctor'])('requires a role and registers a %s with one password', async (role) => {
     vi.stubEnv('VITE_RECAPTCHA_SITE_KEY', 'test');
-    render(<MemoryRouter><AuthForm mode="signup" onSwitchMode={() => {}} /></MemoryRouter>);
+    render(<MemoryRouter><AuthForm mode="signup" onSwitchMode={vi.fn()} /></MemoryRouter>);
     expect(screen.queryByLabelText('auth.confirmPassword')).toBeNull();
     fireEvent.change(screen.getByLabelText('auth.name'), {target: {value: 'Student'}});
     fireEvent.change(screen.getByLabelText('auth.email'), {target: {value: 'student@example.org'}});
@@ -45,8 +45,18 @@ describe('public registration', () => {
     fireEvent.click(screen.getByRole('combobox', {name: 'auth.role'}));
     expect(screen.getAllByRole('option')).toHaveLength(2);
     fireEvent.click(screen.getByRole('option', {name: 'auth.' + role}));
+    if (role === 'student') {
+      expect((screen.getByRole('button', {name: 'auth.signup'}) as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(screen.getByRole('combobox', {name: 'auth.semester'}));
+      fireEvent.click(screen.getByRole('option', {name: 'auth.semesterFirstFour'}));
+      fireEvent.change(screen.getByLabelText('auth.university'), {target: {value: ' University '}});
+    } else {
+      expect(screen.queryByLabelText('auth.semester')).toBeNull();
+      expect(screen.queryByLabelText('auth.university')).toBeNull();
+    }
     fireEvent.click(screen.getByRole('button', {name: 'auth.signup'}));
-    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({name: 'Student', email: 'student@example.org', password: 'test-password', role, captcha: 'test'}));
+    await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({name: 'Student', email: 'student@example.org', password: 'test-password', role, captcha: 'test',
+      ...(role === 'student' ? {semester_range: 'first_four', university: 'University'} : {})}));
   });
   it('switches forms on the welcome route while keeping the illustration and CAPTCHA mounted', () => {
     vi.stubEnv('VITE_RECAPTCHA_SITE_KEY', 'test');

@@ -81,7 +81,6 @@ _SLOT_TO_FEATURE: dict[str, dict[str, str]] = {
     # Nonverbal families
     "gaze_orientation": {
         "alignment": "interaction_gaze_ratio",
-        "dwell": "median_visual_alignment_dwell_ms",
     },
     "head_nods": {
         "nod_present": "nod_present",

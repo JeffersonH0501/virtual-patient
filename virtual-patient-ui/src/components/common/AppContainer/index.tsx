@@ -15,7 +15,7 @@ import {InterviewContentLoading} from '../../ClinicalChat/InterviewContentLoadin
 
 export const AppContainer = () => {
   const {user} = useUser();
-  return <AccountAppContainer key={`${user?.id}:${user?.role}:${user?.organizationId}`} />;
+  return <AccountAppContainer key={`${user?.id}:${user?.role}`} />;
 };
 
 const AccountAppContainer = () => {
@@ -49,7 +49,7 @@ const AccountAppContainer = () => {
 
   useEffect(() => {
     if (isUserLoading) return;
-    if (userId == null || (userRole !== 'student' && userRole !== 'teacher') || isTokenExpired) {
+    if (userId == null || (userRole !== 'student' && userRole !== 'doctor') || isTokenExpired) {
       setCheckingActiveInterview(false);
       return;
     }
@@ -131,7 +131,7 @@ const AccountAppContainer = () => {
                 <Outlet />
               </Suspense>
             </MotionContent>
-            {!isInterviewFlow && <Footer />}
+            {!calibrationMatch && !sessionMatch && !isPatientPreview && <Footer />}
           </main>
         </div>
       </InterviewMediaProvider>

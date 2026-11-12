@@ -85,26 +85,13 @@ def preprocess_nonverbal_turn(
         interaction_totals, episodes = time_weighted_states(raw.gaze_semantic_observations, end_ms=end_ms,
             max_support_ms=min(200., 1000. / raw.sample_fps))
         interaction_dwell = statistics.median(episodes) if episodes else None
-    if semantic and interaction_totals is None:
-        aligned = [item.get("state") in ("PATIENT", "CAMERA") for item in semantic]
-        alignment_ratio = sum(aligned) / len(aligned)
-        dwell_ms = _median_aligned_dwell_ms(
-            timestamps=[float(item["timestamp_ms"]) for item in raw.gaze_semantic_observations],
-            aligned_flags=[item.get("state") in ("PATIENT", "CAMERA") for item in raw.gaze_semantic_observations],
-        )
-        if dwell_ms is None:
-            reasons["median_visual_alignment_dwell_ms"] = UnavailableReason.INSUFFICIENT_SIGNAL
-    elif not semantic:
-        alignment_ratio, dwell_ms = None, None
+    if not semantic:
         reason = UnavailableReason.GAZE_CALIBRATION_PENDING if not raw.gaze_semantic_observations else UnavailableReason.INSUFFICIENT_SIGNAL
         if (raw.gaze_semantic_observations and raw.gaze_observations and
                 sum(item.get("state") == "outside_calibrated_geometry" for item in raw.gaze_observations)
                 > len(raw.gaze_observations) / 2):
             reason = UnavailableReason.OUTSIDE_CALIBRATED_GEOMETRY
-        reasons["visual_alignment_ratio"] = reason
-        reasons["median_visual_alignment_dwell_ms"] = reason
-    else:
-        alignment_ratio, dwell_ms = None, None
+        reasons["interaction_gaze_ratio"] = reason
 
     nod_count, nod_rate_min = raw.nod_count, raw.nod_rate_min
     if nod_count is None:
@@ -125,8 +112,6 @@ def preprocess_nonverbal_turn(
         smile_activity_ratio = smile_totals['INSIDE'] / sum(smile_totals.values()) if sum(smile_totals.values()) else None
 
     processed = NonverbalProcessedFeatures(
-        visual_alignment_ratio=alignment_ratio,
-        median_visual_alignment_dwell_ms=dwell_ms,
         interaction_gaze_duration_ms=interaction_totals['INSIDE'] if interaction_totals else None,
         outside_gaze_duration_ms=interaction_totals['OUTSIDE'] if interaction_totals else None,
         interaction_gaze_ratio=(interaction_totals['INSIDE'] / sum(interaction_totals.values())) if interaction_totals and sum(interaction_totals.values()) else None,
@@ -138,48 +123,6 @@ def preprocess_nonverbal_turn(
         mean_smile_activation=mean_smile_activation,
     )
     return NonverbalPreprocessingResult(processed=processed, reasons=reasons)
-
-
-def _median_aligned_dwell_ms(
-    *,
-    timestamps: list[float],
-    aligned_flags: list[bool],
-) -> float | None:
-    """Median duration (ms) of runs of consecutive aligned frames.
-
-    Each maximal run of aligned frames is one episode; its duration is the span
-    from its first to its last frame timestamp. Returns ``None`` when there is no
-    aligned episode. A single-frame episode has a duration of ``0.0`` ms because
-    it spans no time between frames.
-    """
-    episodes: list[float] = []
-    run_start_ts: float | None = None
-    prev_ts: float | None = None
-
-    for ts, aligned in zip(timestamps, aligned_flags):
-        # The shared extractor samples at 10 Hz. Missing observations break
-        # continuity; a gap must never count as observed alignment dwell.
-        if prev_ts is not None and (ts <= prev_ts or ts - prev_ts > 200):
-            if run_start_ts is not None:
-                episodes.append(prev_ts - run_start_ts)
-            run_start_ts = None
-            prev_ts = None
-        if aligned:
-            if run_start_ts is None:
-                run_start_ts = ts
-            prev_ts = ts
-        else:
-            if run_start_ts is not None and prev_ts is not None:
-                episodes.append(prev_ts - run_start_ts)
-            run_start_ts = None
-            prev_ts = None
-
-    if run_start_ts is not None and prev_ts is not None:
-        episodes.append(prev_ts - run_start_ts)
-
-    if not episodes:
-        return None
-    return float(statistics.median(episodes))
 
 
 def _smile(

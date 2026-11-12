@@ -56,7 +56,7 @@ class MedicalInterviewDB(Base):
         primaryjoin="and_(MedicalInterviewDB.id == InterviewEvaluationDB.medical_interview_id, InterviewEvaluationDB.evaluation_condition == 'TEXT_PLUS_MULTIMODAL')",
         uselist=False, viewonly=True,
     )
-    teacher_feedback = relationship("TeacherFeedbackDB", back_populates="medical_interview", cascade="all, delete-orphan")
+    doctor_feedback = relationship("DoctorFeedbackDB", back_populates="medical_interview", cascade="all, delete-orphan")
     recording = relationship(
         "InterviewRecordingDB",
         back_populates="medical_interview",
@@ -69,6 +69,7 @@ class MedicalInterviewDB(Base):
         cascade="all, delete-orphan",
         order_by="InterviewTurnDB.sequence",
     )
+    performance_events = relationship("InterviewPerformanceEventDB", cascade="all, delete-orphan", passive_deletes=True)
 
 # Pydantic Models
 class MedicalInterviewBase(BaseModel):

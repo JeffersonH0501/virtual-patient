@@ -96,6 +96,7 @@ NONVERBAL_CHECK_KINDS = GUIDED_CHECK_KINDS[5:]
 
 class LiveGazeMetadata(BaseModel):
     profile: dict
+    interaction_area: dict
 
 
 class GuidedCheckEnvironment(BaseModel):

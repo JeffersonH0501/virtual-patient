@@ -15,8 +15,8 @@ from app.routers import clinical_cases, speech
 
 @pytest.mark.parametrize("role, expected_status", [
     (UserRole.STUDENT, 403),
-    (UserRole.TEACHER, 403),
-    (UserRole.SUPERUSER, 200),
+    (UserRole.DOCTOR, 403),
+    (UserRole.ADMIN, 200),
 ])
 def test_patient_preview_requires_superuser(monkeypatch, role, expected_status):
     app = FastAPI()
@@ -42,7 +42,7 @@ def test_patient_preview_requires_superuser(monkeypatch, role, expected_status):
         })
 
     assert response.status_code == expected_status
-    if role != UserRole.SUPERUSER:
+    if role != UserRole.ADMIN:
         db.get.assert_not_called()
         factory.assert_not_called()
         return
@@ -58,7 +58,7 @@ def test_patient_preview_requires_superuser(monkeypatch, role, expected_status):
     db.commit.assert_not_called()
 
 
-@pytest.mark.parametrize("role, expected_status", [(UserRole.STUDENT, 403), (UserRole.SUPERUSER, 200)])
+@pytest.mark.parametrize("role, expected_status", [(UserRole.STUDENT, 403), (UserRole.ADMIN, 200)])
 def test_preview_speech_uses_selected_voice_without_saving(monkeypatch, role, expected_status):
     app = FastAPI()
     app.include_router(clinical_cases.router)
@@ -81,7 +81,7 @@ def test_preview_speech_uses_selected_voice_without_saving(monkeypatch, role, ex
         })
 
     assert response.status_code == expected_status
-    if role == UserRole.SUPERUSER:
+    if role == UserRole.ADMIN:
         assert response.headers["content-type"] == "audio/mpeg"
         assert response.content == b"test mp3"
         speech.synthesize_patient_message.assert_called_once_with("Hola", "friendly_polite", "female")
@@ -90,7 +90,7 @@ def test_preview_speech_uses_selected_voice_without_saving(monkeypatch, role, ex
         speech.synthesize_patient_message.assert_not_called()
 
 
-@pytest.mark.parametrize("role, expected_status", [(UserRole.STUDENT, 403), (UserRole.SUPERUSER, 200)])
+@pytest.mark.parametrize("role, expected_status", [(UserRole.STUDENT, 403), (UserRole.ADMIN, 200)])
 def test_preview_summary_extracts_conversation_without_saving(monkeypatch, role, expected_status):
     app = FastAPI()
     app.include_router(clinical_cases.router)
@@ -110,7 +110,7 @@ def test_preview_summary_extracts_conversation_without_saving(monkeypatch, role,
         })
 
     assert response.status_code == expected_status
-    if role == UserRole.SUPERUSER:
+    if role == UserRole.ADMIN:
         assert response.json()["summary_text"] == "Dolor de manos."
         process_summary.assert_awaited_once_with(
             messages=[
@@ -126,7 +126,7 @@ def test_preview_summary_extracts_conversation_without_saving(monkeypatch, role,
 def test_preview_progressive_audio_keeps_voice_policy_and_closes_provider(monkeypatch):
     app = FastAPI()
     app.include_router(clinical_cases.router)
-    app.dependency_overrides[get_current_active_user] = lambda: SimpleNamespace(role=UserRole.SUPERUSER)
+    app.dependency_overrides[get_current_active_user] = lambda: SimpleNamespace(role=UserRole.ADMIN)
     db = Mock()
     db.get.side_effect = [
         SimpleNamespace(active=True, case_type=CaseType.DEFAULT),

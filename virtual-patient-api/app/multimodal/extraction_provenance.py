@@ -18,6 +18,7 @@ SOURCE_FILES = (
     "multimodal/turn_video_queue.py", "multimodal/isolated_worker.py", "multimodal/calibration.py",
     "multimodal/config_loader.py", "multimodal/schemas.py", "multimodal/block_turns.py",
     "media/patient_roi.py", "nonverbal/iris.py", "nonverbal/gaze_calibration.py",
+    "nonverbal/mediapipe_calibration.py", "nonverbal/guided_eye_geometry.py",
 )
 MODEL_FILES = (
     "face_landmarker_v2_with_blendshapes.task",

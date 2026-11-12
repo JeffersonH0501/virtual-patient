@@ -1,9 +1,10 @@
 export type User = {
   id: number;
-  organizationId?: number | null;
   email: string;
   name: string;
   createdAt?: string | null;
   preferredLanguage: string;
-  role: 'student' | 'teacher' | 'superuser';
+  role: 'student' | 'doctor' | 'admin';
+  semesterRange?: 'first_four' | 'fifth_eighth' | 'ninth_plus' | null;
+  university?: string | null;
 };
