@@ -1,27 +1,40 @@
 type Text = {es: string; en: string};
-type Question = {id: string; text: Text; caption?: Text; criteria?: Text[]};
+type Question = {id: string; text: Text; caption?: Text; criteria?: Text[]; group?: Text};
 const pair = (es: string, en: string): Text => ({es, en});
-const cuqTexts: [Text, Text][] = [
-  [pair('La personalidad del chatbot era realista y atractiva.', 'The chatbot’s personality was realistic and engaging.'), pair('Considere si su comportamiento y manera de responder se asemejaban a los de un paciente real.', 'Consider whether its behavior and responses resembled those of a real patient.')],
-  [pair('El chatbot parecía demasiado robótico.', 'The chatbot seemed too robotic.'), pair('Evalúe la naturalidad de las respuestas y la conversación, incluyendo la voz del paciente.', 'Consider the naturalness of the responses and conversation, including the patient’s voice.')],
-  [pair('El chatbot fue amable durante la configuración inicial.', 'The chatbot was friendly during the initial setup.'), pair('Considere la claridad y cordialidad de la bienvenida y las instrucciones iniciales.', 'Consider the clarity and warmth of the welcome and initial instructions.')],
-  [pair('El chatbot parecía muy antipático.', 'The chatbot seemed very unfriendly.'), pair('Tenga en cuenta la personalidad seleccionada; algunos pacientes están diseñados para ser poco amigables.', 'Consider the selected personality; some patients are designed to be unfriendly.')],
-  [pair('El chatbot explicó bien su alcance y propósito.', 'The chatbot explained its scope and purpose well.'), pair('Considere si quedó claro qué podía hacer y cuáles eran sus limitaciones.', 'Consider whether its capabilities and limitations were clear.')],
-  [pair('El chatbot no dio ninguna indicación sobre su propósito.', 'The chatbot gave no indication of its purpose.'), pair('Evalúe si recibió información suficiente para comprender el objetivo de la simulación.', 'Consider whether you received enough information to understand the simulation’s purpose.')],
-  [pair('El chatbot era fácil de navegar.', 'The chatbot was easy to navigate.'), pair('Considere la facilidad para encontrar y utilizar las funciones de la aplicación.', 'Consider how easy it was to find and use the application’s features.')],
-  [pair('Sería fácil confundirse al usar el chatbot.', 'It would be easy to get confused while using the chatbot.'), pair('Evalúe si las instrucciones, controles y pasos de la entrevista resultaron comprensibles.', 'Consider whether the instructions, controls and interview steps were understandable.')],
-  [pair('El chatbot me entendió bien.', 'The chatbot understood me well.'), pair('Considere si interpretó correctamente sus preguntas e intervenciones, incluidas las realizadas por voz.', 'Consider whether it correctly interpreted your questions and contributions, including speech.')],
-  [pair('El chatbot no reconoció muchas de mis entradas.', 'The chatbot failed to recognize many of my inputs.'), pair('Considere los mensajes o intervenciones que no fueron reconocidos o interpretados correctamente.', 'Consider messages or contributions that were not recognized or correctly interpreted.')],
-  [pair('Las respuestas del chatbot fueron útiles, apropiadas e informativas.', 'The chatbot’s responses were useful, appropriate and informative.'), pair('Evalúe su pertinencia y utilidad para desarrollar la entrevista clínica.', 'Consider their relevance and usefulness for conducting the clinical interview.')],
-  [pair('Las respuestas del chatbot fueron irrelevantes.', 'The chatbot’s responses were irrelevant.'), pair('Considere si respondió de manera coherente con sus preguntas y el contexto clínico.', 'Consider whether it responded consistently with your questions and the clinical context.')],
-  [pair('El chatbot manejó bien cualquier error o equivocación.', 'The chatbot handled any errors or mistakes well.'), pair('Considere cómo respondió ante fallos, malentendidos o intervenciones inesperadas.', 'Consider how it responded to errors, misunderstandings or unexpected contributions.')],
-  [pair('El chatbot parecía incapaz de manejar cualquier error.', 'The chatbot seemed unable to handle any errors.'), pair('Evalúe si pudo continuar la interacción adecuadamente después de una equivocación o problema.', 'Consider whether the interaction continued appropriately after an error or problem.')],
-  [pair('El chatbot fue muy fácil de usar.', 'The chatbot was very easy to use.'), pair('Considere su experiencia general al realizar la entrevista mediante la aplicación.', 'Consider your overall experience conducting the interview using the application.')],
-  [pair('El chatbot era muy complejo.', 'The chatbot was very complex.'), pair('Evalúe si utilizar sus funciones requirió un esfuerzo o aprendizaje excesivo.', 'Consider whether using its features required excessive effort or learning.')],
+// System Usability Scale (Brooke, 1996). English wording is the original; the order and the alternation of
+// positive (odd) and negative (even) statements must not change because the scoring depends on them. The Spanish
+// wording is the version of Sevilla-Gonzalez et al. (2020, JMIR Hum Factors 7(4):e21161) as reproduced by a
+// secondary transcription (Universidad de Costa Rica CITIC survey); it has not been compared with the article's
+// Multimedia Appendix 2. "herramienta"/"system" are kept: the items are not reworded for the virtual patient.
+const susTexts: Text[] = [
+  pair('Me gustaría usar esta herramienta frecuentemente', 'I think that I would like to use this system frequently'),
+  pair('Considero que esta herramienta es innecesariamente compleja', 'I found the system unnecessarily complex'),
+  pair('Considero que la herramienta es fácil de usar', 'I thought the system was easy to use'),
+  pair('Considero necesario el apoyo de personal experto para poder utilizar esta herramienta', 'I think that I would need the support of a technical person to be able to use this system'),
+  pair('Considero que las funciones de la herramienta están bien integradas', 'I found the various functions in this system were well integrated'),
+  pair('Considero que la herramienta presenta muchas contradicciones', 'I thought there was too much inconsistency in this system'),
+  pair('Imagino que la mayoría de las personas aprenderían a usar esta herramienta rápidamente', 'I would imagine that most people would learn to use this system very quickly'),
+  pair('Considero que el uso de esta herramienta es tedioso', 'I found the system very cumbersome to use'),
+  pair('Me sentí muy confiado al usar la herramienta', 'I felt very confident using the system'),
+  pair('Necesité saber bastantes cosas antes de poder empezar a usar esta herramienta', 'I needed to learn a lot of things before I could get on with this system'),
 ];
-export const cuq: Question[] = cuqTexts.map(([text, caption], index) => ({id: `CUQ-${String(index + 1).padStart(2, '0')}`, text, caption}));
+export const sus: Question[] = susTexts.map((text, index) => ({id: `SUS-${String(index + 1).padStart(2, '0')}`, text}));
+// Eight own items on the spoken interaction. They are not a validated scale and have no total score.
+const voice = pair('Interacción mediante voz', 'Voice interaction');
+const conversation = pair('Calidad conversacional', 'Conversation quality');
+const clinical = pair('Simulación clínica', 'Clinical simulation');
+export const experience: Question[] = [
+  {id: 'VOZ-01', group: voice, text: pair('Pude formular mis preguntas oralmente sin dificultades técnicas.', 'I was able to ask my questions aloud without technical difficulties.')},
+  {id: 'VOZ-02', group: voice, text: pair('El paciente virtual comprendió adecuadamente mis preguntas habladas.', 'The virtual patient understood my spoken questions adequately.')},
+  {id: 'VOZ-03', group: voice, text: pair('Las respuestas habladas del paciente virtual fueron fáciles de comprender.', 'The virtual patient’s spoken answers were easy to understand.')},
+  {id: 'VOZ-04', group: voice, text: pair('La voz del paciente virtual sonó natural durante la entrevista.', 'The virtual patient’s voice sounded natural during the interview.')},
+  {id: 'CON-01', group: conversation, text: pair('El tiempo de espera para recibir las respuestas del paciente fue adecuado.', 'The waiting time to receive the patient’s answers was appropriate.')},
+  {id: 'CON-02', group: conversation, text: pair('El paciente mantuvo la coherencia con la información mencionada anteriormente.', 'The patient stayed consistent with the information mentioned earlier.')},
+  {id: 'CLI-01', group: clinical, text: pair('La conversación se asemejó a una entrevista clínica con un paciente real.', 'The conversation resembled a clinical interview with a real patient.')},
+  {id: 'CLI-02', group: clinical, text: pair('La interacción hablada con el paciente virtual me resultó útil para practicar mis habilidades de comunicación durante la anamnesis clínica.', 'The spoken interaction with the virtual patient was useful for practicing my communication skills during clinical anamnesis.')},
+];
 export const evaluation: Question[] = [
-  {id: 'EVA-01', text: pair('¿La herramienta evaluó correctamente los criterios de evaluación generales durante la entrevista clínica?', 'Did the tool correctly assess the general evaluation criteria during the clinical interview?'), criteria: [
+  {id: 'EVA-01', text: pair('El puntaje y la retroalimentación sobre los criterios generales de la entrevista clínica fueron correctos.', 'The score and feedback on the general criteria of the clinical interview were correct.'), criteria: [
     pair('El doctor saludó al paciente de una manera que lo hizo sentir cómodo.', 'The doctor greeted the patient in a way that made them feel comfortable.'),
     pair('El doctor trató al paciente con respeto.', 'The doctor treated the patient with respect.'),
     pair('El doctor escuchó al paciente sin prejuicios, independientemente de la apariencia, modales, género, raza o forma de hablar (sin comentarios racistas o sexistas).', 'The doctor listened without prejudice regardless of appearance, manners, gender, race or manner of speaking (without racist or sexist comments).'),
@@ -29,22 +42,26 @@ export const evaluation: Question[] = [
     pair('El doctor ayudó al paciente a entender qué cambios de salud esperar en las próximas semanas o meses.', 'The doctor helped the patient understand what health changes to expect in the coming weeks or months.'),
     pair('El doctor explicó cómo la enfermedad podría afectar la capacidad del paciente para trabajar o realizar actividades diarias.', 'The doctor explained how the illness could affect the patient’s ability to work or perform daily activities.'),
     pair('El doctor ayudó a aliviar las preocupaciones del paciente sobre estar gravemente enfermo.', 'The doctor helped alleviate the patient’s concerns about being seriously ill.') ]},
-  {id: 'EVA-02', text: pair('¿La herramienta evaluó correctamente si se obtuvo toda la información relevante y si las hipótesis planteadas son pertinentes para el caso?', 'Did the tool correctly assess whether all relevant information was obtained and the hypotheses were relevant to the case?')},
-  {id: 'EVA-03', text: pair('¿El sistema valoró de forma precisa la claridad en la comunicación?', 'Did the system accurately assess clarity of communication?'), criteria: [
+  {id: 'EVA-02', text: pair('El puntaje y la retroalimentación sobre la información obtenida y la pertinencia de las hipótesis planteadas fueron correctos.', 'The score and feedback on the information obtained and the relevance of the hypotheses were correct.')},
+  {id: 'EVA-03', text: pair('El puntaje y la retroalimentación sobre la claridad en la comunicación fueron correctos.', 'The score and feedback on clarity of communication were correct.'), criteria: [
     pair('El doctor habló en términos que el paciente podía entender, evitando palabras técnicas.', 'The doctor used terms the patient could understand and avoided technical words.'), pair('El doctor se aseguró de que el paciente entendiera todo lo que se explicó.', 'The doctor ensured the patient understood everything explained.'), pair('El doctor expresó sus opiniones y recomendaciones claramente al paciente.', 'The doctor clearly expressed opinions and recommendations.'), pair('El doctor explicó el nombre de la enfermedad usando palabras que el paciente podía entender.', 'The doctor explained the name of the illness in words the patient could understand.')]},
-  {id: 'EVA-04', text: pair('¿La valoración sobre el interés genuino hacia el paciente es correcta?', 'Was the assessment of genuine interest in the patient correct?'), criteria: [
+  {id: 'EVA-04', text: pair('El puntaje y la retroalimentación sobre el interés hacia el paciente fueron correctos.', 'The score and feedback on interest in the patient were correct.'), criteria: [
     pair('El doctor mostró interés en las ideas del paciente sobre su salud.', 'The doctor showed interest in the patient’s ideas about their health.'), pair('El doctor mostró interés genuino y preocupación por el paciente.', 'The doctor showed genuine interest and concern for the patient.'), pair('El doctor proporcionó al paciente información sobre sus preocupaciones, siempre que estuvo dentro de su competencia profesional.', 'The doctor provided information about the patient’s concerns within their professional competence.'), pair('El doctor fue considerado con las necesidades del paciente y las priorizó.', 'The doctor considered and prioritized the patient’s needs.')]},
-  {id: 'EVA-05', text: pair('¿La valoración sobre la empatía es correcta?', 'Was the assessment of empathy correct?'), criteria: [
+  {id: 'EVA-05', text: pair('El puntaje y la retroalimentación sobre la empatía fueron correctos.', 'The score and feedback on empathy were correct.'), criteria: [
     pair('El doctor entendió las principales preocupaciones del paciente sobre su salud.', 'The doctor understood the patient’s main health concerns.'), pair('El doctor exploró las emociones del paciente durante la conversación.', 'The doctor explored the patient’s emotions during the conversation.'), pair('El doctor fue amigable y amable con el paciente.', 'The doctor was friendly and kind to the patient.'), pair('El doctor respondió apropiadamente a todos los problemas que el paciente mencionó.', 'The doctor responded appropriately to all problems mentioned by the patient.'), pair('El doctor mostró comprensión hacia el paciente.', 'The doctor showed understanding toward the patient.'), pair('El doctor se dedicó a ayudar al paciente.', 'The doctor was dedicated to helping the patient.')]},
-  {id: 'EVA-06', text: pair('¿La valoración sobre el fomento de una comunicación abierta con el paciente es correcta?', 'Was the assessment of encouraging open communication with the patient correct?'), criteria: [
+  {id: 'EVA-06', text: pair('El puntaje y la retroalimentación sobre el fomento de una comunicación abierta fueron correctos.', 'The score and feedback on encouraging open communication were correct.'), criteria: [
     pair('El doctor le dio al paciente la oportunidad de expresar lo que realmente tenía en mente.', 'The doctor gave the patient an opportunity to express what was really on their mind.'), pair('El doctor respetó el derecho del paciente a hablar libremente.', 'The doctor respected the patient’s right to speak freely.'), pair('El doctor alentó al paciente a hacer preguntas.', 'The doctor encouraged the patient to ask questions.')]},
   {id: 'EVA-07', text: pair('La retroalimentación proporcionada por el sistema ayudó a identificar aspectos concretos del desempeño que podrían mejorarse en futuras entrevistas clínicas.', 'The system’s feedback helped identify specific aspects of performance that could be improved in future clinical interviews.')},
-  {id: 'EVA-08', text: pair('La evaluación de aspectos de la voz y el comportamiento no verbal aportó información sobre el desempeño que no podría obtenerse únicamente a partir del contenido de la conversación.', 'The assessment of voice and nonverbal behavior provided information about performance that could not be obtained from conversation content alone.')},
-  {id: 'EVA-09', text: pair('Considero que incorporar el análisis de audio y video hace que la evaluación de las habilidades comunicativas sea más completa.', 'I consider that incorporating audio and video analysis makes the assessment of communication skills more complete.')},
+  {id: 'EVA-08', text: pair('La información sobre mi voz (ritmo, pausas y entonación) me permitió identificar aspectos relevantes de mi forma de comunicarme.', 'The information about my voice (pace, pauses and intonation) helped me identify relevant aspects of how I communicate.')},
+  {id: 'EVA-09', text: pair('La información sobre mi conducta no verbal (orientación visual, gestos de cabeza y sonrisa) me permitió identificar aspectos relevantes de mi comportamiento comunicativo.', 'The information about my nonverbal behavior (visual orientation, head gestures and smiling) helped me identify relevant aspects of my communicative behavior.')},
+  {id: 'EVA-10', text: pair('Ver juntos lo que dije y cómo lo dije me ayudó a comprender mejor mis fortalezas y oportunidades de mejora.', 'Seeing what I said together with how I said it helped me better understand my strengths and opportunities for improvement.')},
+  {id: 'EVA-11', text: pair('Pude entender en qué parte de mi entrevista se basaba cada observación de la retroalimentación.', 'I could understand which part of my interview each feedback observation was based on.')},
+  {id: 'EVA-12', text: pair('La retroalimentación describió mi comportamiento sin juzgarme como persona.', 'The feedback described my behavior without judging me as a person.')},
 ];
 export const evaluationTitles: Text[] = [
   pair('General', 'General'), pair('Completitud', 'Completeness'), pair('Claridad', 'Clarity'),
   pair('Interés en el paciente', 'Interest in the patient'), pair('Empatía hacia el paciente', 'Empathy toward the patient'),
   pair('Comunicación abierta', 'Open communication'), pair('Utilidad formativa', 'Educational usefulness'),
-  pair('Complementariedad', 'Complementarity'), pair('Valor añadido', 'Added value'),
+  pair('Voz y ritmo', 'Voice and pace'), pair('Conducta no verbal', 'Nonverbal behavior'), pair('Integración', 'Integration'),
+  pair('Trazabilidad', 'Traceability'), pair('Tono de la retroalimentación', 'Feedback tone'),
 ];
