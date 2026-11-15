@@ -114,6 +114,9 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const [interview, setInterview] = useState<CompleteInterviewResponse>();
   const [patient, setPatient] = useState<Patient>(EMPTY_PATIENT);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
+  // Bubble times come from the capture clock shown in the header, never from server timestamps.
+  const [messageTimes, setMessageTimes] = useState<Record<number, number>>({});
+  const speechStartClockRef = useRef<number | null>(null);
   const [recapData, setRecapData] = useState<InterviewRecapData | null>(null);
   const [seekRequest, setSeekRequest] = useState<{
     turnId: string;
@@ -132,8 +135,9 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   });
   const sendInFlightRef = useRef(false);
   const utteranceInFlightRef = useRef(false);
-  const pendingMessageRef = useRef<{content: string; timing?: SpeechTiming; requestId: string; captureTiming?: StudentCaptureTiming} | null>(null);
+  const pendingMessageRef = useRef<{content: string; timing?: SpeechTiming; requestId: string; captureTiming?: StudentCaptureTiming; clockMs?: number} | null>(null);
   const deferredUtteranceRef = useRef<{content: string; timing?: SpeechTiming} | null>(null);
+  const [lostDeferredUtterance, setLostDeferredUtterance] = useState<string | null>(null);
   const audioSubmittedAtRef = useRef<number | undefined>(undefined);
   const responsePlaybackRef = useRef<{
     messageId: number;
@@ -146,24 +150,22 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const patientFloorRef = useRef(false);
   const forcingTerminationRef = useRef(false);
   const recordingRef = useRef<{
-    prepareStudentTurn?: (timing?: SpeechTiming) => StudentCaptureTiming;
-    confirmStudentTurn?: (timing: StudentCaptureTiming) => void;
+    prepareStudentTurn?: (timing?: SpeechTiming) => Promise<StudentCaptureTiming>;
+    submitStudentTurn: (requestId: string) => void;
+    returnFloorToStudent: () => void;
+    markSpeechStart: () => void;
+    elapsedAt: () => number;
     syncPending?: boolean;
     pause: () => void;
     resume: () => void;
     finalize: () => Promise<boolean>;
     resumeAudioGraph: () => Promise<void>;
-    recordStudentTurn: (
-      messageId: number,
-      sequence: number,
-      transcript: string,
-      timing?: SpeechTiming,
-    ) => void;
-    beginStudentTurn: () => void;
-    endStudentTurn: () => void;
-    discardStudentTurn: () => void;
+    recordStudentTurn: (messageId: number) => void;
     segmentId: string | null;
   } | null>(null);
+  const utteranceRequestId = useRef<string | null>(null);
+  // The greeting (or a reply pending on resume) plays first; capture opens its clip when arming.
+  const initialPatientMessageIdRef = useRef<number | null>(null);
   const media = useInterviewMedia();
 
   useEffect(() => {
@@ -243,12 +245,13 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         const resume = freshSessionRef.current.accepted ? freshSessionRef.current.resume : undefined;
         const openingMessageId = mode === 'session' && interviewData.status === 'in_progress'
           ? resume ? resume.pendingPatientMessageId
-            : interviewData.messages?.length === 1 && interviewData.messages[0].senderType === 'patient'
+            : interviewData.messages?.length === 1 && interviewData.messages[0].senderType !== 'user'
               ? interviewData.messages[0].id : null
           : null;
         setMessages(processMessagesWithAvatars(interviewData.messages, interviewData.patientGender)?.map((message) =>
           message.id === openingMessageId ? {...message, messageMetadata: {...message.messageMetadata, isNew: true}} : message));
         if (openingMessageId != null) setPatientTurnActive(true);
+        initialPatientMessageIdRef.current = openingMessageId ?? null;
         setPatient((current) => {
           const profile: Patient = {
             ...(mode === 'review' ? EMPTY_PATIENT : current),
@@ -333,6 +336,11 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const {isRegenerating, isReprocessing, refreshError, handleRefresh} = useReviewRefresh({
     interviewId, role: user?.role, mode, isCompleted, recapData, setRecapData, fetchInterview,
   });
+  useEffect(() => {
+    if (mode === 'review' && isOwner && recapData?.evaluationProcessing?.status === 'complete') {
+      window.dispatchEvent(new Event('perception-survey-updated'));
+    }
+  }, [isOwner, mode, recapData?.evaluationProcessing?.status]);
   const refreshBusy =
     isRegenerating || isReprocessing ||
     [recapData?.evaluationProcessing?.status, recapData?.observationProcessing?.status].some(
@@ -390,9 +398,17 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         utteranceInFlightRef.current = false;
         return;
       }
-      if (pendingMessageRef.current && pendingMessageRef.current.content !== content) return;
+      if (pendingMessageRef.current && pendingMessageRef.current.content !== content) {
+        // A second utterance arrived while the first is being sent. Show a brief notification.
+        console.warn('Utterance ignored: a message is already being sent');
+        utteranceInFlightRef.current = false;
+        return;
+      }
       const retry = Boolean(pendingMessageRef.current);
-      const pending = pendingMessageRef.current ?? {content, timing, requestId: crypto.randomUUID(), captureTiming: recordingRef.current?.prepareStudentTurn?.(timing)};
+      const pending = pendingMessageRef.current ?? {content, timing, requestId: utteranceRequestId.current ?? crypto.randomUUID(),
+        clockMs: speechStartClockRef.current ?? recordingRef.current?.elapsedAt()};
+      speechStartClockRef.current = null;
+      utteranceRequestId.current = null;
       if (!retry) measureResponse('transcription', audioSubmittedAtRef.current, pending.requestId);
       pendingMessageRef.current = pending;
       sendInFlightRef.current = true;
@@ -406,10 +422,13 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         senderAvatar: doctorImage,
       };
       if (!retry) setMessages((current) => [...(current || []), optimisticMessage]);
+      if (!retry && pending.clockMs != null) setMessageTimes((times) => ({...times, [optimisticMessage.id]: pending.clockMs!}));
       setMessageError(null);
       setIsLoading(true);
       let requestStartedAt: number | undefined;
       try {
+        recordingRef.current?.submitStudentTurn(pending.requestId);
+        pending.captureTiming ??= await recordingRef.current?.prepareStudentTurn?.(timing);
         await recordingRef.current?.resumeAudioGraph();
         requestStartedAt = performance.now();
         const response = pending.captureTiming
@@ -440,22 +459,13 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           };
         } else {
           setPatientTurnActive(false);
+          recordingRef.current?.returnFloorToStudent();
         }
         const studentMessage = processedMessages.find(
           (message) => response.newMessageIds.includes(message.id) && message.senderType === 'user',
         );
-        if (studentMessage && pending.captureTiming) recordingRef.current?.confirmStudentTurn?.(pending.captureTiming);
-        else if (studentMessage) {
-          recordingRef.current?.recordStudentTurn(
-            studentMessage.id,
-            Math.max(
-              processedMessages.findIndex((message) => message.id === studentMessage.id),
-              0,
-            ),
-            studentMessage.content,
-            pending.timing,
-          );
-        }
+        if (studentMessage) recordingRef.current?.recordStudentTurn(studentMessage.id);
+        if (studentMessage && pending.clockMs != null) setMessageTimes((times) => ({...times, [studentMessage.id]: pending.clockMs!}));
         pendingMessageRef.current = null;
       } catch (error) {
         measureResponse('reply-failed', requestStartedAt, pending.requestId);
@@ -486,20 +496,27 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     utteranceInFlightRef.current = true;
     audioSubmittedAtRef.current = performance.now();
     setPatientTurnActive(true);
-    recordingRef.current?.endStudentTurn();
+    const requestId = crypto.randomUUID();
+    utteranceRequestId.current = requestId;
+    recordingRef.current?.submitStudentTurn(requestId);
   }, []);
   const handleUtteranceFailed = useCallback(() => {
     utteranceInFlightRef.current = false;
+    speechStartClockRef.current = null;
     measureResponse('transcription-failed', audioSubmittedAtRef.current);
     audioSubmittedAtRef.current = undefined;
+    utteranceRequestId.current = null;
     setPatientTurnActive(false);
-    recordingRef.current?.discardStudentTurn();
+    recordingRef.current?.returnFloorToStudent();
   }, []);
   const handleSpeechStart = useCallback(() => {
-    recordingRef.current?.beginStudentTurn();
+    speechStartClockRef.current = recordingRef.current?.elapsedAt() ?? null;
+    recordingRef.current?.markSpeechStart();
   }, []);
   const recording = useInterviewRecording({
     missingMessageIds: (interview?.interviewMetadata?.missingEvidenceMessageIds as number[] | undefined) ?? [],
+    studentMessageIds: (messages ?? []).filter((message) => message.senderType === 'user').map((message) => message.id),
+    patientMessageIds: (messages ?? []).filter((message) => message.senderType !== 'user').map((message) => message.id),
     interviewId: interviewId ?? undefined,
     enabled: Boolean(isSimulationActive && isOwner),
     cameraStream: media.cameraStream,
@@ -511,10 +528,22 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     patientAvatar: patient.avatar,
     patientName: patient.name,
     resumeAttemptId: freshSessionRef.current.resume?.resumeAttemptId,
+    recoveredPatientMessageId: freshSessionRef.current.resume?.recoveredPatientMessageId,
+    initialPatientMessageId: initialPatientMessageIdRef.current,
     initialOffsetMs: freshSessionRef.current.resume?.offsetMs,
   });
   recordingRef.current = recording;
   const capturePaused = Boolean(recording.syncPending || (!recording.segmentId && recording.status !== 'failed'));
+
+  // Detect when capture becomes invalidated while a deferred utterance is pending.
+  useEffect(() => {
+    const deferred = deferredUtteranceRef.current;
+    if (deferred && recording.errorCode && ['capture-geometry-changed', 'capture-device-changed', 'temporary-storage-failed'].includes(recording.errorCode)) {
+      setLostDeferredUtterance(deferred.content);
+      deferredUtteranceRef.current = null;
+    }
+  }, [recording.errorCode]);
+
   const speech = useHandsFreeSpeech({
     language: speechLanguage,
     interviewId: interviewId ? Number(interviewId) : undefined,
@@ -552,32 +581,27 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       measureResponse('total-to-playing', response.submittedAt, response.requestId);
       response.startedAt = performance.now();
     }
-    recording.beginPatientTurn();
-  }, [recording.beginPatientTurn]);
+    recording.beginPatientTurn(messageId);
+    setMessageTimes((times) => ({...times, [messageId]: recording.elapsedAt()}));
+  }, [recording.beginPatientTurn, recording.elapsedAt]);
 
-  const handlePatientTurnEnd = useCallback((messageId: number, playbackComplete: boolean) => {
+  const handlePatientTurnEnd = useCallback((messageId: number, playbackComplete: boolean, continuous?: boolean) => {
     const response = responsePlaybackRef.current;
     if (response?.messageId === messageId) {
       measureResponse(playbackComplete ? 'audio-finished' : 'audio-interrupted', response.startedAt, response.requestId);
       responsePlaybackRef.current = null;
     }
-    recording.endPatientTurn();
+    recording.endPatientTurn(messageId, playbackComplete, performance.now(), continuous);
   }, [recording.endPatientTurn]);
 
-  const handlePatientTurnComplete = useCallback((messageId: number, delivery?: 'played' | 'written') => {
+  const handlePatientTurnComplete = useCallback((messageId: number) => {
     const response = responsePlaybackRef.current;
     if (response?.messageId === messageId) {
       measureResponse('audio-failed-before-start', response.receivedAt, response.requestId);
       responsePlaybackRef.current = null;
     }
-    if (delivery === 'written') {
-      const sequence = messages?.findIndex((message) => message.id === messageId) ?? -1;
-      if (sequence >= 0 && messages) {
-        recording.recordWrittenPatientTurn();
-      }
-    }
     setPatientTurnActive(false);
-  }, [messages, recording.recordWrittenPatientTurn]);
+  }, []);
 
   useEffect(() => {
     if (!isSimulationActive) {
@@ -613,7 +637,6 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     if (isEndInterviewDisabled || endingRef.current || patientFloorRef.current || utteranceInFlightRef.current || sendInFlightRef.current) return;
     endingRef.current = true;
     speech.stop();
-    recording.discardStudentTurn();
     setCaptureSealed(false);
     setEnding(true);
     void sealCapture();
@@ -770,7 +793,6 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           >
             {mode === 'review' && (
               <>
-                {interview.status === 'processing' && <p className="px-inset py-layout text-content-muted secondary-text" role="status">{t('clinicalChat.processing')}</p>}
                 {refreshError && (
                   <p role="alert" className="p-inset text-danger-700 default-text">
                     {t('evaluation.refreshFailed')}
@@ -823,7 +845,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
             <ConversationTranscript
               headerAction={isInterviewOpen ? <CallTimer elapsedSeconds={elapsedSeconds} /> : undefined}
               interviewId={interviewId}
-              startedAt={interview.startTime ? Date.parse(interview.startTime) : undefined}
+              messageTimes={messageTimes}
               messages={isSimulationActive ? messages : []}
               isListening={speech.isListening && conversationPhase === 'student'}
               capturePaused={conversationPhase === 'paused'}
@@ -839,6 +861,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
               preparedAudio={preparedAudioRef.current}
               playbackReady={isSimulationActive && recording.isCapturing && !recording.syncPending}
               onPatientSpeakingChange={handlePatientSpeakingChange}
+              onPatientTurnPrepare={recording.preparePatientTurn}
               captureEnabled={recording.isCapturing}
               routePatientAudio={recording.routePatientAudio}
               resumeAudioGraph={recording.resumeAudioGraph}
@@ -858,14 +881,26 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
                 }}>{t('common.retry')}</button>}
               </div>
             )}
-            {recording.syncPending && <div className="mx-layout mb-layout text-warning-800 secondary-text" role="status">
-              <p>{t('clinicalChat.syncPaused')}</p>
+            {recording.syncPending && (recording.errorCode || !navigator.onLine) && <div className="mx-layout mb-layout text-warning-800 secondary-text" role="status">
+              <p>{!navigator.onLine ? t('clinicalChat.syncPausedOffline') : t('clinicalChat.syncPaused')}</p>
               <button type="button" className="ui-button ui-button--secondary" onClick={() => {
                 speech.stop();
                 recording.pause();
                 setResumePromptOpen(true);
               }}>{t('clinicalChat.reviewSession')}</button>
             </div>}
+            {lostDeferredUtterance && (
+              <div
+                className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
+                role="alert"
+              >
+                {t('clinicalChat.lostDeferredUtterance', {content: lostDeferredUtterance})}
+                <button type="button" className="ui-button ui-button--secondary" onClick={() => {
+                  setLostDeferredUtterance(null);
+                  void handleSendMessage(lostDeferredUtterance);
+                }}>{t('clinicalChat.retryLostUtterance')}</button>
+              </div>
+            )}
             {recording.errorCode && (
               <div
                 className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
@@ -874,6 +909,15 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
                 {t(`clinicalChat.recording.errors.${recording.errorCode}`)}
                 {recording.canRetryStart && <button type="button" className="ui-button ui-button--secondary"
                   onClick={recording.retryStart}>{t('common.retry')}</button>}
+                {recording.errorCode === 'temporary-storage-failed' && <button type="button" className="ui-button ui-button--secondary"
+                  onClick={async () => {
+                    const recovered = await recording.attemptStorageRecovery();
+                    if (!recovered) setResumePromptOpen(true);
+                  }}>{t('common.retry')}</button>}
+                {['finalize-timeout', 'finalize-failed'].includes(recording.errorCode) && (
+                  <button type="button" className="ui-button ui-button--secondary"
+                    onClick={() => void recording.finalize()}>{t('common.retry')}</button>
+                )}
               </div>
             )}
             {!isOwner && (

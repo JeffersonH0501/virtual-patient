@@ -1,16 +1,15 @@
 {
-  "perception": {"title":"Perception survey","intro":"Tell us about your experience with the application and its evaluation.","submitted":"Survey submitted. You can review and update your responses.","sections":"Survey sections","CUQ":"Usability (CUQ)","EVA":"Automated evaluation","correctness":"Accuracy of the automated evaluation","valueAdded":"Usefulness and added value of multimodal evaluation","criteria":"View criteria","remaining_one":"{{count}} question remaining in this section","remaining_other":"{{count}} questions remaining in this section","pendingQuestions":"Remaining","openQuestion":"Please provide feedback supporting your answers above","optional":"optional","save":"Save draft","submit":"Submit survey","update":"Update survey","saved":"Responses saved.","error":"The survey could not be loaded or saved. Please try again.","retry":"Try again","locked":"Complete your own interview, hypotheses and self-assessment, and wait for the automated evaluation to enable the survey.","pending":"Survey pending submission","scale":{"1":"Strongly disagree","2":"Disagree","3":"Neutral","4":"Agree","5":"Strongly agree"}},
+  "perception": {"title":"Perception survey","intro":"Tell us about your experience with the application and its evaluation.","sections":"Survey sections","SUS":"Application usability","EXP":"Experience with the virtual patient","EVA":"Perception of the automated evaluation","correctness":"Accuracy of the automated evaluation","valueAdded":"Usefulness and added value of multimodal evaluation","criteria":"View criteria","remaining_one":"{{count}} question remaining in this section","remaining_other":"{{count}} questions remaining in this section","pendingQuestions":"Remaining","openQuestion":"Please provide feedback supporting your answers above","optional":"optional","save":"Save draft","submit":"Submit survey","update":"Update survey","saved":"Responses saved successfully.","error":"The survey could not be loaded or saved. Please try again.","retry":"Try again","locked":"Complete your own interview, hypotheses and self-assessment, and wait for the automated evaluation to enable the survey.","pending":"Survey pending submission","scale":{"1":"Strongly disagree","2":"Disagree","3":"Neither agree nor disagree","4":"Agree","5":"Strongly agree"}},
   "perceptionRoleDenied": "The survey is available to students and doctors.",
-  "perceptionCuqTableTitle": "Chatbot Usability Questionnaire (CUQ)",
-  "perceptionEvaTableTitle": "Automated interview evaluation",
+  "perceptionSusTableTitle": "Application usability",
+  "perceptionExpTableTitle": "Experience with the virtual patient",
+  "perceptionEvaTableTitle": "Perception of the automated evaluation",
   "perceptionEyebrow": "Experience assessment",
   "learningMoments": {
-    "type": "Type",
     "back": "Back",
     "linkedTurns": "Turns linked to this moment",
     "title": "Key feedback moments",
-    "strength": "Strength",
-    "improvement": "Opportunity for improvement",
+    "reviewedTurns": "Reviewed turns:",
     "review": "View feedback",
     "empty": "No key feedback moments are available for this interview.",
     "failed": "Key feedback moments could not be generated. You can retry by regenerating the evaluation.",
@@ -64,7 +63,8 @@
     "viewInterviews": "View interviews",
     "viewSurvey": "View survey",
     "surveyTitle": "{{name}}'s survey",
-    "surveyScore": "CUQ score",
+    "surveySusScore": "SUS score (0-100)",
+    "surveyOpenAnswer": "Open response",
     "userInterviews": "User interviews",
     "namedInterviews": "{{name}}'s interviews",
     "clearInterviewFilter": "Clear interview filter",
@@ -468,8 +468,8 @@
     "discardError": "We could not delete the preparation. Check your connection and try exiting again.",
     "restartCalibration": "Restart calibration",
     "diagnostics": {
-      "experimentalTitle": "Continue with out-of-limit calibration", "experimentalNotice": "Admin experimental test: quality limits were not passed. You can continue to compare the analysis. The measured errors and failed checks remain recorded; this does not approve calibration for an interview.", "cameraQuality": "Lens dispersion: {{radius}} eye widths (limit {{limit}}); valid support {{seconds}} s.",
-      "qualityTitle": "Calibration quality by point", "captureQuality": "The image did not pass the lighting and visibility checks. Check the lighting and try again.", "precision": "Validation error: median {{median}} (limit {{medianLimit}}), P90 {{p90}} (limit {{p90Limit}}).", "point": "Point", "samples": "Valid samples", "coverage": "Valid sample ratio", "support": "Valid support", "p90": "Validation P90", "errorNote": "Errors are distances divided by the viewport diagonal, not accuracy percentages. Each validation fold leaves one target out. Thresholds are experimental.",
+      "experimentalTitle": "Continue with out-of-limit calibration", "experimentalNotice": "Admin experimental test: quality limits were not passed. You can continue to compare the analysis. The measured errors and failed checks remain recorded; this does not approve calibration for an interview.",
+      "captureQuality": "The image did not pass the lighting and visibility checks. Check the lighting and try again.",
       "targets": "Points where we could not track your gaze: {{targets}}."
     },
     "targetNames": {
@@ -486,6 +486,7 @@
   },
   "calibrationReference": {
     "title": "Calibration",
+    "technicalDetails": "Technical details",
     "loading": "Loading calibration…",
     "loadFailed": "We could not load the calibration.",
     "retry": "Try again",
@@ -497,8 +498,7 @@
     "pending": "Analysis did not finish. The video is retained as reference.",
     "passed": "Passed",
     "failed": "Not passed",
-    "details": "View intervals and full results",
-    "accepted": "View the accepted interview calibration",
+    "turnRange": "Turns {{start}} to {{end}}",
     "stages": {
       "guided": "Guided checks",
       "unified": "Gaze and camera",
@@ -524,7 +524,10 @@
   },
   "clinicalChat": {
     "syncPaused": "Interview paused while we verify and synchronize pending data.",
+    "syncPausedOffline": "You are offline. The conversation will resume when connectivity returns.",
     "reviewSession": "Review session",
+    "lostDeferredUtterance": "Your last message could not be sent due to a capture change. The message was: \"{{content}}\"",
+    "retryLostUtterance": "Retry last message",
     "title": "Clinical chat",
     "patientProfile": "Patient profile",
     "chatInterface": "Chat interface",
@@ -571,11 +574,12 @@
         "turn-storage-failed": "A turn's timing record could not be confirmed. Keep this page open to preserve the pending data.",
         "turn-video-recorder-failed": "A turn video recorder failed. This session cannot be finalized as a valid capture. Keep this page open and report the incident.",
         "upload-failed": "The recording could not be stored. The interview and transcript were preserved.",
-        "temporary-storage-failed": "Temporary browser storage is unavailable. The transcript will remain available.",
+        "finalize-failed": "The recording could not be finalized. Review the session and try again; the transcript was preserved.",
+        "finalize-timeout": "The recording upload took too long. You can retry or save the transcript only.",
+        "temporary-storage-failed": "Temporary browser storage is unavailable. You can try to recover the session or recalibrate.",
         "media-recorder-failed": "A browser media recorder failed. The transcript will remain available.",
         "capture-geometry-changed": "The window or camera geometry changed. Review the session and recalibrate before continuing.",
-        "capture-device-changed": "A capture device was disconnected or changed. Review the session and recalibrate before continuing.",
-        "capture-interrupted": "Capture was interrupted when the page was hidden. Review the session before continuing."
+        "capture-device-changed": "A capture device was disconnected or changed. Review the session and recalibrate before continuing."
       }
     },
     "clickToRecord": "Click to record",
@@ -617,7 +621,7 @@
     "resumeSession": {
       "title": "Unfinished session",
       "forcedAction": "forcibly end the session",
-      "description": "You have an unfinished interview that you can resume without losing the conversation or saved turns.\n\nTo continue, you must repeat gaze calibration and the camera reference.\n\nYou can also forcibly end the session. In that case, the interview will be recorded as interrupted and cannot be reviewed or assessed.",
+      "description": "You have an unfinished interview that you can resume without losing the conversation or saved turns. To continue, you must repeat gaze calibration and the camera reference.\n\nYou can also forcibly end the session. In that case, the interview will be recorded as interrupted and cannot be reviewed or assessed.",
       "forceTermination": "Force termination",
       "resume": "Resume",
       "forceError": "The action could not be completed. Please try again."
@@ -651,10 +655,9 @@
       "reactivateAudio": "Reactivate sound",
       "sendAudioHint": "Click the arrow to send your audio.",
       "patientThinking": "The patient is preparing a response...",
-      "audioUnavailable": "Patient audio is unavailable. The written response remains available.",
+      "audioUnavailable": "The patient audio could not be played correctly.",
       "audioPlaybackBlocked": "Your browser requires a tap to play the audio.",
       "playPatientAudio": "Play audio",
-      "continueWithoutPatientAudio": "Continue without audio",
       "playPatient": "Play patient response",
       "pausePatient": "Pause patient response",
       "speechErrors": {
@@ -670,7 +673,7 @@
     "recap": {
       "loadFailed": "Unable to load the recording. Check your connection and access, then reload the page.",
       "refreshAnalysis": "Reprocess integrated labels",
-      "refreshAnalysisWarning": "The recordings will be processed again to refresh the assessment with multimodal evidence and key feedback moments. This may take several minutes. Do you want to continue?",
+      "refreshAnalysisWarning": "The recordings will be processed again, then both unimodal and multimodal automatic assessments will be regenerated for every category, along with key feedback moments. This may take several minutes. Do you want to continue?",
       "title": "Interview review",
       "unavailable": "No recording is available for this interview.",
       "patientVideoUnavailable": "Patient video unavailable",
@@ -882,6 +885,7 @@
       "turnId": "Turn ID",
       "messageId": "Message ID",
       "notAvailable": "Not available",
+      "preparing": "Preparing the interview replay… {{progress}}%",
       "processingObservations": "Processing features from this recording..."
     },
     "welcome": {
@@ -937,18 +941,9 @@
     "noData": "No data available"
   },
   "patientPreview": {
-    "refreshSummary": "Refresh summary",
-    "title": "Test virtual patient",
-    "description": "Send test questions. The conversation stays in this view and is not saved as an interview.",
     "view": "View",
-    "try": "Interview test",
     "calibrationTry": "Nonverbal test",
-    "gazeTry": "Gaze test",
-    "startUnavailable": "Formal interviews are unavailable to admins.",
-    "question": "Test question",
-    "send": "Send",
-    "answer": "Patient response",
-    "error": "The preview could not be loaded. Try again."
+    "gazeTry": "Gaze test"
   },
   "clinicalCases": {
     "title": "Clinical cases",
@@ -1051,13 +1046,21 @@
     "interviewEvaluationResults": "Evaluation results",
     "regenerateEvaluation": "Regenerate evaluation",
     "refreshActions": "Update interview analysis",
-    "regenerateEvaluationWarning": "The assessment with multimodal evidence and key feedback moments will be refreshed using saved observations. Do you want to continue?",
+    "regenerateEvaluationWarning": "The unimodal and multimodal automatic assessments will be regenerated for every category, along with key feedback moments. Do you want to continue?",
     "interviewSummary": "Interview summary",
     "detailedFeedback": "Detailed feedback",
     "started": "Start",
     "status": "Status:",
     "completed": "End",
     "evaluationCriteria": "Evaluation criteria",
+    "viewPrompt": "View prompt used",
+    "fullPrompt": "Full evaluation prompt",
+    "promptHistoryPartial": "This evaluation predates storage of full messages. The saved system instruction is shown.",
+    "promptMessageNotCaptured": "The full message sent to the model was not saved for this evaluation.",
+    "promptUnavailable": "No prompt was saved for this result.",
+    "learningMomentsPromptNotCaptured": "This feedback moments generation did not save the full messages sent to the model.",
+    "promptRole": {"system": "System instruction", "human": "Message sent to the model", "ai": "Intermediate model response"},
+    "promptCall": {"category": "{{component}} assessment", "learningMoments": "Key feedback moments", "completeness_summary": "Clinical summary assessment", "completeness_verification": "Conversation verification", "completeness_hypotheses": "Hypothesis assessment"},
     "evaluationBasedOn": "The “{{component}}” category was assessed using the following criteria:",
     "criteriaBuiltFrom": "These criteria were built from the following evaluation instruments:",
     "notes": "Notes:",
@@ -1148,6 +1151,7 @@
     "completed": "Completed",
     "editRating": "Edit rating",
     "editScore": "Edit score",
+    "scorePending": "Score pending",
     "ratingSaved": "Rating saved.",
     "empty": "You have no assigned interviews.",
     "assign": "Assign doctors",
@@ -1171,9 +1175,11 @@
     "automaticMultimodalEvidence": "Multimodal assessment",
     "automaticEvaluation": "Automatic assessment",
     "selfAssessment": "Your self-assessment",
+    "selfAssessmentAdmin": "Self-assessment",
     "yourEvaluation": "Your assessment",
     "doctorEvaluation": "Assessment by {{name}}",
     "viewSubmittedHypotheses": "View submitted hypotheses",
+    "hypothesesDialogTitle": "Submitted hypotheses",
     "hypothesesLoadError": "Could not load the hypotheses.",
     "noSubmittedHypotheses": "There are no submitted hypotheses for this interview.",
     "selfAssessmentInstructions": "Review your interview and assess all six categories.",

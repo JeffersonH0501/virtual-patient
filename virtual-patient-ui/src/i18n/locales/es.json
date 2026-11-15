@@ -1,14 +1,13 @@
 {
-  "perception": {"title":"Encuesta de percepción","intro":"Cuéntanos tu experiencia con la aplicación y la evaluación.","submitted":"Encuesta entregada. Puedes revisar y actualizar tus respuestas.","sections":"Secciones de la encuesta","CUQ":"Usabilidad (CUQ)","EVA":"Evaluación automática","correctness":"Correctitud de la evaluación automática","valueAdded":"Utilidad y valor añadido de la evaluación multimodal","criteria":"Ver criterios","remaining_one":"{{count}} pregunta pendiente en esta sección","remaining_other":"{{count}} preguntas pendientes en esta sección","pendingQuestions":"Pendientes","openQuestion":"Por favor, escriba una retroalimentación que respalde las respuestas anteriores","optional":"opcional","save":"Guardar borrador","submit":"Entregar encuesta","update":"Actualizar encuesta","saved":"Respuestas guardadas.","error":"No se pudo cargar o guardar la encuesta. Inténtalo de nuevo.","retry":"Reintentar","locked":"Completa una entrevista propia, sus hipótesis y autoevaluación, y espera la evaluación automática para habilitar la encuesta.","pending":"Encuesta pendiente de entrega","scale":{"1":"Totalmente en desacuerdo","2":"En desacuerdo","3":"Neutral","4":"De acuerdo","5":"Totalmente de acuerdo"}},
+  "perception": {"title":"Encuesta de percepción","intro":"Cuéntanos tu experiencia con la aplicación y la evaluación.","sections":"Secciones de la encuesta","SUS":"Usabilidad de la aplicación","EXP":"Experiencia con el paciente virtual","EVA":"Percepción de la evaluación automática","correctness":"Correctitud de la evaluación automática","valueAdded":"Utilidad y valor añadido de la evaluación multimodal","criteria":"Ver criterios","remaining_one":"{{count}} pregunta pendiente en esta sección","remaining_other":"{{count}} preguntas pendientes en esta sección","pendingQuestions":"Pendientes","openQuestion":"Por favor, escriba una retroalimentación que respalde las respuestas anteriores","optional":"opcional","save":"Guardar borrador","submit":"Entregar encuesta","update":"Actualizar encuesta","saved":"Respuestas guardadas exitosamente.","error":"No se pudo cargar o guardar la encuesta. Inténtalo de nuevo.","retry":"Reintentar","locked":"Completa una entrevista propia, sus hipótesis y autoevaluación, y espera la evaluación automática para habilitar la encuesta.","pending":"Encuesta pendiente de entrega","scale":{"1":"Totalmente en desacuerdo","2":"En desacuerdo","3":"Ni de acuerdo ni en desacuerdo","4":"De acuerdo","5":"Totalmente de acuerdo"}},
   "perceptionRoleDenied": "La encuesta está disponible para estudiantes y médicos.",
-  "perceptionCuqTableTitle": "Chatbot Usability Questionnaire (CUQ)",
-  "perceptionEvaTableTitle": "Evaluación automática de la entrevista",
+  "perceptionSusTableTitle": "Usabilidad de la aplicación",
+  "perceptionExpTableTitle": "Experiencia con el paciente virtual",
+  "perceptionEvaTableTitle": "Percepción de la evaluación automática",
   "perceptionEyebrow": "Valoración de la experiencia",
   "learningMoments": {
     "title": "Momentos clave de retroalimentación",
-    "strength": "Fortaleza",
-    "improvement": "Mejora",
-    "type": "Tipo",
+    "reviewedTurns": "Turnos revisados:",
     "back": "Volver",
     "linkedTurns": "Turnos vinculados a este momento",
     "review": "Ver retroalimentación",
@@ -64,7 +63,8 @@
     "viewInterviews": "Ver entrevistas",
     "viewSurvey": "Ver encuesta",
     "surveyTitle": "Encuesta de {{name}}",
-    "surveyScore": "Puntuación CUQ",
+    "surveySusScore": "Puntuación SUS (0-100)",
+    "surveyOpenAnswer": "Respuesta abierta",
     "userInterviews": "Entrevistas del usuario",
     "namedInterviews": "Entrevistas de {{name}}",
     "clearInterviewFilter": "Quitar filtro de entrevistas",
@@ -468,8 +468,8 @@
     "discardError": "No pudimos eliminar la preparación. Comprueba tu conexión e intenta salir de nuevo.",
     "restartCalibration": "Reiniciar calibración",
     "diagnostics": {
-      "experimentalTitle": "Continuar con calibración fuera de límites", "experimentalNotice": "Prueba experimental del administrador: no se superaron los límites de calidad. Puedes continuar para comparar el análisis. Los errores medidos y los controles fallidos quedan registrados; esto no aprueba la calibración para una entrevista.", "cameraQuality": "Dispersión del lente: {{radius}} anchos oculares (límite {{limit}}); soporte válido {{seconds}} s.",
-      "qualityTitle": "Calidad de calibración por punto", "captureQuality": "La imagen no superó los controles de iluminación y visibilidad. Revisa la iluminación y vuelve a intentarlo.", "precision": "Error de validación: mediana {{median}} (límite {{medianLimit}}), P90 {{p90}} (límite {{p90Limit}}).", "point": "Punto", "samples": "Muestras válidas", "coverage": "Proporción de muestras válidas", "support": "Soporte válido", "p90": "P90 de validación", "errorNote": "Los errores son distancias divididas por la diagonal de la ventana, no porcentajes de acierto. Cada ajuste de validación deja un punto fuera. Los umbrales son experimentales.",
+      "experimentalTitle": "Continuar con calibración fuera de límites", "experimentalNotice": "Prueba experimental del administrador: no se superaron los límites de calidad. Puedes continuar para comparar el análisis. Los errores medidos y los controles fallidos quedan registrados; esto no aprueba la calibración para una entrevista.",
+      "captureQuality": "La imagen no superó los controles de iluminación y visibilidad. Revisa la iluminación y vuelve a intentarlo.",
       "targets": "Puntos donde no pudimos seguir tu mirada: {{targets}}."
     },
     "targetNames": {
@@ -486,6 +486,7 @@
   },
   "calibrationReference": {
     "title": "Calibración",
+    "technicalDetails": "Detalles técnicos",
     "loading": "Cargando la calibración…",
     "loadFailed": "No pudimos cargar la calibración.",
     "retry": "Reintentar",
@@ -497,8 +498,7 @@
     "pending": "El análisis no se completó. El video se conserva como referencia.",
     "passed": "Aprobada",
     "failed": "No aprobada",
-    "details": "Ver intervalos y resultados completos",
-    "accepted": "Ver la calibración aceptada para la entrevista",
+    "turnRange": "Turnos {{start}} a {{end}}",
     "stages": {
       "guided": "Pruebas guiadas",
       "unified": "Mirada y cámara",
@@ -524,7 +524,10 @@
   },
   "clinicalChat": {
     "syncPaused": "Entrevista en pausa mientras verificamos y sincronizamos los datos pendientes.",
+    "syncPausedOffline": "Sin conexión. La conversación se reanudará cuando vuelvas a estar en línea.",
     "reviewSession": "Revisar sesión",
+    "lostDeferredUtterance": "Tu último mensaje no pudo enviarse debido a un cambio en la captura. El mensaje era: \"{{content}}\"",
+    "retryLostUtterance": "Reintentar último mensaje",
     "title": "Chat clínico",
     "patientProfile": "Perfil del paciente",
     "chatInterface": "Interfaz de chat",
@@ -571,11 +574,12 @@
         "turn-storage-failed": "No se pudo confirmar el registro temporal de un turno. Mantén esta página abierta para conservar los datos pendientes.",
         "turn-video-recorder-failed": "Falló el grabador de video de un turno. Esta sesión no puede finalizar como captura válida. Mantén esta página abierta e informa la incidencia.",
         "upload-failed": "No se pudo almacenar la grabación. La entrevista y la transcripción se conservaron.",
-        "temporary-storage-failed": "El almacenamiento temporal del navegador no está disponible. La transcripción se conservará.",
+        "finalize-failed": "No se pudo cerrar la grabación. Revisa la sesión e inténtalo de nuevo; la transcripción se conservó.",
+        "finalize-timeout": "La subida de la grabación tardó demasiado. Puedes reintentar o guardar solo la transcripción.",
+        "temporary-storage-failed": "El almacenamiento temporal del navegador no está disponible. Puedes intentar recuperar la sesión o recalibrar.",
         "media-recorder-failed": "Falló uno de los grabadores del navegador. La transcripción se conservará.",
         "capture-geometry-changed": "Cambió la geometría de la ventana o de la cámara. Revisa la sesión y repite la calibración para continuar.",
-        "capture-device-changed": "Un dispositivo de captura se desconectó o cambió. Revisa la sesión y repite la calibración para continuar.",
-        "capture-interrupted": "La captura se interrumpió al ocultar la página. Revisa la sesión antes de continuar."
+        "capture-device-changed": "Un dispositivo de captura se desconectó o cambió. Revisa la sesión y repite la calibración para continuar."
       }
     },
     "clickToRecord": "Haz clic para grabar",
@@ -617,7 +621,7 @@
     "resumeSession": {
       "title": "Sesión sin terminar",
       "forcedAction": "finalizar la sesión de forma forzada",
-      "description": "Tienes una entrevista pendiente que puedes reanudar sin perder la conversación ni los turnos guardados.\n\nPara continuar, deberás repetir la calibración de mirada y la referencia de cámara.\n\nTambién puedes finalizar la sesión de forma forzada. En ese caso, la entrevista quedará registrada como interrumpida y no podrá revisarse ni calificarse.",
+      "description": "Tienes una entrevista pendiente que puedes reanudar sin perder la conversación ni los turnos guardados. Para continuar, deberás repetir la calibración de mirada y la referencia de cámara.\n\nTambién puedes finalizar la sesión de forma forzada. En ese caso, la entrevista quedará registrada como interrumpida y no podrá revisarse ni calificarse.",
       "forceTermination": "Forzar finalización",
       "resume": "Reanudar",
       "forceError": "No se pudo completar la acción. Inténtalo nuevamente."
@@ -651,10 +655,9 @@
       "reactivateAudio": "Reactivar sonido",
       "sendAudioHint": "Pulsa la flecha para enviar tu audio.",
       "patientThinking": "El paciente está preparando una respuesta...",
-      "audioUnavailable": "El audio del paciente no está disponible. La respuesta escrita continúa visible.",
+      "audioUnavailable": "El audio del paciente no se pudo reproducir correctamente.",
       "audioPlaybackBlocked": "El navegador requiere que pulses un botón para reproducir el audio.",
       "playPatientAudio": "Reproducir audio",
-      "continueWithoutPatientAudio": "Continuar sin audio",
       "playPatient": "Reproducir respuesta del paciente",
       "pausePatient": "Pausar respuesta del paciente",
       "speechErrors": {
@@ -670,7 +673,7 @@
     "recap": {
       "loadFailed": "No se pudo cargar la grabación. Revisa tu conexión y acceso, y vuelve a cargar la página.",
       "refreshAnalysis": "Reprocesar etiquetas integradas",
-      "refreshAnalysisWarning": "Se volverán a procesar las grabaciones y se actualizarán la evaluación con evidencia multimodal y los momentos clave de retroalimentación. Este proceso puede tardar varios minutos. ¿Deseas continuar?",
+      "refreshAnalysisWarning": "Se volverán a procesar las grabaciones y se regenerarán las evaluaciones automáticas unimodal y multimodal de todas las categorías, junto con los momentos clave de retroalimentación. Este proceso puede tardar varios minutos. ¿Deseas continuar?",
       "title": "Revisión de la entrevista",
       "unavailable": "No hay grabación disponible para esta entrevista.",
       "patientVideoUnavailable": "Video del paciente no disponible",
@@ -882,6 +885,7 @@
       "turnId": "ID del turno",
       "messageId": "ID del mensaje",
       "notAvailable": "No disponible",
+      "preparing": "Preparando la reproducción de la entrevista… {{progress}}%",
       "processingObservations": "Procesando características de esta grabación..."
     },
     "welcome": {
@@ -937,18 +941,9 @@
     "noData": "No hay datos disponibles"
   },
   "patientPreview": {
-    "refreshSummary": "Actualizar resumen",
-    "title": "Probar paciente virtual",
-    "description": "Envía preguntas de prueba. La conversación se conserva en esta vista y no se guarda como entrevista.",
     "view": "Ver",
-    "try": "Prueba entrevista",
     "calibrationTry": "Prueba no verbal",
-    "gazeTry": "Prueba mirada",
-    "startUnavailable": "Las entrevistas formales no están disponibles para administradores.",
-    "question": "Pregunta de prueba",
-    "send": "Enviar",
-    "answer": "Respuesta del paciente",
-    "error": "No se pudo cargar la prueba. Intenta de nuevo."
+    "gazeTry": "Prueba mirada"
   },
   "clinicalCases": {
     "title": "Casos clínicos",
@@ -1051,13 +1046,21 @@
     "interviewEvaluationResults": "Resultados de la evaluación",
     "regenerateEvaluation": "Regenerar evaluación",
     "refreshActions": "Actualizar análisis de la entrevista",
-    "regenerateEvaluationWarning": "Se actualizarán la evaluación con evidencia multimodal y los momentos clave de retroalimentación con las observaciones guardadas. ¿Deseas continuar?",
+    "regenerateEvaluationWarning": "Se regenerarán las evaluaciones automáticas unimodal y multimodal para todas las categorías, junto con los momentos clave de retroalimentación. ¿Deseas continuar?",
     "interviewSummary": "Resumen de la entrevista",
     "detailedFeedback": "Retroalimentación detallada",
     "started": "Inicio",
     "status": "Estado:",
     "completed": "Fin",
     "evaluationCriteria": "Criterios de evaluación",
+    "viewPrompt": "Ver prompt utilizado",
+    "fullPrompt": "Prompt completo de evaluación",
+    "promptHistoryPartial": "Esta evaluación es anterior al guardado de los mensajes completos. Se muestra la instrucción del sistema que quedó registrada.",
+    "promptMessageNotCaptured": "El mensaje completo enviado al modelo no quedó guardado en esta evaluación.",
+    "promptUnavailable": "No hay un prompt guardado para este resultado.",
+    "learningMomentsPromptNotCaptured": "Esta generación de momentos de retroalimentación no guardó los mensajes completos enviados al modelo.",
+    "promptRole": {"system": "Instrucción del sistema", "human": "Mensaje enviado al modelo", "ai": "Respuesta intermedia del modelo"},
+    "promptCall": {"category": "Evaluación de {{component}}", "learningMoments": "Momentos clave de retroalimentación", "completeness_summary": "Evaluación del resumen clínico", "completeness_verification": "Verificación con la conversación", "completeness_hypotheses": "Evaluación de las hipótesis"},
     "evaluationBasedOn": "La categoría «{{component}}» se evaluó con los siguientes criterios:",
     "criteriaBuiltFrom": "Estos criterios se construyeron a partir de los siguientes instrumentos de evaluación:",
     "notes": "Notas:",
@@ -1148,6 +1151,7 @@
     "completed": "Completadas",
     "editRating": "Editar calificación",
     "editScore": "Editar puntuación",
+    "scorePending": "Puntuación pendiente",
     "ratingSaved": "Calificación guardada.",
     "empty": "No tienes entrevistas asignadas.",
     "assign": "Asignar médicos",
@@ -1171,9 +1175,11 @@
     "automaticMultimodalEvidence": "Evaluación multimodal",
     "automaticEvaluation": "Evaluación automática",
     "selfAssessment": "Tu autoevaluación",
+    "selfAssessmentAdmin": "Autoevaluación",
     "yourEvaluation": "Tu evaluación",
     "doctorEvaluation": "Evaluación {{name}}",
     "viewSubmittedHypotheses": "Ver hipótesis entregadas",
+    "hypothesesDialogTitle": "Hipótesis entregadas",
     "hypothesesLoadError": "No se pudieron cargar las hipótesis.",
     "noSubmittedHypotheses": "No hay hipótesis entregadas para esta entrevista.",
     "selfAssessmentInstructions": "Revisa tu entrevista y evalúa las seis categorías.",
