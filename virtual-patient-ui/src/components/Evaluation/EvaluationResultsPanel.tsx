@@ -6,12 +6,14 @@ import {useTranslation} from 'react-i18next';
 import {ChevronDown, CircleQuestionMark, Pencil, RefreshCw} from 'lucide-react';
 import {Button, ConfirmationModal, EvaluationScore, Modal} from '../common';
 import {useUser} from '../../hooks/useUser';
-import {EvaluationCondition, InterviewEvaluationResponse} from '../../types/evaluation';
-import {ClinicalCaseComparison} from './ClinicalCaseComparison';
+import {EvaluationCondition, EvaluationResult, InterviewEvaluationResponse} from '../../types/evaluation';
 import {EvaluationCriteriaTooltip} from './EvaluationCriteriaTooltip';
 import {useLearningMoments} from './useLearningMoments';
 import {getAspectDisplayName, getScoreTone, getScoreLabel, sortEvaluationResults} from './helpers';
 import {TableHeader} from '../common/Table/TableHeader';
+
+const feedbackWithoutScoreEcho = (feedback: string) =>
+  feedback.replace(/\s*\((?:puntuación|score):\s*\d+(?:[.,]\d+)?\s*\/\s*5\)/gi, '').trim();
 import {readDesignNumber} from '../../utils/designTokens';
 import {MotionContent, MotionHeight} from '../common/Motion';
 import {useAppMotion, usePresence} from '../common/Motion/hooks';
@@ -28,7 +30,7 @@ type EvaluationResultsPanelProps = {
   headerAction?: ReactNode;
   onEditScore?: (aspect: string) => void;
   editorContent?: ReactNode;
-  draftResults?: {aspect: string; score: number | null; feedback: string}[];
+  draftResults?: {aspect: string; score: number | null; feedback: string; timestamp?: string}[];
   tableFooter?: ReactNode;
   pendingMessage?: string;
   isLoading?: boolean;
@@ -90,10 +92,6 @@ export const EvaluationResultsPanel = ({
     editingFocus.current = null;
   }, [editorContent]);
   const {interview, evaluationResults} = evaluationData;
-  const canOpenComparison = draftResults
-    ? Boolean(interview.clinicalCase || interview.hypotheses?.length)
-    : interview.reviewAccess?.canViewAssessments !== false
-      && Boolean(interview.hypotheses?.length || (interview.clinicalCase && interview.progressSummary));
   const [localCondition, setLocalCondition] = useState<EvaluationCondition>('TEXT_ONLY');
   const condition = selectedCondition ?? localCondition;
   const [criteriaAspect, setCriteriaAspect] = useState<string | null>(null);
@@ -360,13 +358,9 @@ export const EvaluationResultsPanel = ({
                                         condition={condition}
                                         isVisible={criteriaAspect === result.aspect}
                                         onClose={() => setCriteriaAspect(null)}
-                                        comparison={result.aspect === 'completeness' && canOpenComparison ? (
-                                          <ClinicalCaseComparison
-                                            clinicalCase={interview.clinicalCase}
-                                            progressSummary={interview.progressSummary}
-                                            hypotheses={interview.hypotheses}
-                                          />
-                                        ) : undefined}
+                                        interviewId={interview.id}
+                                        result={result as EvaluationResult}
+                                        showPrompt={user?.role === 'admin' && (!assessmentKey || assessmentKey === 'TEXT_ONLY' || assessmentKey === 'TEXT_PLUS_MULTIMODAL')}
                                       />
                                     </>
                                   )}
@@ -380,13 +374,14 @@ export const EvaluationResultsPanel = ({
                                   {onEditScore && (
                                     <Button
                                       variant="secondary"
-                                      className="ui-icon-button"
-                                      aria-label={t('grading.editScore')}
-                                      title={t('grading.editScore')}
+                                      className="ui-icon-button relative"
+                                      aria-label={result.score == null ? t('grading.scorePending') : t('grading.editScore')}
+                                      title={result.score == null ? t('grading.scorePending') : t('grading.editScore')}
                                       data-edit-aspect={result.aspect}
                                       onClick={() => editComponent(result.aspect)}
                                     >
                                       <Pencil aria-hidden="true" />
+                                      {result.score == null && <span className="survey-pending" aria-hidden="true" />}
                                     </Button>
                                   )}
                                 </div>
@@ -427,23 +422,50 @@ export const EvaluationResultsPanel = ({
                                     })}
                                   >
                                     <p className="text-content-muted default-text">
-                                      {result.feedback || (draftResults && '—')}
+                                      {feedbackWithoutScoreEcho(result.feedback) || (draftResults && '—')}
                                     </p>
                                     {moments.length > 0 && (
                                       <section className="space-y-layout" aria-label={t('learningMoments.title')}>
-                                        <h4 className="default-title">{t('learningMoments.title')}</h4>
-                                        {moments.map((moment) => (
-                                          <article key={moment.id} className={`space-y-layout ui-notice ${moment.type === 'strength' ? 'ui-notice--success' : 'ui-notice--warning'}`}>
-                                            <p>{moment.observation} {moment.recommendation}</p>
-                                            <div className="ui-button-group" aria-label={t('learningMoments.linkedTurns')}>
-                                              {turns.map((turn, index) => moment.turnIds.includes(turn.turnId) && (
-                                                <Button key={turn.turnId} variant="secondary" className="ui-button--brand-soft" disabled={!onJumpToTurn} onClick={() => onJumpToTurn?.(turn.turnId)}>
-                                                  {t('evaluation.turnReference', {id: index + 1})}
-                                                </Button>
-                                              ))}
-                                            </div>
-                                          </article>
-                                        ))}
+                                        {moments.filter((m) => m.momentType === 'strength').length > 0 && (
+                                          <>
+                                            <h4 className="font-semibold secondary-text">{t('learningMoments.strengthsTitle')}</h4>
+                                            {moments.filter((m) => m.momentType === 'strength').map((moment) => (
+                                              <article key={moment.id} className="space-y-layout ui-notice ui-notice--success">
+                                                <p>{moment.observation} {moment.reinforcement}</p>
+                                                {turns.some((turn) => moment.turnIds.includes(turn.turnId)) && <div className="space-y-layout">
+                                                  <p className="font-semibold secondary-text">{t('learningMoments.reviewedTurns')}</p>
+                                                  <div className="ui-button-group" aria-label={t('learningMoments.linkedTurns')}>
+                                                    {turns.map((turn, index) => moment.turnIds.includes(turn.turnId) && (
+                                                      <Button key={turn.turnId} variant="secondary" className="ui-button--brand-soft" disabled={!onJumpToTurn} onClick={() => onJumpToTurn?.(turn.turnId)}>
+                                                        {t('evaluation.turnReference', {id: index + 1})}
+                                                      </Button>
+                                                    ))}
+                                                  </div>
+                                                </div>}
+                                              </article>
+                                            ))}
+                                          </>
+                                        )}
+                                        {moments.filter((m) => m.momentType === 'improvement').length > 0 && (
+                                          <>
+                                            <h4 className="font-semibold secondary-text">{t('learningMoments.improvementsTitle')}</h4>
+                                            {moments.filter((m) => m.momentType === 'improvement').map((moment) => (
+                                              <article key={moment.id} className="space-y-layout ui-notice ui-notice--warning">
+                                                <p>{moment.observation} {moment.recommendation}</p>
+                                                {turns.some((turn) => moment.turnIds.includes(turn.turnId)) && <div className="space-y-layout">
+                                                  <p className="font-semibold secondary-text">{t('learningMoments.reviewedTurns')}</p>
+                                                  <div className="ui-button-group" aria-label={t('learningMoments.linkedTurns')}>
+                                                    {turns.map((turn, index) => moment.turnIds.includes(turn.turnId) && (
+                                                      <Button key={turn.turnId} variant="secondary" className="ui-button--brand-soft" disabled={!onJumpToTurn} onClick={() => onJumpToTurn?.(turn.turnId)}>
+                                                        {t('evaluation.turnReference', {id: index + 1})}
+                                                      </Button>
+                                                    ))}
+                                                  </div>
+                                                </div>}
+                                              </article>
+                                            ))}
+                                          </>
+                                        )}
                                       </section>
                                     )}
                                   </div>
@@ -473,14 +495,18 @@ export const EvaluationResultsPanel = ({
             {onRegenerate && (
               <>
                 <p>{t('evaluation.regenerateEvaluationWarning')}</p>
-                <Button onClick={confirmRegenerate}>{t('evaluation.regenerateEvaluation')}</Button>
+                <div className="ui-button-group ui-button-group--large">
+                  <Button onClick={confirmRegenerate}>{t('evaluation.regenerateEvaluation')}</Button>
+                </div>
               </>
             )}
             <p>{t('clinicalChat.recap.refreshAnalysisWarning')}</p>
-            <Button onClick={() => {
-              setIsRegenerateConfirmOpen(false);
-              if (canRegenerate && !isRegenerating && !refreshDisabled) onReprocess();
-            }}>{t('clinicalChat.recap.refreshAnalysis')}</Button>
+            <div className="ui-button-group ui-button-group--large">
+              <Button onClick={() => {
+                setIsRegenerateConfirmOpen(false);
+                if (canRegenerate && !isRegenerating && !refreshDisabled) onReprocess();
+              }}>{t('clinicalChat.recap.refreshAnalysis')}</Button>
+            </div>
           </div>
         </Dialog>
       ) : <Modal

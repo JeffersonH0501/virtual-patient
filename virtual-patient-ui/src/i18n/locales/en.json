@@ -9,6 +9,8 @@
     "back": "Back",
     "linkedTurns": "Turns linked to this moment",
     "title": "Key feedback moments",
+    "strengthsTitle": "Strengths",
+    "improvementsTitle": "Areas for improvement",
     "reviewedTurns": "Reviewed turns:",
     "review": "View feedback",
     "empty": "No key feedback moments are available for this interview.",

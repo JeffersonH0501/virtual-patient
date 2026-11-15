@@ -7,6 +7,8 @@
   "perceptionEyebrow": "Valoración de la experiencia",
   "learningMoments": {
     "title": "Momentos clave de retroalimentación",
+    "strengthsTitle": "Fortalezas",
+    "improvementsTitle": "Áreas de mejora",
     "reviewedTurns": "Turnos revisados:",
     "back": "Volver",
     "linkedTurns": "Turnos vinculados a este momento",
