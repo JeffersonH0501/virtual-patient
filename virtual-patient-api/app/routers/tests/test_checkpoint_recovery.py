@@ -29,10 +29,11 @@ from app.routers.tests.test_lifecycle_integrity import lifecycle_api, start_capt
 ])
 def test_controller_seeds_opening_only_for_the_first_student_turn(monkeypatch, history, expected_opening):
     from app.controllers import virtual_patient_controller as module
+    from app.core import langgraph_runtime
     workflow = SimpleNamespace(process_interview_message=AsyncMock(return_value={}))
     resources = SimpleNamespace(from_conn_string=lambda *args, **kwargs: nullcontext(object()))
-    monkeypatch.setattr(module, "PostgresStore", resources)
-    monkeypatch.setattr(module, "PostgresSaver", resources)
+    monkeypatch.setattr(langgraph_runtime, "PostgresStore", resources)
+    monkeypatch.setattr(langgraph_runtime, "PostgresSaver", resources)
     monkeypatch.setattr(module, "create_virtual_patient_workflow", lambda **kwargs: workflow)
     question = {"role": "user", "content": "Synthetic question"}
     asyncio.run(module.VirtualPatientController().process_interview_message(7, [*history, question], None))
@@ -55,12 +56,12 @@ def checkpoint_workflow(monkeypatch, lifecycle_api):
     graph.add_edge("model", END)
     agent = object.__new__(VirtualPatientAgent)
     agent.interview_id = "synthetic-checkpoint"
-    agent.persist_background_memory = True
     with Session(lifecycle_api.engine) as db:
         schema = db.scalar(text("SELECT current_schema()"))
-    connection = psycopg.connect(SQLALCHEMY_DATABASE_URL, autocommit=True,
-        options=f"-csearch_path={schema}")
-    saver = PostgresSaver(connection)
+    # Two separate connections (like the corrected runtime) so checkpoint writes don't block store reads.
+    conn1 = psycopg.connect(SQLALCHEMY_DATABASE_URL, autocommit=True, options=f"-csearch_path={schema}")
+    conn2 = psycopg.connect(SQLALCHEMY_DATABASE_URL, autocommit=True, options=f"-csearch_path={schema}")
+    saver = PostgresSaver(conn1)
     saver.setup()
     agent.hot_path_agent = graph.compile(checkpointer=saver)
     monkeypatch.setattr(agent_module, "process_background_memories_standalone", generate)
@@ -75,7 +76,8 @@ def checkpoint_workflow(monkeypatch, lifecycle_api):
     try:
         yield workflow, calls
     finally:
-        connection.close()
+        conn1.close()
+        conn2.close()
 
 
 def test_checkpointed_reply_survives_exchange_commit_failure(lifecycle_api, checkpoint_workflow, monkeypatch):
@@ -223,3 +225,22 @@ def test_controller_postprocessing_failure_drains_background(lifecycle_api, monk
         'content':'Synthetic question','client_request_id':str(uuid4()),'segment_id':state.segment_id})
     assert response.status_code==500
     assert stopped==[True]
+def test_question_checkpointed_without_reply_and_nothing_pending_is_replayed(checkpoint_workflow):
+    # A persistence error mid-turn can leave the human message checkpointed with no reply and no pending node.
+    # Retrying with the same request id must heal the exchange instead of failing the same way forever.
+    workflow, generated = checkpoint_workflow
+    request_id = str(uuid4())
+    graph = workflow.agent.hot_path_agent
+    config = {"configurable": {"thread_id": "incomplete-synthetic"}}
+    graph.update_state(config, {"messages": [HumanMessage(content="Synthetic stalled question", id=f"client-request-{request_id}")]}, as_node="__start__")
+    next(graph.stream(None, config, stream_mode="updates"))  # Drain the pending step that produces the base reply.
+    graph.update_state(config, {}, as_node="model")  # Advance past the reply so .next is empty.
+    state = graph.get_state(config)
+    assert not state.next and state.values["messages"][-1].content == "Synthetic base response"
+    result = asyncio.run(workflow.process_interview_message(
+        question={"content": "Synthetic stalled question"}, clinical_case=None,
+        thread_id="incomplete-synthetic", client_request_id=request_id))
+    assert generated == ["Synthetic stalled question"]
+    saved = graph.get_state(config).values["messages"]
+    assert len([message for message in saved if isinstance(message, HumanMessage)]) == 1
+    assert result["interview_result"]["messages"][-1].content == "Synthetic final response"

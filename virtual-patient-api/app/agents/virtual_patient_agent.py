@@ -1,35 +1,31 @@
+import logging
 import time
 import asyncio
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 from langgraph.prebuilt import create_react_agent
-from app.core.memory_store import PostgresStore
 from app.core.async_work import run_sync_owned
 from copy import deepcopy
 from langgraph.store.base import BaseStore
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
-from app.core.database import SessionLocal
 from app.utils.clinical_case import create_clinical_case_summary
 
-from app.core.database import SQLALCHEMY_DATABASE_URL
-from app.core.azure_openai import (
-    EMBEDDING_DIMENSIONS,
-    create_chat_model,
-    create_embeddings,
-)
+from app.core.azure_openai import create_chat_model
 from app.models.clinical_case import ClinicalCaseDB
 
 from app.agents.prompts.interview_prompt import create_interview_prompt
 from app.agents.enhanced_memory_manager import EnhancedMemoryManager
 
+logger = logging.getLogger(__name__)
 # Module-level cache for clinical case summaries (persists across requests/instances)
-# Key: clinical_case_id, Value: summary string
+# Key: (clinical_case_id, updated_at), Value: summary string
 _clinical_case_summary_cache = {}
 
 # Azure OpenAI clients use the globally selected LLM variant.
-llm = create_chat_model()
-embeddings = create_embeddings()
+# Typical replies take 1-2 s; Azure occasionally stalls. A short per-attempt timeout cuts a
+# stalled call quickly and a single retry recovers it, so a stall costs ~7 s instead of ~18 s.
+llm = create_chat_model(timeout=6, max_retries=1)
 
 # Checkpointer for graph state persistence
 
@@ -49,20 +45,15 @@ async def process_background_memories_standalone(
     """
     try:
         
-        # Create a new PostgresStore connection for this background task
-        with PostgresStore.from_conn_string(
-            SQLALCHEMY_DATABASE_URL,
-            index={
-                "dims": EMBEDDING_DIMENSIONS,
-                "embed": embeddings,
-            }
-        ) as store:
+        # Borrow a pooled connection instead of opening a fresh one per turn.
+        from app.core.langgraph_runtime import langgraph_store
+        with langgraph_store() as store:
             # Create memory manager with its own LLM and store
             memory_manager = EnhancedMemoryManager(store, interview_id, llm=llm)
-            
+
             # Process background memories
             await memory_manager.process_background_memories(
-                doctor_question, 
+                doctor_question,
                 patient_response
             )
             
@@ -79,15 +70,13 @@ class VirtualPatientAgent:
     using PostgreSQL storage with semantic search capabilities.
     """
     
-    def __init__(self, store: BaseStore, checkpointer: BaseCheckpointSaver, interview_id: str,
-                 *, persist_background_memory: bool = True):
+    def __init__(self, store: BaseStore, checkpointer: BaseCheckpointSaver, interview_id: str):
         # Set up PostgreSQL store with semantic search capabilities
         
         self.store = store
         self.llm = llm
         self.checkpointer = checkpointer
         self.interview_id = interview_id
-        self.persist_background_memory = persist_background_memory
     
         # Initialize enhanced memory manager
         self.enhanced_memory = EnhancedMemoryManager(store, interview_id, llm)
@@ -225,7 +214,9 @@ class VirtualPatientAgent:
                 "interview_id": self.interview_id,
                 "clinical_case": clinical_case
             },
-            "recursion_limit": 100
+            # The patient agent has no tools: a reply resolves in one model step.
+            # A low limit fails fast instead of looping if the model misbehaves.
+            "recursion_limit": 2
         }
         setup_time = time.time() - setup_start
         
@@ -244,11 +235,16 @@ class VirtualPatientAgent:
                 if original.content != messages[-1]["content"]:
                     raise ValueError("Message request identifier has a different checkpointed question")
                 if not saved.next:
-                    if not saved_messages or not isinstance(saved_messages[-1], AIMessage):
-                        raise RuntimeError("The checkpointed exchange is incomplete")
-                    return {**saved.values, "_request_translation_finalized":
-                        saved_messages[-1].additional_kwargs.get("finalized_client_request_id") == client_request_id}
-                graph_input = None
+                    if saved_messages and isinstance(saved_messages[-1], AIMessage):
+                        return {**saved.values, "_request_translation_finalized":
+                            saved_messages[-1].additional_kwargs.get("finalized_client_request_id") == client_request_id}
+                    # An earlier attempt checkpointed the question but never produced a reply (for example a
+                    # persistence error mid-turn). Replaying the same input is idempotent because the message id
+                    # replaces itself, so the retry heals the exchange instead of failing the same way forever.
+                    logger.warning("Replaying an incomplete checkpointed exchange for interview %s", self.interview_id)
+                    graph_input = {"messages": [*messages[:-1], {**messages[-1], "id": message_id}]}
+                else:
+                    graph_input = None
             else:
                 graph_input = {"messages": [*messages[:-1], {**messages[-1], "id": message_id}]}
         response = await run_sync_owned(self.hot_path_agent.invoke,
@@ -272,7 +268,7 @@ class VirtualPatientAgent:
         
         # Schedule background memory processing (non-blocking)
         # Uses standalone function with its own database connection
-        if self.persist_background_memory and doctor_content and last_message:
+        if doctor_content and last_message:
             self.background_task = asyncio.create_task(
                 process_background_memories_standalone(
                     interview_id=self.interview_id,
@@ -300,30 +296,30 @@ class VirtualPatientAgent:
         """
         Get clinical case summary with module-level caching to avoid recreation on every call.
         Uses module-level cache so it persists across agent instances/requests.
+
+        The cache key includes ``updated_at`` so editing a clinical case
+        automatically invalidates its cached summary instead of serving a stale one.
         """
         if clinical_case is None:
             return "Patient information not available"
-        
-        # Get clinical case ID
+
         clinical_case_id = clinical_case.id if hasattr(clinical_case, 'id') else None
-        
         if clinical_case_id is None:
             # Fallback to generating without cache if no ID
             return self._get_clinical_case_summary_from_object(clinical_case)
-        
-        # Check module-level cache first
-        if clinical_case_id in _clinical_case_summary_cache:
-            return _clinical_case_summary_cache[clinical_case_id]
-        
-        # Generate new summary and cache it at module level
+
+        cache_key = (clinical_case_id, getattr(clinical_case, 'updated_at', None))
+        if cache_key in _clinical_case_summary_cache:
+            return _clinical_case_summary_cache[cache_key]
+
         summary = self._get_clinical_case_summary_from_object(clinical_case)
-        _clinical_case_summary_cache[clinical_case_id] = summary
-        
-        # Limit cache size to prevent memory issues (keep last 100 cases)
-        if len(_clinical_case_summary_cache) > 10:
+        _clinical_case_summary_cache[cache_key] = summary
+
+        # Bound the cache to avoid unbounded growth across cases and edits.
+        if len(_clinical_case_summary_cache) > 100:
             oldest_key = next(iter(_clinical_case_summary_cache))
             del _clinical_case_summary_cache[oldest_key]
-        
+
         return summary
     
     def search_patient_memories(
