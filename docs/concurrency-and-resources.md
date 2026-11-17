@@ -12,9 +12,13 @@ providers; see the checklist at the end for what still must be validated live.
 ## 1. Hardware / concurrency limits found (audit)
 
 Backend is pure Uvicorn (no Gunicorn). Per-turn visual extraction runs in the
-separate `media-processing-worker` service. The full multimodal pipeline also
-uses an isolated child process spawned by the API; that child still shares the
-API container's CPU and memory limits.
+separate `media-processing-worker` service. The durable background-job loop
+(`run_processing_jobs`) also runs in that worker, not in the API: it executes the
+replay-preview ffmpeg render, the full multimodal pipeline, evaluation, learning
+moments, and the periodic media/calibration maintenance. The API never runs these
+heavy tasks; it only stages jobs (a lightweight row insert) and serves their
+results. The full-pipeline job spawns an isolated child process from the worker,
+sharing the worker container's CPU and memory limits.
 
 Protective limits (kept — science / model-safety / OOM):
 - Native thread caps in `virtual-patient-api/config/native-runtime.conf`
@@ -25,7 +29,9 @@ Protective limits (kept — science / model-safety / OOM):
 - Full-pipeline cap of 2 concurrent runs across API processes (advisory locks
   `846217310/311`, `process_isolation.py PIPELINE_CAPACITY=2`).
 - Single durable background-job runner (advisory lock `846217320`,
-  `processing_jobs.py`).
+  `processing_jobs.py`), started from the `media-processing-worker` lifespan
+  (`media_processing_worker.py`), not from the API (`main.py`). The advisory slot
+  lock keeps one active job across all processes, so its location is safe to move.
 - Interactive calibration reserve: 4 of 32 visual-queue slots
   (`CALIBRATION_QUEUE_RESERVE=4`) so turn-video backlog never starves calibration.
 - `NONVERBAL_GAZE_QUEUE_CAPACITY=8`, model idle-release at 300s, native job
@@ -53,10 +59,14 @@ host memory without a container limit, so target-host monitoring remains
 important.
 
 Nature of the load for 5 interviews: the interactive P0 path (STT/LLM/TTS) is
-I/O-bound on Azure — many threadpool threads waiting, little local CPU/RAM. The
-P2 visual worker is serialized, but the API also launches up to two isolated
-full-pipeline subprocesses. Removing the API container caps means these
-subprocesses are no longer bounded by a container CPU or memory limit.
+I/O-bound on Azure — many threadpool threads waiting, little local CPU/RAM. All
+P2 heavy work (per-turn visual extraction, the durable job loop, up to two
+isolated full-pipeline subprocesses, and the replay-preview ffmpeg render) now
+runs in the `media-processing-worker`, bounded by that container's CPU/memory
+limit. Consequence to watch: the worker now carries both the visual queue and the
+durable job loop, so replay-preview encoding, pipeline runs, evaluation and
+learning-moment generation share the worker's fixed cap and can contend under
+load; the API itself stays light (staging rows and serving files).
 
 ## 3. Execution architecture and priorities — before / after
 

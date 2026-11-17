@@ -10,6 +10,7 @@ from .evaluation_runs import stage_evaluation_run
 from .quality_policy import QUALITY_POLICY_VERSION
 from app.agents.schemas.evaluation import EvaluationResult
 from app.models.medical_interview.interview_recording import InterviewTurnDB
+from app.models.medical_interview.interview_evaluation import InterviewEvaluationRunDB
 
 EVALUATION_CATEGORY_ORDER = (
     "general_communication", "completeness", "show_interest",
@@ -48,9 +49,17 @@ async def evaluate_and_store_multimodal(db, interview_id, agent, *, canonical_me
     }
     available = {aspect: conversation for aspect, conversation in conversations.items()
                  if conversation.has_valid_evidence}
+    text_run = db.query(InterviewEvaluationRunDB).filter(
+        InterviewEvaluationRunDB.medical_interview_id == interview_id,
+        InterviewEvaluationRunDB.evaluation_condition == EvaluationCondition.TEXT_ONLY.value,
+    ).order_by(InterviewEvaluationRunDB.created_at.desc(), InterviewEvaluationRunDB.id.desc()).first()
+    fallback_prompt_messages = (text_run.snapshot.get("provider_responses", [])
+                                if text_run is not None and isinstance(text_run.snapshot, dict) else [])
     evidence_snapshot = [{key: getattr(turn, key) for key in (
         "id", "message_id", "speaker", "start_ms", "end_ms", "timing_quality", "paraverbal", "nonverbal_features",
     )} for turn in db.query(InterviewTurnDB).filter(InterviewTurnDB.medical_interview_id == interview_id).all()]
+    # Keep this run's provenance multimodal-only; TEXT_ONLY calls have their own snapshot.
+    agent.run_provenance = []
     enriched_results = await agent.evaluate_multimodal(available) if available else []
     enriched_by_aspect = {result.aspect: result for result in enriched_results}
     if len(enriched_by_aspect) != len(enriched_results) or set(enriched_by_aspect) != set(available):
@@ -67,6 +76,9 @@ async def evaluate_and_store_multimodal(db, interview_id, agent, *, canonical_me
         "conversations": {aspect: conversation.text for aspect, conversation in conversations.items()},
         "prompts": {aspect: config["prompt"](getattr(agent, "target_language", "English"))
                     for aspect, config in MULTIMODAL_EVALUATION_CONFIG.items()},
+        "feedback_prompts": {aspect: config["feedback_prompt"](getattr(agent, "target_language", "English"))
+                             for aspect, config in MULTIMODAL_EVALUATION_CONFIG.items()},
+        "fallback_prompt_messages": fallback_prompt_messages,
         "available_aspects": list(available),
         "evidence": evidence_snapshot,
         "quality_policy_version": QUALITY_POLICY_VERSION,
@@ -97,22 +109,21 @@ async def evaluate_and_store_multimodal(db, interview_id, agent, *, canonical_me
         }
     db.commit()
     if recording is not None:
+        # Generate learning moments synchronously so they are present together with
+        # the evaluation, like the base scoring. The evaluation is already
+        # committed above; a generation failure is isolated inside
+        # generate_learning_moments (it records a failed state and never touches
+        # the stored scores), so it can never invalidate the evaluation.
+        recording_id = recording.id
         try:
-            from .learning_moments import queue_learning_moments
-            queue_learning_moments(db, interview_id)
+            # Use its own session (db omitted): the evaluation is already committed
+            # above, so a fresh session sees it, and the generator's rollback on
+            # failure can never touch the caller's session or the stored scores.
+            from .learning_moments import generate_learning_moments
+            await generate_learning_moments(interview_id, recording_id)
         except Exception:
-            # The evaluation is already committed and must remain available.
             import logging
-            db.rollback()
-            try:
-                recording.capture_config = {**(recording.capture_config or {}), "learning_moments": {
-                    **(recording.capture_config or {}).get("learning_moments", {}),
-                    "status": "failed", "error_code": "learning_moments_queue_failed",
-                }}
-                db.commit()
-            except Exception:
-                db.rollback()  # Even failure-status persistence cannot invalidate scoring.
-            logging.getLogger(__name__).error("Learning moments scheduling failed interview_id=%s", interview_id)
+            logging.getLogger(__name__).error("Learning moments generation failed interview_id=%s", interview_id)
     perf_event(
         "evaluation", "multimodal_evaluation", phase="complete", status="success",
         duration_ms=(perf_counter() - _eval_started) * 1000,

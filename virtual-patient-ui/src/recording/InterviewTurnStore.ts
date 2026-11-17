@@ -4,9 +4,15 @@ export type TurnCaptureMetadata = {
   capture_attempt_id: string;
   order: number;
   duration_ms: number;
-  message_id: number;
-  speaker: 'student';
+  /** Null for an idle clip that keeps the replay continuous between turns. */
+  message_id: number | null;
+  speaker: 'student' | 'patient';
   session_clock_ms: number;
+  /** Start of the analysed speech window inside a student clip. */
+  speech_start_ms?: number | null;
+  playback_start_ms?: number | null;
+  playback_end_ms?: number | null;
+  playback_complete?: boolean;
   interaction_area_snapshots?: Record<string, number>[];
 };
 export type LocalInterviewTurn = {

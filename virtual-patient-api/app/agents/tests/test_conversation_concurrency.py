@@ -21,7 +21,6 @@ def make_pending_agent(monkeypatch):
         finished.set()
         return {'messages': [AIMessage(content='Synthetic response')]}
     agent = object.__new__(module.VirtualPatientAgent)
-    agent.persist_background_memory = True
     agent.interview_id = 'synthetic'
     agent.hot_path_agent = SimpleNamespace(invoke=invoke)
     async def request():
@@ -90,7 +89,6 @@ def test_five_concurrent_postgres_agents_keep_checkpoints_and_memory_separate(da
             graph=StateGraph(MessagesState)
             graph.add_node('model',respond); graph.add_edge(START,'model'); graph.add_edge('model',END)
             agent=object.__new__(module.VirtualPatientAgent)
-            agent.persist_background_memory = True
             agent.interview_id=identifier
             agent.hot_path_agent=graph.compile(checkpointer=saver,store=store)
             agents.append((agent,str(uuid4())))

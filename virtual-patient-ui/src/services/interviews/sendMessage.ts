@@ -1,6 +1,7 @@
 import {Message, SendMessageResponse} from '../../types';
 import {transformToCamelCase} from '../../utils/apiTransform';
 import {API_URL} from '../../utils/request';
+import {handleUnauthorized} from '../../utils/apiFetch';
 import {getAuthHeaders} from '../auth/authHeaders';
 import {captureFetch} from './captureFetch';
 import type {StudentCaptureTiming} from '../../types/recording';
@@ -36,6 +37,10 @@ export const sendMessage = async (
   const response = captureTiming?.turn_media_id
     ? await turnFetch(Number(interviewId), '/messages', init, captureTiming.capture_scope)
     : await captureFetch(interviewId, `${API_URL}/medical-interviews/${interviewId}/messages`, init);
+
+  // An expired session must recover centrally (clear token + redirect) instead
+  // of dead-ending the student on a generic send error.
+  if (response.status === 401) handleUnauthorized();
 
   const data: unknown = await response.json();
   if (!response.ok) {

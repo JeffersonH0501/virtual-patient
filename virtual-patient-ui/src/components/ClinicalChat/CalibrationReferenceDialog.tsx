@@ -71,13 +71,30 @@ export const CalibrationReferenceDialog = ({interviewId}: {interviewId: number})
   return <>
     <span className="panel-header-action">
       <button type="button" className="ui-icon-button" onClick={() => setOpen(true)}
-        aria-label={t('calibrationReference.title')} title={t('calibrationReference.title')}
+        aria-label={t('calibrationReference.technicalDetails')} title={t('calibrationReference.technicalDetails')}
         aria-haspopup="dialog" aria-expanded={open}>
         <ScanEye aria-hidden="true" />
       </button>
     </span>
-    <Dialog open={open} title={t('calibrationReference.title')} size="large" onClose={() => setOpen(false)}>
+    <Dialog open={open} title={t('calibrationReference.technicalDetails')} size="large" onClose={() => setOpen(false)}>
       {open && <div className="space-y-layout">
+        {!reference && !failed && <InterviewContentLoading />}
+        {failed && <div role="alert"><p>{t('calibrationReference.loadFailed')}</p><Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t('calibrationReference.retry')}</Button></div>}
+        {reference && reference.captures.length === 0 && <p>{t('calibrationReference.empty')}</p>}
+        {reference?.captures.map((capture, index) => <article key={capture.id} className="dialog-reading-card dialog-reading-card--compact space-y-layout bg-surface">
+          <header className="space-y-1">
+            <h3 className="default-title">{t('calibrationReference.capture', {number: index + 1})} · {t(`calibrationReference.stages.${capture.stage}`)}{capture.turnRange && ` · ${t('calibrationReference.turnRange', capture.turnRange)}`}</h3>
+            <p>{t('calibrationReference.duration')}: {formatPlaybackTime(capture.durationMs / 1000)}</p>
+            {typeof capture.result?.processingTimeSeconds === 'number' && !capture.result.guidedChecks && <p>{t('calibration.guided.processingTime', {seconds: capture.result.processingTimeSeconds.toFixed(2)})}</p>}
+            {capture.usedFor.length > 0 && <p>{t('calibrationReference.usedFor', {stages: capture.usedFor.map((stage) => t(`calibrationReference.stages.${stage}`)).join(', ')})}</p>}
+          </header>
+          {capture.mediaUrl ? <CalibrationVideo source={capture.mediaUrl} label={t('calibrationReference.capture', {number: index + 1})} /> : <p>{t('calibrationReference.videoUnavailable')}</p>}
+          {Boolean(capture.result?.guidedChecks) && <GuidedCheckResults diagnostics={capture.result?.guidedChecks as GuidedCheckDiagnostics} />}
+          {!capture.result ? <p>{t('calibrationReference.pending')}</p> : capture.stage === 'unified' && (capture.result.gaze || capture.result.camera) ?
+            ['gaze', 'camera'].map((stage) => capture.result?.[stage] && typeof capture.result[stage] === 'object' ? <QualityResult key={stage} stage={stage} result={capture.result[stage] as Record<string, unknown>} /> : null) :
+            <QualityResult stage={capture.stage} result={capture.result} />}
+        </article>)}
+        {totalProcessingTime != null && <p>{t('calibration.guided.testProcessingTime', {seconds: totalProcessingTime.toFixed(2)})}</p>}
         <section className="dialog-reading-card dialog-reading-card--compact space-y-2 bg-surface">
           <h3 className="default-title">{t('interviewPerformance.title')}</h3>
           {!events && !eventsFailed && <p role="status">{t('interviewPerformance.loading')}</p>}
@@ -96,25 +113,6 @@ export const CalibrationReferenceDialog = ({interviewId}: {interviewId: number})
             </li>)}
           </ol>}
         </section>
-        {!reference && !failed && <InterviewContentLoading />}
-        {failed && <div role="alert"><p>{t('calibrationReference.loadFailed')}</p><Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t('calibrationReference.retry')}</Button></div>}
-        {reference && reference.captures.length === 0 && <p>{t('calibrationReference.empty')}</p>}
-        {totalProcessingTime != null && <p>{t('calibration.guided.testProcessingTime', {seconds: totalProcessingTime.toFixed(2)})}</p>}
-        {reference?.captures.map((capture, index) => <article key={capture.id} className="dialog-reading-card dialog-reading-card--compact space-y-layout bg-surface">
-          <header className="space-y-1">
-            <h3 className="default-title">{t('calibrationReference.capture', {number: index + 1})} · {t(`calibrationReference.stages.${capture.stage}`)}</h3>
-            <p>{t('calibrationReference.duration')}: {formatPlaybackTime(capture.durationMs / 1000)}</p>
-            {typeof capture.result?.processingTimeSeconds === 'number' && !capture.result.guidedChecks && <p>{t('calibration.guided.processingTime', {seconds: capture.result.processingTimeSeconds.toFixed(2)})}</p>}
-            {capture.usedFor.length > 0 && <p>{t('calibrationReference.usedFor', {stages: capture.usedFor.map((stage) => t(`calibrationReference.stages.${stage}`)).join(', ')})}</p>}
-          </header>
-          {capture.mediaUrl ? <CalibrationVideo source={capture.mediaUrl} label={t('calibrationReference.capture', {number: index + 1})} /> : <p>{t('calibrationReference.videoUnavailable')}</p>}
-          {Boolean(capture.result?.guidedChecks) && <GuidedCheckResults diagnostics={capture.result?.guidedChecks as GuidedCheckDiagnostics} />}
-          {!capture.result ? <p>{t('calibrationReference.pending')}</p> : capture.stage === 'unified' && (capture.result.gaze || capture.result.camera) ?
-            ['gaze', 'camera'].map((stage) => capture.result?.[stage] && typeof capture.result[stage] === 'object' ? <QualityResult key={stage} stage={stage} result={capture.result[stage] as Record<string, unknown>} /> : null) :
-            <QualityResult stage={capture.stage} result={capture.result} />}
-          <details><summary>{t('calibrationReference.details')}</summary><pre className="overflow-auto whitespace-pre-wrap break-words secondary-text">{JSON.stringify({metadata: capture.metadata, result: capture.result}, null, 2)}</pre></details>
-        </article>)}
-        {reference?.calibration && <details><summary>{t('calibrationReference.accepted')}</summary><pre className="overflow-auto whitespace-pre-wrap break-words secondary-text">{JSON.stringify(reference.calibration, null, 2)}</pre></details>}
       </div>}
     </Dialog>
   </>;

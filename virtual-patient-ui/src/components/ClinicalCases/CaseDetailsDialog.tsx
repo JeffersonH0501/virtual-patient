@@ -6,9 +6,9 @@ import {CaseRecord} from './CaseRecord';
 import {Dialog} from '../common/Dialog';
 import {gradingRequest} from '../../services/doctorGrading';
 
-type CaseDetailsDialogProps = ({caseId: number; interviewId?: never} | {interviewId: number; caseId?: never}) & {onClose: () => void};
+type CaseDetailsDialogProps = ({caseId: number; interviewId?: never} | {interviewId: number; caseId?: never}) & {onClose: () => void; containerId?: string};
 
-export const CaseDetailsDialog = ({caseId, interviewId, onClose}: CaseDetailsDialogProps) => {
+export const CaseDetailsDialog = ({caseId, interviewId, onClose, containerId}: CaseDetailsDialogProps) => {
   const {t} = useTranslation();
   const [data, setData] = useState<Record<string, unknown> | null>(null);
   const [failed, setFailed] = useState(false);
@@ -29,7 +29,7 @@ export const CaseDetailsDialog = ({caseId, interviewId, onClose}: CaseDetailsDia
     };
   }, [caseId, interviewId, attempt]);
 
-  return <Dialog title={t('caseManagement.detail')} size="large" onClose={onClose}>
+  return <Dialog title={t('caseManagement.detail')} size="large" containerId={containerId} onClose={onClose}>
     {failed ? (
       <div className="ui-form-stack">
         <p className="text-danger-700 default-text" role="alert">{t('clinicalCases.failedToLoad')}</p>

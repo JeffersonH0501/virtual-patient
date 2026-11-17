@@ -1,18 +1,19 @@
 """Patient voice selection independent from any speech provider."""
 
 
+# Conversational voices that match the patient's gender; personalities differ by vocal style, not timbre.
 PERSONALITY_VOICES = {
-    "elderly_forgetful": {"male": "onyx", "female": "echo"},
-    "know_it_all": {"male": "onyx", "female": "nova"},
-    "rude_unfriendly": {"male": "onyx", "female": "alloy"},
-    "friendly_polite": {"male": "onyx", "female": "nova"},
-    "confused_inquisitive": {"male": "onyx", "female": "nova"},
-    "skeptical_spiritual": {"male": "echo", "female": "shimmer"},
+    "elderly_forgetful": {"male": "ballad", "female": "sage"},
+    "know_it_all": {"male": "ash", "female": "coral"},
+    "rude_unfriendly": {"male": "ash", "female": "coral"},
+    "friendly_polite": {"male": "verse", "female": "shimmer"},
+    "confused_inquisitive": {"male": "verse", "female": "sage"},
+    "skeptical_spiritual": {"male": "ballad", "female": "shimmer"},
 }
 
 DEFAULT_VOICES = {
-    "male": "alloy",
-    "female": "shimmer",
+    "male": "ash",
+    "female": "coral",
 }
 
 

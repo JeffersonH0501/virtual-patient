@@ -97,7 +97,9 @@ def observation_from_result(
     return observation
 
 
-def extract_video(video_path: Path, *, sample_fps: float = 10.0, landmarker: Any | None = None, timings: dict[str, list[float]] | None = None) -> Iterator[SharedFrameObservation]:
+def extract_video(video_path: Path, *, sample_fps: float = 10.0, landmarker: Any | None = None,
+                  timings: dict[str, list[float]] | None = None,
+                  window_ms: tuple[float, float] | None = None) -> Iterator[SharedFrameObservation]:
     """Decode once and invoke Face Landmarker exactly once per yielded frame."""
     import cv2
     import mediapipe as mp
@@ -129,6 +131,12 @@ def extract_video(video_path: Path, *, sample_fps: float = 10.0, landmarker: Any
             timestamp_ms = capture.get(cv2.CAP_PROP_POS_MSEC)
             if not isfinite(timestamp_ms) or (previous_frame_ms is not None and timestamp_ms < previous_frame_ms):
                 raise RuntimeError("Video frame timestamps must be finite and strictly increasing")
+            if window_ms is not None:
+                if timestamp_ms >= window_ms[1]:
+                    break
+                if timestamp_ms < window_ms[0]:
+                    previous_frame_ms = timestamp_ms
+                    continue
             # Browser recordings can contain duplicate PTS at pause/resume boundaries.
             if previous_frame_ms is not None and timestamp_ms == previous_frame_ms:
                 continue

@@ -1,0 +1,5 @@
+Multimodal evidence: some patient turns include "DOCTOR BEHAVIOR WHILE LISTENING", observations of the doctor's behavior while the patient spoke: visual orientation (whether the gaze was toward the interaction area), head gestural feedback (nods) and smile behavior.
+- The transcript remains the main basis of the score; the observations only add context to what the doctor said and did.
+- They describe observable behavior, not interest, attention or any internal state. Looking, nodding or smiling do not prove interest by themselves.
+- Missing, partial or unavailable evidence must NOT be penalized. The absence of nods, smiles or a brief look away is neutral information.
+- The observations always describe the DOCTOR, never the patient.

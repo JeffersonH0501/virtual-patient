@@ -11,7 +11,7 @@ export type Assignment = {
   doctorName: string;
   doctorEmail?: string;
   status: 'pending' | 'in_progress' | 'submitted';
-  studentName?: string;
+  ownerName?: string;
   caseTitle?: string;
   personalityName?: string | null;
   totalDuration?: number | null;

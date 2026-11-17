@@ -150,8 +150,12 @@ export type NonverbalObservation = {
 };
 
 export type InterviewRecap = {
+  /** Continuous replay preview built after the interview; `progress` is 0-100 while it is prepared. */
+  replay?: {status?: 'queued' | 'processing' | 'ready' | 'failed' | 'unavailable'; progress?: number; source?: string};
   turnMedia?: {turnMediaId: string; sessionClockMs: number; durationMs: number | null; studentVideoSource: string | null;
-    messageId?: number | null; metadata: {messageId?: number | null; sessionClockMs?: number}}[] | null;
+    messageId?: number | null;
+    metadata: {messageId?: number | null; sessionClockMs?: number; speaker?: 'student' | 'patient';
+      playbackStartMs?: number | null; playbackEndMs?: number | null; playbackComplete?: boolean}}[] | null;
   interviewId: number;
   recordingStatus: RecordingStatus;
   durationMs?: number | null;

@@ -36,23 +36,15 @@ class RatingItem(BaseModel):
     score: Optional[float] = Field(default=None, ge=0, le=5)
     feedback: str = ""
 
-
-class RatingRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    results: list[RatingItem]
-
-
-class SubmittedRatingItem(RatingItem):
-    feedback: str = Field(min_length=1)
-
     @field_validator("feedback", mode="before")
     @classmethod
     def trim_feedback(cls, value):
         return value.strip() if isinstance(value, str) else value
 
 
-class SubmittedRatingRequest(RatingRequest):
-    results: list[SubmittedRatingItem]
+class RatingRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    results: list[RatingItem]
 
 
 def staff_interview(db, interview_id, actor):
@@ -79,6 +71,13 @@ def assignment_data(db, item):
             "status": "submitted" if rating and rating.submitted_at else "in_progress" if item.started_at else "pending"}
 
 
+def require_assignable(db, interview):
+    """Completed interviews owned by students or doctors can receive reviewers."""
+    owner = db.get(UserDB, interview.user_id)
+    if interview.status != "completed" or owner is None or owner.role not in (UserRole.STUDENT, UserRole.DOCTOR):
+        raise HTTPException(409, "Only completed student or doctor interviews can be assigned")
+
+
 def own_assignment(db, assignment_id, actor):
     item = db.query(DoctorAssignmentDB).filter_by(id=assignment_id).with_for_update().first()
     if actor.role != UserRole.DOCTOR or not item or item.doctor_id != actor.id:
@@ -99,8 +98,7 @@ def assign_doctors(interview_id: int, payload: AssignmentRequest, db: Session = 
     require_admin(actor)
     interview = staff_interview(db, interview_id, actor)
     db.query(MedicalInterviewDB).filter_by(id=interview_id).with_for_update().one()
-    if interview.status != "completed" or db.get(UserDB, interview.user_id).role != UserRole.STUDENT:
-        raise HTTPException(409, "Only completed student interviews can be assigned")
+    require_assignable(db, interview)
     if len(set(payload.doctor_ids)) != len(payload.doctor_ids):
         raise HTTPException(422, "Duplicate doctors")
     for doctor_id in payload.doctor_ids:
@@ -146,7 +144,7 @@ def assigned_interviews(response: Response, offset: int = Query(0, ge=0), limit:
         personality_data = {"name": personality.name, "name_translations": personality.name_translations} if personality else {}
         PersonalityController.translate_personality_name_in_dict(personality_data, actor.preferred_language)
         evaluation = interview.multimodal_interview_evaluation
-        result.append({**assignment_data(db, item), "student_name": interview.user.name,
+        result.append({**assignment_data(db, item), "owner_name": interview.user.name,
                        "case_title": interview.clinical_case.title, "created_at": interview.created_at,
                        "personality_name": personality_data.get("name"), "total_duration": durations.get(interview.id),
                        "overall_score": evaluation.overall_score if evaluation and can_read_assessments(db, interview, actor) else None})
@@ -206,7 +204,7 @@ def draft_rating(assignment_id: int, payload: RatingRequest, db: Session = Depen
 
 
 @router.post("/doctor-assignments/{assignment_id}/submit")
-def submit_rating(assignment_id: int, payload: SubmittedRatingRequest, db: Session = Depends(get_db), actor: User = Depends(get_current_active_user)):
+def submit_rating(assignment_id: int, payload: RatingRequest, db: Session = Depends(get_db), actor: User = Depends(get_current_active_user)):
     return save_rating(assignment_id, payload, db, actor, True)
 
 
@@ -226,8 +224,7 @@ def replace_assignments(interview_id: int, payload: AssignmentSelection, db: Ses
     require_admin(actor)
     interview = staff_interview(db, interview_id, actor)
     db.query(MedicalInterviewDB).filter_by(id=interview_id).with_for_update().one()
-    if interview.status != "completed" or db.get(UserDB, interview.user_id).role != UserRole.STUDENT:
-        raise HTTPException(409, "Only completed student interviews can be assigned")
+    require_assignable(db, interview)
     requested = set(payload.doctor_ids)
     if len(requested) != len(payload.doctor_ids):
         raise HTTPException(422, "Duplicate doctors")
@@ -238,7 +235,7 @@ def replace_assignments(interview_id: int, payload: AssignmentSelection, db: Ses
         raise HTTPException(409, "Assignments with a rating draft cannot be removed")
     for doctor_id in requested - current:
         doctor = db.get(UserDB, doctor_id)
-        if not doctor or doctor.role != UserRole.DOCTOR or doctor.disabled:
+        if not doctor or doctor.role != UserRole.DOCTOR or doctor.disabled or doctor.id == interview.user_id:
             raise HTTPException(422, "Invalid doctor")
     try:
         for item in removed:
@@ -279,12 +276,23 @@ def self_interview(db, interview_id, actor):
 
 @router.get("/medical-interviews/{interview_id}/self-rating")
 def read_self_workspace(interview_id: int, db: Session = Depends(get_db), actor: User = Depends(get_current_active_user)):
-    self_interview(db, interview_id, actor)
-    rating = db.get(SelfRatingDB, interview_id)
+    if actor.role == UserRole.ADMIN:
+        interview = db.get(MedicalInterviewDB, interview_id)
+        if not interview or interview.status not in ("processing", "completed"):
+            raise HTTPException(404, "Interview not found")
+        owner = db.get(UserDB, interview.user_id)
+        rating = db.get(SelfRatingDB, interview_id)
+        if not owner or not rating or not rating.submitted_at:
+            raise HTTPException(404, "Submitted self-assessment not found")
+        language = owner.preferred_language or "en"
+    else:
+        interview = self_interview(db, interview_id, actor)
+        rating = db.get(SelfRatingDB, interview_id)
+        language = actor.preferred_language or "en"
     snapshot = rating.rubric_snapshot if rating else {language: get_all_aspects(language) for language in ("en", "es")}
     return {"id": interview_id, "interview_id": interview_id,
             "status": "submitted" if rating and rating.submitted_at else "in_progress" if rating else "pending",
-            "rubric": snapshot.get(actor.preferred_language, snapshot["en"]),
+            "rubric": snapshot.get(language, snapshot["en"]),
             "results": rating.results if rating else [], "overall_score": rating.overall_score if rating else None}
 
 
@@ -314,5 +322,5 @@ def draft_self_rating(interview_id: int, payload: RatingRequest, db: Session = D
 
 
 @router.post("/medical-interviews/{interview_id}/self-rating/submit")
-def submit_self_rating(interview_id: int, payload: SubmittedRatingRequest, db: Session = Depends(get_db), actor: User = Depends(get_current_active_user)):
+def submit_self_rating(interview_id: int, payload: RatingRequest, db: Session = Depends(get_db), actor: User = Depends(get_current_active_user)):
     return save_self_rating(interview_id, payload, db, actor, True)

@@ -264,25 +264,28 @@ def _process_job(
             if segment is None:
                 raise ValueError("Turn video recording segment is unavailable")
             profile = read_calibration_profile(interview, segment=segment)
-        # The media file is the whole turn: no window offset, and its duration
-        # comes from the stored turn media, not a block-relative window.
         duration_ms = max(1, job.end_ms - job.start_ms)
-        window_start = 0
-        roi_duration = duration_ms
+        window_start = (turn_source or {}).get('clip_start_ms', 0)
+        roi_duration = (turn_source or {}).get('clip_duration_ms', duration_ms)
+        window = TurnWindow(job.turn_id, window_start, window_start + duration_ms, job.speaker)
         roi_snapshots = job.roi_snapshots
         video_path = storage.resolve(storage_key)
-        # Student turns carry audio in their own file; extract paraverbal raw
-        # directly from it (no block window cut).
+        # Student clips carry their microphone audio; analyse only the speech window.
         audio_raw = None
         if turn is not None and turn.speaker == "student":
-            audio_raw = extract_turn_paraverbal(video_path, turn, job.medical_interview_id)
+            audio_raw = extract_turn_paraverbal(video_path, turn, job.medical_interview_id,
+                                                window.start_ms, window.end_ms)
         timings_ms["model_setup"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         observations = extract_nonverbal_video_observations_parallel(
             video_path,
             queue_capacity=NONVERBAL_GAZE_QUEUE_CAPACITY,
             calibration_profile=profile,
+            window_ms=(window.start_ms, window.end_ms) if turn_source else None,
         )
+        if turn_source:
+            observations = [item for item in observations
+                            if window.start_ms <= item.shared.timestamp_ms < window.end_ms]
         timings_ms["video_and_gaze_extraction"] = (perf_counter() - phase_started) * 1000
         phase_started = perf_counter()
         try:
@@ -292,7 +295,6 @@ def _process_job(
             nod_analysis = NodAnalysis((), False, "extractor_failure")
         timings_ms["nod_analysis"] = (perf_counter() - phase_started) * 1000
 
-        window = TurnWindow(job.turn_id, window_start, window_start + duration_ms, job.speaker)
         phase_started = perf_counter()
         raw = build_turn_raw_features(
             observations,

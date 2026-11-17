@@ -18,11 +18,15 @@ def create_patient_synthesis_request(
     personality_namespace_key: str | None = None,
     gender: str | None = None,
 ) -> SpeechSynthesisRequest:
-    """Build one provider-neutral patient speech request."""
+    """Build one provider-neutral patient speech request.
+
+    The reply text drives a deterministic per-turn delivery variation, so the
+    same text always synthesizes identically (replay stays reproducible).
+    """
     return SpeechSynthesisRequest(
         text=text,
         voice=select_patient_voice(personality_namespace_key, gender),
-        vocal_style=select_patient_vocal_style(personality_namespace_key),
+        vocal_style=select_patient_vocal_style(personality_namespace_key, text=text),
     )
 
 

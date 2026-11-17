@@ -29,11 +29,8 @@ from app.routers.tests.test_lifecycle_integrity import lifecycle_api, start_capt
 ])
 def test_controller_seeds_opening_only_for_the_first_student_turn(monkeypatch, history, expected_opening):
     from app.controllers import virtual_patient_controller as module
-    from app.core import langgraph_runtime
     workflow = SimpleNamespace(process_interview_message=AsyncMock(return_value={}))
-    resources = SimpleNamespace(from_conn_string=lambda *args, **kwargs: nullcontext(object()))
-    monkeypatch.setattr(langgraph_runtime, "PostgresStore", resources)
-    monkeypatch.setattr(langgraph_runtime, "PostgresSaver", resources)
+    monkeypatch.setattr(module, "langgraph_store_and_checkpointer", lambda: nullcontext((object(), object())))
     monkeypatch.setattr(module, "create_virtual_patient_workflow", lambda **kwargs: workflow)
     question = {"role": "user", "content": "Synthetic question"}
     asyncio.run(module.VirtualPatientController().process_interview_message(7, [*history, question], None))

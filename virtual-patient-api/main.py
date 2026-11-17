@@ -1,7 +1,6 @@
 from app.routers import doctor_grading
 from app.routers import perception_survey
 import logging
-import asyncio
 
 import uvicorn
 from contextlib import asynccontextmanager
@@ -23,17 +22,21 @@ logging.getLogger("app").setLevel(logging.INFO)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    """Synchronize deployment-managed accounts whenever the API starts."""
+    """Synchronize deployment-managed accounts whenever the API starts.
+
+    The API never runs heavy background work. The durable processing-job loop
+    (replay preview, multimodal pipeline, evaluation, learning moments) and the
+    periodic media/calibration maintenance run in the media-processing-worker
+    service. The API only stages jobs and serves their results.
+    """
     with SessionLocal() as session:
         print(synchronize_admin(session))
-    from app.multimodal.processing_jobs import run_processing_jobs
-    processor = asyncio.create_task(run_processing_jobs())
     try:
         yield
     finally:
-        processor.cancel()
-        await asyncio.gather(processor, return_exceptions=True)
         close_speech_clients()
+        from app.core.langgraph_runtime import close_langgraph_pool
+        close_langgraph_pool()
 
 
 app = FastAPI(
@@ -112,10 +115,14 @@ app = FastAPI(
     ]
 )
 
-# Configure CORS
+# Configure CORS. Local dev origins plus any configured public origins
+# (comma-separated CORS_ALLOWED_ORIGINS), e.g. the Cloudflare tunnel UI domain.
+import os
+
 origins = [
     "http://localhost:5173",  # React app
     "http://127.0.0.1:5173",  # React app alternative
+    *[origin.strip() for origin in os.getenv("CORS_ALLOWED_ORIGINS", "").split(",") if origin.strip()],
 ]
 
 app.add_middleware(

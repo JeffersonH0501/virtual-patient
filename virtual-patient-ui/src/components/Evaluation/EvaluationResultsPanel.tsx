@@ -11,6 +11,9 @@ import {EvaluationCriteriaTooltip} from './EvaluationCriteriaTooltip';
 import {useLearningMoments} from './useLearningMoments';
 import {getAspectDisplayName, getScoreTone, getScoreLabel, sortEvaluationResults} from './helpers';
 import {TableHeader} from '../common/Table/TableHeader';
+import {LearningMoment} from '../../types/learningMoments';
+
+const MOMENT_CATEGORIES: LearningMoment['category'][] = ['show_interest', 'show_empathy', 'speak_clearly'];
 
 const feedbackWithoutScoreEcho = (feedback: string) =>
   feedback.replace(/\s*\((?:puntuación|score):\s*\d+(?:[.,]\d+)?\s*\/\s*5\)/gi, '').trim();
@@ -75,7 +78,8 @@ export const EvaluationResultsPanel = ({
 }: EvaluationResultsPanelProps) => {
   const {t} = useTranslation();
   const {user} = useUser();
-  const canRegenerate = regenerationAllowed && user?.role === 'admin';
+  const isAdmin = user?.role === 'admin';
+  const canRegenerate = regenerationAllowed && isAdmin;
   const refreshActionLabel = t(onReprocess ? 'evaluation.refreshActions' : 'evaluation.regenerateEvaluation');
   const panelElement = useRef<HTMLElement>(null);
   const editingFocus = useRef<string | null>(null);
@@ -312,8 +316,11 @@ export const EvaluationResultsPanel = ({
                       {sortedResults.map((result) => {
                         const label = getAspectDisplayName(result.aspect, t);
                         const moments = showLearningMoments
-                          ? learningMoments.filter((moment) => moment.category === result.aspect)
+                          ? learningMoments.moments.filter((moment) => moment.category === result.aspect)
                           : [];
+                        // Admins see an explicit count (including zero) once generation finished for this evaluation.
+                        const showMomentCount = isAdmin && showLearningMoments && learningMoments.ready &&
+                          MOMENT_CATEGORIES.includes(result.aspect as LearningMoment['category']);
                         const canExpand = !draftResults || result.score != null;
                         const expanded = canExpand && expandedAspects.has(result.aspect);
                         const detailsId = feedbackId + '-' + result.aspect;
@@ -337,8 +344,15 @@ export const EvaluationResultsPanel = ({
                               }}
                             >
                               <th scope="row">
-                                <div className="flex min-w-0 items-center gap-layout">
+                                <div className="flex min-w-0 flex-wrap items-center gap-layout">
                                   <span>{label}</span>
+                                  {showMomentCount && (
+                                    <Badge
+                                      tone={moments.length ? 'info' : 'neutral'}
+                                    >
+                                      {moments.length ? t('learningMoments.adminCount', {count: moments.length}) : t('learningMoments.adminNone')}
+                                    </Badge>
+                                  )}
                                   {!onEditScore && (
                                     <>
                                       <button
@@ -426,46 +440,22 @@ export const EvaluationResultsPanel = ({
                                     </p>
                                     {moments.length > 0 && (
                                       <section className="space-y-layout" aria-label={t('learningMoments.title')}>
-                                        {moments.filter((m) => m.momentType === 'strength').length > 0 && (
-                                          <>
-                                            <h4 className="font-semibold secondary-text">{t('learningMoments.strengthsTitle')}</h4>
-                                            {moments.filter((m) => m.momentType === 'strength').map((moment) => (
-                                              <article key={moment.id} className="space-y-layout ui-notice ui-notice--success">
-                                                <p>{moment.observation} {moment.reinforcement}</p>
-                                                {turns.some((turn) => moment.turnIds.includes(turn.turnId)) && <div className="space-y-layout">
-                                                  <p className="font-semibold secondary-text">{t('learningMoments.reviewedTurns')}</p>
-                                                  <div className="ui-button-group" aria-label={t('learningMoments.linkedTurns')}>
-                                                    {turns.map((turn, index) => moment.turnIds.includes(turn.turnId) && (
-                                                      <Button key={turn.turnId} variant="secondary" className="ui-button--brand-soft" disabled={!onJumpToTurn} onClick={() => onJumpToTurn?.(turn.turnId)}>
-                                                        {t('evaluation.turnReference', {id: index + 1})}
-                                                      </Button>
-                                                    ))}
-                                                  </div>
-                                                </div>}
-                                              </article>
-                                            ))}
-                                          </>
-                                        )}
-                                        {moments.filter((m) => m.momentType === 'improvement').length > 0 && (
-                                          <>
-                                            <h4 className="font-semibold secondary-text">{t('learningMoments.improvementsTitle')}</h4>
-                                            {moments.filter((m) => m.momentType === 'improvement').map((moment) => (
-                                              <article key={moment.id} className="space-y-layout ui-notice ui-notice--warning">
-                                                <p>{moment.observation} {moment.recommendation}</p>
-                                                {turns.some((turn) => moment.turnIds.includes(turn.turnId)) && <div className="space-y-layout">
-                                                  <p className="font-semibold secondary-text">{t('learningMoments.reviewedTurns')}</p>
-                                                  <div className="ui-button-group" aria-label={t('learningMoments.linkedTurns')}>
-                                                    {turns.map((turn, index) => moment.turnIds.includes(turn.turnId) && (
-                                                      <Button key={turn.turnId} variant="secondary" className="ui-button--brand-soft" disabled={!onJumpToTurn} onClick={() => onJumpToTurn?.(turn.turnId)}>
-                                                        {t('evaluation.turnReference', {id: index + 1})}
-                                                      </Button>
-                                                    ))}
-                                                  </div>
-                                                </div>}
-                                              </article>
-                                            ))}
-                                          </>
-                                        )}
+                                        <h4 className="font-semibold secondary-text">{t('learningMoments.improvementsTitle')}</h4>
+                                        {moments.map((moment) => (
+                                          <article key={moment.id} className="space-y-layout ui-notice ui-notice--warning">
+                                            <p>{moment.text}</p>
+                                            {turns.some((turn) => moment.turnIds.includes(turn.turnId)) && <div className="space-y-layout">
+                                              <p className="font-semibold secondary-text">{t('learningMoments.reviewedTurns')}</p>
+                                              <div className="ui-button-group" aria-label={t('learningMoments.linkedTurns')}>
+                                                {turns.map((turn, index) => moment.turnIds.includes(turn.turnId) && (
+                                                  <Button key={turn.turnId} variant="secondary" className="ui-button--brand-soft" disabled={!onJumpToTurn} onClick={() => onJumpToTurn?.(turn.turnId)}>
+                                                    {t('evaluation.turnReference', {id: index + 1})}
+                                                  </Button>
+                                                ))}
+                                              </div>
+                                            </div>}
+                                          </article>
+                                        ))}
                                       </section>
                                     )}
                                   </div>

@@ -3,14 +3,19 @@ import hashlib
 import json
 import logging
 import uuid
+from pydantic import ValidationError
 from datetime import datetime, timezone
 from app.models.medical_interview.interview_recording import InterviewRecordingDB, InterviewTurnDB
 from app.models.medical_interview.interview_evaluation import InterviewEvaluationDB
 from app.models.processing_job import InterviewProcessingJobDB
 from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.agents.prompts.multimodal_evaluation import MULTIMODAL_EVALUATION_CONFIG, get_multimodal_metadata
-from app.agents.prompts.learning_moments import get_learning_moment_prompts, get_strength_moment_prompts, PROMPT_VERSION
+from app.agents.prompts.learning_moments import get_learning_moment_prompts, PROMPT_VERSION
 from app.agents.schemas.learning_moments import LearningMomentReferenceError, LearningMomentOutput, validate_moment
+from app.agents.schemas.learning_moments import Evidence
+from typing import get_args
+
+_EVIDENCE_KEYS = set(get_args(Evidence)) - {"text"}
 from .conversation_formatter import MultimodalConversationFormatter
 
 logger = logging.getLogger(__name__)
@@ -84,51 +89,60 @@ def build_category_message(context, category):
         f"{chr(10).join(evidence_lines)}\n\n"
         "=== CRITERIA FOR THIS CATEGORY ===\n"
         f"{chr(10).join(f'- {item}' for item in criteria)}\n\n"
-        "=== PRIOR EVALUATION FOR THIS CATEGORY (context only) ===\n"
+        "=== PRIOR EVALUATION FOR THIS CATEGORY (do not repeat its points) ===\n"
         f"Score: {evaluation.get('score', 'n/a')}\n"
         f"Feedback: {evaluation.get('feedback', 'n/a')}"
     )
 
 
-async def _generate_category_moment(model, prompt, category, context, provenance, interview_id):
-    """Run one category prompt and return its validated moment, or None.
+def _with_known_fields(parsed, category, context):
+    """Fill the fields the code already knows instead of trusting the model to repeat them.
 
-    One retry on reference-validation failure. A category that still fails
-    validation after the retry contributes no moment (returns None) and never
-    aborts the other categories: an unsupported citation means "no moment here",
-    not a job failure. Only genuine technical/schema failures propagate.
+    The category is fixed by the call. The evidence is taken from the cited turns: the keys
+    of this category present on every cited turn. A turn without multimodal evidence yields
+    only "text", which validation rejects, so the moment stays grounded in observed signals.
+    """
+    if hasattr(parsed, "model_dump"):
+        parsed = parsed.model_dump()
+    if not isinstance(parsed, dict) or not isinstance(parsed.get("moment"), dict):
+        return parsed
+    moment = dict(parsed["moment"])
+    moment["category"] = category
+    turn_ids = moment.get("turn_ids") if isinstance(moment.get("turn_ids"), list) else []
+    evidence = context["evidence"].get(category, {})
+    shared = set.intersection(*(set(evidence.get(turn_id, {})) for turn_id in turn_ids)) if turn_ids else set()
+    moment["evidence_used"] = sorted(shared & _EVIDENCE_KEYS) or ["text"]
+    return {**parsed, "moment": moment}
+
+
+async def _generate_category_moment(model, prompt, category, context, provenance, interview_id):
+    """Run one category prompt once and return its moment as written by the model, or None.
+
+    There is no retry and no check of the wording. A moment is skipped only when the
+    output does not fit the schema or cites turns that do not exist, because the
+    interface links to those turns. Only technical failures of the provider propagate.
     """
     from langchain_core.messages import SystemMessage, HumanMessage
     from app.agents.evaluation_provenance import EvaluationProvenanceCallback
     messages = [SystemMessage(content=prompt), HumanMessage(content=build_category_message(context, category))]
-    for attempt in range(2):
-        response = await model.ainvoke(messages,
-            config={"callbacks": [EvaluationProvenanceCallback(provenance, f"learning_moments_{category}", prompt, messages)]})
-        parsed = response.get("parsed")
-        if parsed is None:
-            # Validate tool arguments directly so schema errors remain diagnosable.
-            calls = getattr(response.get("raw"), "tool_calls", [])
-            if calls:
-                parsed = LearningMomentOutput.model_validate(calls[0]["args"])
-            else:
-                raise ValueError("Learning moment structured output failed") from response.get("parsing_error")
-        try:
-            return validate_moment(LearningMomentOutput.model_validate(parsed).moment, category, context)
-        except LearningMomentReferenceError as exc:
-            if attempt:
-                # The retry still did not ground its citation; skip this category
-                # rather than failing the whole interview's feedback.
-                logger.warning("Skipping learning moment interview_id=%s category=%s after retry reason=%s", interview_id, category, exc)
-                return None
-            logger.warning("Retrying learning moment interview_id=%s category=%s reason=%s", interview_id, category, exc)
-            messages.append(HumanMessage(content=(
-                f"The previous output failed validation: {exc}. Return {{\"moment\": null}} unless there is a "
-                "clearly specific, severe moment grounded in paraverbal or nonverbal evidence. Cite only turn "
-                "aliases present in the transcript (such as T1). evidence_used must include at least one "
-                "paraverbal or nonverbal key shown for that exact turn in EVIDENCE BY TURN; never use \"text\" "
-                "alone. If no such key fits the cited turn, return {{\"moment\": null}}. Use at most two turns and "
-                "never mention turn identifiers or numbers in the text."
-            )))
+    response = await model.ainvoke(messages,
+        config={"callbacks": [EvaluationProvenanceCallback(provenance, f"learning_moments_{category}", prompt, messages)]})
+    parsed = response.get("parsed")
+    if parsed is None:
+        calls = getattr(response.get("raw"), "tool_calls", [])
+        if not calls:
+            raise ValueError("Learning moment structured output failed") from response.get("parsing_error")
+        parsed = calls[0]["args"]
+    try:
+        moment = LearningMomentOutput.model_validate(_with_known_fields(parsed, category, context)).moment
+        return validate_moment(moment, category, context)
+    except (LearningMomentReferenceError, ValidationError) as exc:
+        if isinstance(exc, ValidationError):
+            # Log only field locations and error types, never model output.
+            exc = "; ".join(".".join(str(part) for part in error["loc"]) + " (" + error["type"] + ")"
+                            for error in exc.errors(include_input=False))
+        logger.warning("Skipping learning moment interview_id=%s category=%s reason=%s", interview_id, category, exc)
+        return None
 
 
 def queue_learning_moments(db, interview_id, *, force=False):
@@ -186,28 +200,15 @@ async def _run_generation(db, interview_id, recording_id, force):
             provenance = []
             model = agent.llm.with_structured_output(LearningMomentOutput, method="function_calling", include_raw=True)
             alias_to_turn_id = context["alias_to_turn_id"]
-            improvement_prompts = get_learning_moment_prompts(context["response_language"])
-            strength_prompts = get_strength_moment_prompts(context["response_language"])
-            # One independent call per category per type; each yields at most one moment.
+            prompts = get_learning_moment_prompts(context["response_language"])
+            # One independent call per category; each yields at most one moment.
             moments = []
-            for category in improvement_prompts:
-                # Generate improvement moment
-                improvement_moment = await _generate_category_moment(
-                    model, improvement_prompts[category], category, context, provenance, interview_id,
-                )
-                if improvement_moment is not None:
-                    improvement_moment.moment_type = "improvement"
-                    improvement_moment.turn_ids = [alias_to_turn_id[alias] for alias in improvement_moment.turn_ids]
-                    moments.append(improvement_moment)
-                
-                # Generate strength moment
-                strength_moment = await _generate_category_moment(
-                    model, strength_prompts[category], category, context, provenance, interview_id,
-                )
-                if strength_moment is not None:
-                    strength_moment.moment_type = "strength"
-                    strength_moment.turn_ids = [alias_to_turn_id[alias] for alias in strength_moment.turn_ids]
-                    moments.append(strength_moment)
+            for category, prompt in prompts.items():
+                moment = await _generate_category_moment(model, prompt, category, context, provenance, interview_id)
+                if moment is not None:
+                    # Store original UUIDs; the model only ever saw the T# aliases.
+                    moment.turn_ids = [alias_to_turn_id[alias] for alias in moment.turn_ids]
+                    moments.append(moment)
             # Re-read after the network call; never publish feedback for superseded inputs.
             db.expire_all()
             recording = recording_for(db, interview_id, lock=True)

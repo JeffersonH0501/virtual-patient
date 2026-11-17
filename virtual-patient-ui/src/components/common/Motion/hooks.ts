@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import {readDesignNumber, readDesignToken} from '../../../utils/designTokens';
+import {readDesignDuration, readDesignToken} from '../../../utils/designTokens';
 
 export const MotionContext = createContext({enabled: false, reduced: false});
 export const VisibilityContext = createContext(true);
@@ -33,7 +33,7 @@ export const usePresence = (
       setRetained(false);
       return;
     }
-    const timer = window.setTimeout(() => setRetained(false), readDesignNumber(exitToken));
+    const timer = window.setTimeout(() => setRetained(false), readDesignDuration(exitToken));
     return () => window.clearTimeout(timer);
   }, [open, animate, exitToken]);
   const onAnimationEnd = (event: AnimationEvent<HTMLElement>) => {
@@ -62,10 +62,10 @@ export const useEntrance = <T extends HTMLElement>(index = 0, slide = false) => 
         ]
       : [{opacity: 0}, {opacity: 1}];
     const animation = element.current.animate(frames, {
-      duration: readDesignNumber('--app-motion-enter'),
+      duration: readDesignDuration('--app-motion-enter'),
       delay: Math.min(
-        Math.max(0, initialIndex.current) * readDesignNumber('--app-motion-stagger'),
-        readDesignNumber('--app-motion-stagger-limit'),
+        Math.max(0, initialIndex.current) * readDesignDuration('--app-motion-stagger'),
+        readDesignDuration('--app-motion-stagger-limit'),
       ),
       easing: readDesignToken('--motion-panel-easing'),
       fill: 'backwards',

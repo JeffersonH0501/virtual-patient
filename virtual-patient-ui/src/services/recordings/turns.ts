@@ -2,11 +2,26 @@ import {getAuthHeaders} from '../auth/authHeaders';
 import {API_URL} from '../../utils/request';
 import {InterviewTurnStore, type LocalInterviewTurn} from '../../recording/InterviewTurnStore';
 import {InterviewTurnQueue, type TurnReceipt} from '../../recording/InterviewTurnQueue';
+import {CaptureSyncError} from '../../recording/CaptureSyncError';
 
+/** The error code a rejected capture request carries, whether the server sent `detail` as text or as `{code}`. */
+const rejectionCode = (body: {detail?: unknown}, status: number): string =>
+  typeof body.detail === 'string' ? body.detail
+    : (body.detail as {code?: string} | undefined)?.code ?? `Turn request failed (${status})`;
+
+/** Largest turn original the server accepts (`TURN_VIDEO_MAX_BYTES`); the capture rotates clips long before this. */
+export const TURN_ORIGINAL_MAX_BYTES = 128 * 1024 * 1024;
 export const turnScope = (interviewId: number): string => {
   const token = getAuthHeaders().Authorization?.split(' ')[1];
   if (!token) throw new Error('An authenticated capture account is required');
-  const claims = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  let claims: {sub?: unknown};
+  try {
+    claims = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+  } catch {
+    // A missing/expired/non-JWT token must surface as an auth error, not crash
+    // the capture pipeline with a raw decode exception.
+    throw new Error('An authenticated capture account is required');
+  }
   if (typeof claims.sub !== 'string' || !claims.sub) throw new Error('Capture account identity is unavailable');
   return `${claims.sub}:${interviewId}`;
 };
@@ -85,7 +100,7 @@ export const turnFetch = async (interviewId: number, path: string, init: Request
 export const turnJson = async <T>(interviewId: number, path: string, init: RequestInit = {}): Promise<T> => {
   const response = await turnFetch(interviewId, path, init);
   const body = await response.json();
-  if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : body.detail?.code ?? `Turn request failed (${response.status})`);
+  if (!response.ok) throw new CaptureSyncError(response.status, rejectionCode(body, response.status));
   return body as T;
 };
 
@@ -102,6 +117,10 @@ export const turnUploadQueue = (interviewId: number, writer: () => string | null
     const store = new InterviewTurnStore(scope);
     queue = new InterviewTurnQueue(async (turn) => {
       const file = await store.original(turn, Boolean(resumeAttempt));
+      if (file.size > TURN_ORIGINAL_MAX_BYTES) {
+        // Fail at once instead of retrying a request that can never succeed; finalization declares the original missing.
+        throw new Error('turn-original-too-large');
+      }
       const form = new FormData();
       form.append('metadata', JSON.stringify(turn.metadata));
       form.append('video', file);
@@ -109,7 +128,8 @@ export const turnUploadQueue = (interviewId: number, writer: () => string | null
         signal,
         headers: {'X-Capture-Segment': writer() ?? '', ...(resumeAttempt ? {'X-Resume-Attempt': resumeAttempt} : {})}}, scope);
       const body = await response.json();
-      if (!response.ok) throw new Error(typeof body.detail === 'string' ? body.detail : body.detail?.code ?? 'Turn preservation failed');
+      // The status travels with the error so the queue can tell a retryable server fault from a rejection.
+      if (!response.ok) throw new CaptureSyncError(response.status, rejectionCode(body, response.status));
       return body as TurnReceipt;
     }, async (turn) => {
       turn.state = 'preserved';
@@ -158,17 +178,21 @@ export const resumeTurnInterview = async (id: number, requestId: string, force =
       await store.put(turn);
     }
     if (turn.state === 'capturing') {
-      // Bind the locally captured turn to its student message. A turn with no
-      // resolvable student message cannot be preserved and is discarded.
       const exchange = messages.messages.filter((message) => message.message_metadata?.client_request_id === turn.requestId);
-      const studentId = exchange.find((item) => item.sender_type === 'user')?.id ?? turn.metadata.message_id ?? null;
-      if (!studentId) {
+      const patient = turn.metadata.speaker === 'patient';
+      const messageId = turn.metadata.message_id ?? exchange.find((item) =>
+        patient ? item.sender_type === 'chatbot' || item.sender_type === 'patient' : item.sender_type === 'user')?.id;
+      const duration = turn.confirmedEndMs;
+      if (!turn.chunks || !duration) {
         await store.patch(turn.id, {pendingContent: undefined});
         await store.discardUnsent(turn).catch(() => undefined);
         continue;
       }
-      const duration = turn.confirmedEndMs;
-      const metadata = {...turn.metadata, duration_ms: duration, message_id: studentId, speaker: 'student' as const,
+      // Without a message the fragment is kept as an idle clip; reload timing has no playback window.
+      const speechStart = !patient && messageId && (turn.metadata.speech_start_ms ?? duration) < duration
+        ? turn.metadata.speech_start_ms : null;
+      const metadata = {...turn.metadata, duration_ms: duration, message_id: messageId ?? null, speech_start_ms: speechStart,
+        ...(patient ? {playback_start_ms: null, playback_end_ms: null, playback_complete: false} : {}),
         interaction_area_snapshots: turn.metadata.interaction_area_snapshots?.filter((sample) => sample.timestampMs <= duration)};
       Object.assign(turn, await store.patch(turn.id, {state: 'closed', metadata, pendingContent: undefined}));
     }
@@ -185,7 +209,7 @@ export const resumeTurnInterview = async (id: number, requestId: string, force =
   const covered = new Set(manifest.turns.filter((turn) => turn.student_video_source)
     .map((turn) => turn.message_id).filter((value): value is number => typeof value === 'number'));
   for (const message of messages.messages) {
-    if (message.sender_type === 'user' && !covered.has(message.id)) missing.add(message.id);
+    if (!covered.has(message.id)) missing.add(message.id);
   }
   if (missing.size) {
     await turnJson(id, '/recording/turns/recovery', {method: 'POST',
@@ -194,5 +218,8 @@ export const resumeTurnInterview = async (id: number, requestId: string, force =
   }
   return {resumeAttemptId: resume.resume_attempt_id, offsetMs: manifest.duration_ms ?? 0,
     previousSegmentId: resume.previous_segment_id, previousDurationMs: resume.previous_duration_ms,
-    pendingPatientMessageId: resume.pending_patient_message_id, retentionExpiresAt: resume.retention_expires_at};
+    pendingPatientMessageId: resume.pending_patient_message_id,
+    recoveredPatientMessageId: resume.pending_patient_message_id != null && covered.has(resume.pending_patient_message_id)
+      ? resume.pending_patient_message_id : null,
+    retentionExpiresAt: resume.retention_expires_at};
 };

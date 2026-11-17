@@ -3,8 +3,6 @@ import {Suspense, useEffect, useRef, useState} from 'react';
 import {Navigate, Outlet, useLocation, matchPath, useNavigate} from 'react-router-dom';
 import {Header} from '../Header';
 import {Footer} from '../Footer';
-import {TokenExpiredScreen} from '../../TokenExpiredScreen';
-import {useAuthError} from '../../../hooks/useAuthError';
 import {interviewPath, ROUTES} from '../../../utils/routes';
 import {InterviewMediaProvider} from '../../../contexts/InterviewMediaContext';
 import {getActiveInterview} from '../../../services/interviews';
@@ -20,7 +18,6 @@ export const AppContainer = () => {
 
 const AccountAppContainer = () => {
   const {t} = useTranslation();
-  const {isTokenExpired} = useAuthError();
   const {user, isLoading: isUserLoading} = useUser();
   const navigate = useNavigate();
   const navigateRef = useRef(navigate);
@@ -35,9 +32,8 @@ const AccountAppContainer = () => {
   const calibrationMatch = matchPath(ROUTES.calibration, pathname);
   const sessionMatch = matchPath(ROUTES.interviewSession, pathname);
   const reviewMatch = matchPath(ROUTES.interviewReview, pathname);
-  const isPatientPreview = pathname === ROUTES.patientPreview;
   const interviewId = sessionMatch?.params.interviewId;
-  const isClinicalChat = Boolean(sessionMatch || reviewMatch || isPatientPreview);
+  const isClinicalChat = Boolean(sessionMatch || reviewMatch);
   const isInterviewFlow = Boolean(calibrationMatch || isClinicalChat);
   const activeFlowPath = calibrationMatch || sessionMatch ? pathname : null;
   const resumeInterviewId = calibrationMatch && state?.resume?.resumeAttemptId
@@ -49,7 +45,7 @@ const AccountAppContainer = () => {
 
   useEffect(() => {
     if (isUserLoading) return;
-    if (userId == null || (userRole !== 'student' && userRole !== 'doctor') || isTokenExpired) {
+    if (userId == null || (userRole !== 'student' && userRole !== 'doctor')) {
       setCheckingActiveInterview(false);
       return;
     }
@@ -80,11 +76,7 @@ const AccountAppContainer = () => {
     return () => {
       current = false;
     };
-  }, [activeFlowPath, isTokenExpired, isUserLoading, resumeInterviewId, sessionMatch?.params.interviewId, userId, userRole]);
-
-  if (isTokenExpired) {
-    return <TokenExpiredScreen />;
-  }
+  }, [activeFlowPath, isUserLoading, resumeInterviewId, sessionMatch?.params.interviewId, userId, userRole]);
 
   if (!isUserLoading && !user) {
     return <Navigate to={ROUTES.welcome} replace />;
@@ -101,7 +93,7 @@ const AccountAppContainer = () => {
 
   return (
     <SessionListsProvider user={user} interviewFlow={Boolean(sessionMatch || reviewMatch)}>
-      <InterviewMediaProvider interviewId={interviewId}>
+      <InterviewMediaProvider interviewId={interviewId} capturing={Boolean(calibrationMatch || sessionMatch)}>
         <div
           data-ui-motion="app"
           className={`app-shell flex w-full min-w-0 flex-col overflow-hidden ${calibrationMatch ? 'bg-neutral-950' : 'bg-neutral-100'}`}
@@ -109,7 +101,7 @@ const AccountAppContainer = () => {
           <a className="ui-skip-link" href="#main-content">
             {t('common.skipToContent')}
           </a>
-          {!calibrationMatch && !sessionMatch && !isPatientPreview && <Header />}
+          {!calibrationMatch && !sessionMatch && <Header />}
           <main
             ref={mainRef}
             id="main-content"
@@ -131,7 +123,7 @@ const AccountAppContainer = () => {
                 <Outlet />
               </Suspense>
             </MotionContent>
-            {!calibrationMatch && !sessionMatch && !isPatientPreview && <Footer />}
+            {!calibrationMatch && !sessionMatch && !reviewMatch && <Footer />}
           </main>
         </div>
       </InterviewMediaProvider>

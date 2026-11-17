@@ -1,7 +1,7 @@
 import {ReactNode, useCallback, useEffect, useId, useRef, useState} from 'react';
 import {useTranslation} from 'react-i18next';
 import {Message} from '../../types';
-import {loadPatientSpeechBlob, patientSpeechUrl} from '../../services/speech/patientSpeechUrl';
+import {loadPatientSpeechBlob} from '../../services/speech/patientSpeechUrl';
 import {LoaderCircle, SendHorizontal} from 'lucide-react';
 import {MotionMessage} from '../common/Motion';
 import {VoiceWave} from '../common/VoiceWave';
@@ -11,7 +11,8 @@ type ConversationTranscriptProps = {
   capturePaused?: boolean;
   interviewId: number;
   headerAction?: ReactNode;
-  startedAt?: number;
+  /** Interview-clock time (ms) of each message, from the same clock as the header timer. */
+  messageTimes?: Record<number, number>;
   messages?: Message[];
   isListening: boolean;
   audioLevel: number;
@@ -25,9 +26,10 @@ type ConversationTranscriptProps = {
   onPatientSpeakingChange: (speaking: boolean) => void;
   captureEnabled?: boolean;
   routePatientAudio?: (audio: HTMLAudioElement) => boolean | Promise<boolean>;
+  onPatientTurnPrepare?: (messageId: number) => Promise<void>;
   onPatientTurnStart?: (messageId: number, sequence: number, transcript: string) => void;
-  onPatientTurnEnd?: (messageId: number, playbackComplete: boolean) => void;
-  onPatientTurnComplete?: (messageId: number, delivery?: 'played' | 'written') => void;
+  onPatientTurnEnd?: (messageId: number, playbackComplete: boolean, continuous?: boolean) => void;
+  onPatientTurnComplete?: (messageId: number) => void;
   loadPatientAudio?: (message: Message, signal: AbortSignal) => Promise<string>;
   preparedAudio?: HTMLAudioElement | null;
   resumeAudioGraph?: (prepare?: boolean) => Promise<void>;
@@ -36,7 +38,7 @@ type ConversationTranscriptProps = {
 export const ConversationTranscript = ({
   interviewId,
   headerAction,
-  startedAt,
+  messageTimes,
   messages,
   isListening,
   audioLevel,
@@ -50,6 +52,7 @@ export const ConversationTranscript = ({
   onPatientSpeakingChange,
   captureEnabled = false,
   routePatientAudio,
+  onPatientTurnPrepare,
   onPatientTurnStart,
   onPatientTurnEnd,
   onPatientTurnComplete,
@@ -83,6 +86,13 @@ export const ConversationTranscript = ({
     audioRequestRef.current?.abort();
     audioRequestRef.current = null;
     if (audioRef.current) {
+      audioRef.current.onwaiting = null;
+      audioRef.current.onpause = null;
+      audioRef.current.onseeking = null;
+      audioRef.current.onplaying = null;
+      audioRef.current.onended = null;
+      audioRef.current.onerror = null;
+      audioRef.current.ontimeupdate = null;
       audioRef.current.pause();
       audioRef.current.removeAttribute('src');
       audioRef.current.load();
@@ -95,6 +105,8 @@ export const ConversationTranscript = ({
   }, []);
   const autoPlayedRef = useRef(new Set<number>());
   const playingMessageRef = useRef<number | null>(null);
+  const playbackContinuousRef = useRef(true);
+  const playbackOriginRef = useRef<number | null>(null);
   const pausedPlaybackRef = useRef<HTMLAudioElement | null>(null);
   const restartAudioTimeoutRef = useRef<(() => void) | null>(null);
   const wasCapturePausedRef = useRef(false);
@@ -108,7 +120,11 @@ export const ConversationTranscript = ({
     message.senderType !== 'user' && message.messageMetadata?.isNew);
   const playbackGenerationRef = useRef(0);
   const queuedPatientMessage = (audioAutoPlayEnabled || captureEnabled) && nextPatientMessage && !autoPlayedRef.current.has(nextPatientMessage.id);
-  const waitingForPatient = playingMessageId === null && (isLoading || pendingPatientMessageId !== null || Boolean(queuedPatientMessage));
+  // The student's turn stays on screen (voice bubble + spinner) until its transcript replaces it.
+  const transcribing = isSubmittingUtterance && messages?.[messages.length - 1]?.senderType !== 'user';
+  // "Thinking" ends once a specific reply is pending: then its about-to-speak bubble shows instead.
+  const waitingForPatient = playingMessageId === null && pendingPatientMessageId === null && !transcribing &&
+    (isSubmittingUtterance || isLoading || Boolean(queuedPatientMessage));
   const showStudentWave =
     playbackReady && !capturePaused && !isLoading && playingMessageId === null && !waitingForPatient && pendingPatientMessageId === null && !audioError && (isListening || isSubmittingUtterance);
 
@@ -128,19 +144,32 @@ export const ConversationTranscript = ({
     return () => document.removeEventListener('keydown', handleSendShortcut);
   }, []);
 
-  const stopAudio = useCallback((completedMessageId?: number, written = false) => {
+  const stopAudio = useCallback((completedMessageId?: number) => {
     restartAudioTimeoutRef.current = null;
     playbackGenerationRef.current += 1;
     const messageId = playingMessageRef.current;
     const playbackComplete = completedMessageId !== undefined && Boolean(audioRef.current?.ended);
+    const mediaElapsed = (audioRef.current?.currentTime ?? 0) * 1000;
+    // The student cannot interrupt the patient, so audio that reached its natural
+    // end with no real pause/seek is continuous. iOS currentTime drift and
+    // buffering stalls otherwise fail the strict wall-vs-media check and discard
+    // the playback timing window. A real pause/seek clears playbackContinuousRef.
+    const continuous = playbackContinuousRef.current && playbackOriginRef.current != null &&
+      (playbackComplete ||
+        (mediaElapsed > 0 && Math.abs(performance.now() - playbackOriginRef.current - mediaElapsed) <= 250));
+    playbackOriginRef.current = null;
+    pausedPlaybackRef.current = null;
     releaseAudio();
     playingMessageRef.current = null;
-    if (messageId !== null) onPatientTurnEnd?.(messageId, playbackComplete);
+    if (messageId !== null) {
+      if (playbackComplete !== continuous) onPatientTurnEnd?.(messageId, playbackComplete, continuous);
+      else onPatientTurnEnd?.(messageId, playbackComplete);
+    }
     setPlayingMessageId(null);
     setPendingPatientMessageId(null);
     onPatientSpeakingChange(false);
-    if (completedMessageId !== undefined && (playbackComplete || written)) {
-      onPatientTurnComplete?.(completedMessageId, written ? 'written' : 'played');
+    if (completedMessageId !== undefined && playbackComplete) {
+      onPatientTurnComplete?.(completedMessageId);
     }
   }, [onPatientSpeakingChange, onPatientTurnComplete, onPatientTurnEnd, releaseAudio]);
 
@@ -159,13 +188,13 @@ export const ConversationTranscript = ({
     }
     if (resuming && audio && pausedPlaybackRef.current === audio) {
       pausedPlaybackRef.current = null;
-      void audio.play().catch(() => {
+      void Promise.resolve(resumeAudioGraph?.()).then(() => audio.play()).catch(() => {
         setAudioError(t('clinicalChat.call.audioUnavailable'));
         setFailedPatientMessage(messages?.find((message) => message.id === playingMessageRef.current) ?? null);
         stopAudio();
       });
     }
-  }, [capturePaused, messages, stopAudio, t]);
+  }, [capturePaused, messages, resumeAudioGraph, stopAudio, t]);
 
   const playMessage = useCallback(
     async (message: Message) => {
@@ -192,44 +221,34 @@ export const ConversationTranscript = ({
       restartAudioTimeoutRef.current = resetAudioTimeout;
       resetAudioTimeout();
       try {
-        let source: string;
-        if (loadPatientAudio || preparedAudio) {
-          const request = new AbortController();
-          audioRequestRef.current = request;
-          source = loadPatientAudio
-            ? await loadPatientAudio(message, request.signal)
-            : await loadPatientSpeechBlob(interviewId, message.id, request.signal);
-          if (generation !== playbackGenerationRef.current) {
-            URL.revokeObjectURL(source);
-            return;
-          }
-          audioObjectUrlRef.current = source;
-        } else {
-          source = patientSpeechUrl(interviewId, message.id);
+        if (message.messageMetadata?.isNew && captureEnabled && onPatientTurnPrepare) {
+          void onPatientTurnPrepare(message.id).catch(failPlayback);
         }
         const audio = preparedAudio ?? new Audio();
-        if (!preparedAudio) audio.crossOrigin = 'use-credentials';
         audioRef.current = audio;
         const sequence = messages?.findIndex((candidate) => candidate.id === message.id) ?? 0;
-        audio.src = source;
-        const routing = routePatientAudio?.(audio) ?? false;
-        const routed = typeof routing === 'boolean' ? routing : await routing;
-        if (generation !== playbackGenerationRef.current) return;
-        if (captureEnabled && !routed && !audioAutoPlayEnabled) {
-          stopAudio(message.id);
-          return;
-        }
         audio.onplaying = () => {
           if (generation !== playbackGenerationRef.current) {
             audio.pause();
             return;
           }
           if (playingMessageRef.current === message.id) return;
+          playbackOriginRef.current = performance.now();
+          playbackContinuousRef.current = audio.currentTime < 0.1 || audio.currentTime === undefined;
           playingMessageRef.current = message.id;
           setPlayingMessageId(message.id);
           onPatientSpeakingChange(true);
           onPatientTurnStart?.(message.id, Math.max(sequence, 0), message.content);
         };
+        const interrupt = () => {
+          if (playingMessageRef.current === message.id && !audio.ended) playbackContinuousRef.current = false;
+        };
+        // `waiting` is buffering, not an interruption: iOS Safari fires it during
+        // normal streamed playback. Treating it as an interruption marked every
+        // patient turn non-continuous, which dropped its playback timing window.
+        // The student cannot interrupt the patient, so only a real pause/seek counts.
+        audio.onpause = interrupt;
+        audio.onseeking = interrupt;
         audio.onended = () => {
           if (generation === playbackGenerationRef.current) stopAudio(message.id);
         };
@@ -237,13 +256,42 @@ export const ConversationTranscript = ({
         audio.ontimeupdate = () => {
           if (generation === playbackGenerationRef.current) resetAudioTimeout();
         };
+        const request = new AbortController();
+        audioRequestRef.current = request;
+        const source = await (loadPatientAudio
+          ? loadPatientAudio(message, request.signal)
+          : loadPatientSpeechBlob(interviewId, message.id, request.signal));
+        if (generation !== playbackGenerationRef.current) {
+          URL.revokeObjectURL(source);
+          return;
+        }
+        audioObjectUrlRef.current = source;
+        audio.src = source;
+        let routed = false;
+        try {
+          const routing = routePatientAudio?.(audio) ?? false;
+          routed = typeof routing === 'boolean' ? routing : await routing;
+        } catch {
+          routed = false;
+        }
+        if (generation !== playbackGenerationRef.current) return;
+        if (captureEnabled && !routed && !audioAutoPlayEnabled) {
+          stopAudio(message.id);
+          return;
+        }
         const play = async () => {
           try {
             if (capturePausedRef.current) {
               pausedPlaybackRef.current = audio;
               return;
             }
-            if (resumeAudioGraph) await resumeAudioGraph();
+            if (resumeAudioGraph) {
+              try {
+                await resumeAudioGraph();
+              } catch {
+                // Keep browser-native playback available when metering cannot resume.
+              }
+            }
             await audio.play();
           } catch (error) {
             if (generation !== playbackGenerationRef.current) return;
@@ -269,7 +317,7 @@ export const ConversationTranscript = ({
         failPlayback();
       }
     },
-    [audioAutoPlayEnabled, captureEnabled, interviewId, loadPatientAudio, messages, onPatientSpeakingChange, onPatientTurnStart, playingMessageId, preparedAudio, resumeAudioGraph, routePatientAudio, stopAudio, t],
+    [audioAutoPlayEnabled, captureEnabled, interviewId, loadPatientAudio, messages, onPatientSpeakingChange, onPatientTurnPrepare, onPatientTurnStart, playingMessageId, preparedAudio, resumeAudioGraph, routePatientAudio, stopAudio, t],
   );
 
   useEffect(() => {
@@ -294,9 +342,9 @@ export const ConversationTranscript = ({
   }, []);
 
   useEffect(() => {
-    if (!playbackReady) return;
     if ((!audioAutoPlayEnabled && !captureEnabled) || !messages) return;
     if (!nextPatientMessage || autoPlayedRef.current.has(nextPatientMessage.id)) return;
+    if (captureEnabled && !playbackReady) return;
     autoPlayedRef.current.add(nextPatientMessage.id);
     void playMessage(nextPatientMessage);
   }, [audioAutoPlayEnabled, captureEnabled, messages, nextPatientMessage, playMessage, playbackReady]);
@@ -331,39 +379,43 @@ export const ConversationTranscript = ({
         <div ref={contentRef} className="mx-auto flex w-full max-w-3xl flex-col gap-layout pb-inset">
         {messages?.map((message, position) => {
           const isStudent = message.senderType === 'user';
-          const elapsed = startedAt === undefined ? NaN : (Date.parse(message.createdAt) - startedAt) / 1000;
-          const showPatientWave = !isStudent && playingMessageId === message.id;
+          const elapsed = (messageTimes?.[message.id] ?? NaN) / 1000;
+          const isPlaying = !isStudent && playingMessageId === message.id;
+          // Show the patient's audio indicator while its reply is loading, a moment before it
+          // speaks, so the participant has a heads-up; it animates idle until playback begins.
+          const isAboutToSpeak = !isStudent && !isPlaying && pendingPatientMessageId === message.id;
+          const showPatientWave = isPlaying || isAboutToSpeak;
           const preparingPatientAudio = !isStudent && !showPatientWave && (
-            pendingPatientMessageId === message.id ||
-            ((audioAutoPlayEnabled || captureEnabled) && nextPatientMessage?.id === message.id && !autoPlayedRef.current.has(message.id))
+            (audioAutoPlayEnabled || captureEnabled) && nextPatientMessage?.id === message.id && !autoPlayedRef.current.has(message.id)
           );
           if (preparingPatientAudio) return null;
           return (
             <MotionMessage
               key={`${message.senderType}-${position}`}
               aria-busy={pendingPatientMessageId === message.id && playingMessageId !== message.id || undefined}
-              newMessage={messageBaseline.current && !messageIds.current.has(message.id)}
+              // Student transcripts replace the voice bubble in place; only replies enter.
+              newMessage={!isStudent && messageBaseline.current && !messageIds.current.has(message.id)}
               className={`transcript-bubble recap-turn-bubble ${
                 isStudent ? 'recap-turn-bubble--student self-end' : 'self-start'
-              } ${showPatientWave ? 'transcript-voice-bubble' : ''}`}
+              } ${showPatientWave ? 'transcript-voice-bubble' : ''} ${isAboutToSpeak ? 'transcript-voice-bubble--pending' : ''}`}
             >
               {showPatientWave ? (
                 <>
-                  <VoiceWave speaker="patient" level={patientAudioLevel} active={!capturePaused && playingMessageId === message.id} />
+                  <VoiceWave speaker="patient" level={isPlaying ? patientAudioLevel : 0} active={!capturePaused && isPlaying} />
                 </>
               ) : (
-                <>
+                <span className="transcript-reveal">
                   <span className="whitespace-pre-wrap text-neutral-800 default-text">{message.content}</span>
                   {Number.isFinite(elapsed) && <span className="recap-turn-meta text-neutral-500 secondary-text">
                     {formatPlaybackTime(elapsed)}
                   </span>}
-                </>
+                </span>
               )}
             </MotionMessage>
           );
         })}
         <div className={showSendAudioHint && showStudentWave ? 'call-send-guide' : undefined}>
-        <div hidden={!showStudentWave} inert={!showStudentWave}>
+        <div className="transcript-status" hidden={!showStudentWave} inert={!showStudentWave}>
           <div className="min-h-0 overflow-hidden">
             <article className="recap-turn-bubble recap-turn-bubble--student transcript-voice-bubble ml-auto">
               <div className="flex items-center gap-layout">
@@ -396,7 +448,7 @@ export const ConversationTranscript = ({
           {t('clinicalChat.call.sendAudioHint')}
         </p>}
         </div>
-        <div hidden={!waitingForPatient} aria-hidden={!waitingForPatient || undefined}>
+        <div className="transcript-status" hidden={!waitingForPatient} aria-hidden={!waitingForPatient || undefined}>
           <div className="min-h-0 overflow-hidden">
             <div role={waitingForPatient ? 'status' : undefined} className="flex items-start gap-layout px-inset py-layout text-left text-neutral-500 secondary-text leading-4">
               <span className="mt-1 h-2 w-2 shrink-0 motion-safe:animate-pulse rounded-full bg-brand-500" />
@@ -411,14 +463,6 @@ export const ConversationTranscript = ({
               if (blockedPlaybackRef.current) blockedPlaybackRef.current();
               else void playMessage(failedPatientMessage);
             }}>{t(blockedPlaybackRef.current ? 'clinicalChat.call.playPatientAudio' : 'common.retry')}</button>}
-          {failedPatientMessage && (
-            <button type="button" className="ui-button ui-button--secondary"
-              onClick={() => {
-                setAudioError(null);
-                setFailedPatientMessage(null);
-                stopAudio(failedPatientMessage.id, true);
-              }}>{t('clinicalChat.call.continueWithoutPatientAudio')}</button>
-          )}
         </div>}
         </div>
       </div>

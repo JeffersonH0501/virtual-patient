@@ -60,63 +60,68 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onView, onCancel}) => 
 
   return (
     <div className="ui-panel-body max-w-full overflow-x-clip">
-      <div className="grid min-w-0 gap-x-layout gap-y-layout sm:grid-cols-3">
-        <ReadOnlyField
-          label={t('clinicalSession.patientResponseLanguage')}
-          value={t('clinicalSession.spanish')}
-        />
-
-        <div className="min-w-0">
-          <CustomSelect
-            label={t('clinicalSession.personality')}
-            id={`personality-${clinicalCase.id}`}
-            placeholder={
-              isLoadingPersonalities
-                ? t('clinicalSession.loadingPersonalities')
-                : t('clinicalSession.selectPersonality')
-            }
-            value={
-              personalityId
-                ? personalities.find((personality) => personality.id === personalityId)?.name ||
-                  ''
-                : ''
-            }
-            onChange={(value) => {
-              const selectedPersonality = personalities.find(
-                (personality) => personality.name === value,
-              );
-              setPersonalityId(selectedPersonality?.id || null);
-            }}
-            options={personalityOptions}
-            disabled={isLoadingPersonalities}
+      {/* The response language, personality and gender selectors are part of the
+          student start flow. The superuser case list (onView set) only previews
+          the case and runs calibration tests, which do not use them. */}
+      {!onView && (
+        <div className="grid min-w-0 gap-x-layout gap-y-layout sm:grid-cols-3">
+          <ReadOnlyField
+            label={t('clinicalSession.patientResponseLanguage')}
+            value={t('clinicalSession.spanish')}
           />
-        </div>
 
-        <div className="min-w-0">
-          <CustomSelect
-            label={t('clinicalSession.gender')}
-            id={`gender-${clinicalCase.id}`}
-            placeholder={t('clinicalSession.selectGender')}
-            value={
-              gender === 'male'
-                ? t('clinicalSession.male')
-                : gender === 'female'
-                  ? t('clinicalSession.female')
-                  : gender
-            }
-            onChange={(value) => {
-              const genderValue =
-                value === t('clinicalSession.male')
-                  ? 'male'
-                  : value === t('clinicalSession.female')
-                    ? 'female'
-                    : value;
-              setGender(genderValue);
-            }}
-            options={genderOptions}
-          />
+          <div className="min-w-0">
+            <CustomSelect
+              label={t('clinicalSession.personality')}
+              id={`personality-${clinicalCase.id}`}
+              placeholder={
+                isLoadingPersonalities
+                  ? t('clinicalSession.loadingPersonalities')
+                  : t('clinicalSession.selectPersonality')
+              }
+              value={
+                personalityId
+                  ? personalities.find((personality) => personality.id === personalityId)?.name ||
+                    ''
+                  : ''
+              }
+              onChange={(value) => {
+                const selectedPersonality = personalities.find(
+                  (personality) => personality.name === value,
+                );
+                setPersonalityId(selectedPersonality?.id || null);
+              }}
+              options={personalityOptions}
+              disabled={isLoadingPersonalities}
+            />
+          </div>
+
+          <div className="min-w-0">
+            <CustomSelect
+              label={t('clinicalSession.gender')}
+              id={`gender-${clinicalCase.id}`}
+              placeholder={t('clinicalSession.selectGender')}
+              value={
+                gender === 'male'
+                  ? t('clinicalSession.male')
+                  : gender === 'female'
+                    ? t('clinicalSession.female')
+                    : gender
+              }
+              onChange={(value) => {
+                const genderValue =
+                  value === t('clinicalSession.male')
+                    ? 'male'
+                    : value === t('clinicalSession.female')
+                      ? 'female'
+                      : value;
+                setGender(genderValue);
+              }}
+              options={genderOptions}
+            />
+          </div>
         </div>
-      </div>
+      )}
 
       <ActionButtons
         onCancel={onCancel}
@@ -125,15 +130,6 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onView, onCancel}) => 
         onView={onView}
         onCalibrationPreview={onView ? () => navigate(ROUTES.calibration, {state: {...configuration, calibrationTest: true}}) : undefined}
         onGazePreview={onView ? () => navigate(ROUTES.calibration, {state: {...configuration, gazeTest: true}}) : undefined}
-        onPreview={onView ? () => navigate(ROUTES.patientPreview, {
-          state: {
-            ...configuration,
-            patientName: gender === 'female' ? clinicalCase.femaleName : clinicalCase.maleName,
-            patientAge: clinicalCase.age,
-            patientWeight: clinicalCase.weightInKg,
-            personality: personalities.find((item) => item.id === personalityId),
-          },
-        }) : undefined}
       />
     </div>
   );

@@ -53,7 +53,12 @@ def redact_interview(db, interview, user, data):
                              "self_assessment_required": interview.user_id == user.id and user.role != UserRole.ADMIN and not allowed}
     if user.role == UserRole.ADMIN:
         owner = db.get(UserDB, interview.user_id)
-        data["review_access"]["can_assign_doctors"] = bool(owner and owner.role == UserRole.STUDENT and interview.status == "completed")
+        data["review_access"]["can_assign_doctors"] = bool(
+            owner and owner.role in (UserRole.STUDENT, UserRole.DOCTOR) and interview.status == "completed")
+        rating = db.get(SelfRatingDB, interview.id)
+        data["review_access"]["self_assessment_status"] = (
+            "submitted" if rating and rating.submitted_at else "in_progress" if rating else "pending"
+        )
     if user.role != UserRole.ADMIN:
         data["interview_evaluation"] = None
     if not allowed:

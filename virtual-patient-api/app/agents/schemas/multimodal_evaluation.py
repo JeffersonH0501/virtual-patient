@@ -4,6 +4,11 @@ from pydantic import BaseModel, Field, field_validator
 from .evaluation import EvaluationResult
 
 
+class CategoryFeedback(BaseModel):
+    """Output of the comment call that follows the score of a multimodal category."""
+    feedback: str = Field(..., min_length=1, description="Feedback comment for the already assigned score")
+
+
 class CriticalTurn(BaseModel):
     turn_id: str = Field(description="Persistent InterviewTurnDB UUID included in the conversation")
     annotation: str = Field(min_length=1, description="Observed issue and its contextual effect on the criterion")

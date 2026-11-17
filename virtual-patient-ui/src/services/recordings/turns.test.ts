@@ -1,12 +1,11 @@
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
-import {turnFetch, turnJson, subscribeTurnConnection, resumeTurnInterview} from './turns';
+import {turnFetch, turnJson, subscribeTurnConnection, resumeTurnInterview, turnUploadQueue, forgetTurnQueue} from './turns';
 import {sendMessage} from '../interviews/sendMessage';
 import type {LocalInterviewTurn} from '../../recording/InterviewTurnStore';
 import type {StudentCaptureTiming} from '../../types/recording';
 
-const state = vi.hoisted(() => ({owner: 'one', rows: new Map<string, LocalInterviewTurn>(), coordinator: vi.fn(), original: vi.fn()}));
+const state = vi.hoisted(() => ({owner: 'one', rows: new Map<string, LocalInterviewTurn>(), original: vi.fn()}));
 vi.mock('../auth/authHeaders', () => ({getAuthHeaders: () => ({Authorization: `Bearer header.${btoa(JSON.stringify({sub: state.owner}))}.signature`})}));
-vi.mock('../../recording/CaptureCoordinator', () => ({captureCoordinator: state.coordinator}));
 vi.mock('../../recording/InterviewTurnStore', () => ({InterviewTurnStore: class {
   async purgeExpired() {
     return;
@@ -35,7 +34,7 @@ vi.mock('../../recording/InterviewTurnStore', () => ({InterviewTurnStore: class 
   }
 }}));
 beforeEach(() => {
-  vi.useFakeTimers(); state.owner = 'one'; state.rows.clear(); state.coordinator.mockReset(); state.original.mockReset();
+  vi.useFakeTimers(); state.owner = 'one'; state.rows.clear(); state.original.mockReset();
 });
 afterEach(() => {
   vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks();
@@ -99,27 +98,35 @@ it('persists the message key before sending and binds the response to that turn'
   } as StudentCaptureTiming);
   expect(state.rows.get('turn')?.metadata.message_id).toBe(1);
   expect(state.rows.get('turn')?.pendingContent).toBeUndefined();
-  expect(state.coordinator).not.toHaveBeenCalled();
 });
 
-const recoveryRoutes = (known = false) => {
+const recoveryRoutes = (known = false, patient = false) => {
   const turn: LocalInterviewTurn = {id: 'local', scope: 'one:1', requestId: 'stable', state: 'closed', mimeType: 'video/webm',
     chunks: 2, confirmedEndMs: 2000, expiresAt: new Date(Date.now() + 86400_000).toISOString(),
     metadata: {capture_attempt_id: 'capture', order: 0, duration_ms: 2000, message_id: 5, speaker: 'student', session_clock_ms: 0}};
+  if (patient) {
+    turn.state = 'capturing';
+    turn.metadata.speaker = 'patient';
+    delete turn.metadata.message_id;
+  }
   state.rows.set(turn.id, turn);
   let uploaded = known;
   const gaps: number[] = [];
   const fetch = vi.fn(async (url: string, init: RequestInit) => {
     let body: unknown;
     if (url.endsWith('/recording/resume')) body = {resume_attempt_id: 'resume', previous_segment_id: 'capture', offset_ms: 0, pending_patient_message_id: 10};
-    else if (url.endsWith('/messages')) body = {messages: [{id: 5, sender_type: 'user'}, {id: 10, sender_type: 'patient'}]};
+    else if (url.endsWith('/messages')) body = {messages: [{id: 5, sender_type: 'user'},
+      {id: 10, sender_type: 'patient', message_metadata: {client_request_id: 'stable'}}]};
     else if (url.endsWith('/recording/turns')) {
       body = {duration_ms: uploaded ? 2000 : null, turns: uploaded ? [{
-        turn_media_id: 'local', message_id: 5, session_clock_ms: 0, metadata: turn.metadata,
+        turn_media_id: 'local', message_id: patient ? 10 : 5, session_clock_ms: 0, metadata: turn.metadata,
         student_video_source: '/original', sha256: 'a'.repeat(64), duration_ms: 2000}] : []};
     } else if (url.endsWith('/recording/turns/local/video')) {
       uploaded = true;
       expect(new Headers(init.headers).get('X-Resume-Attempt')).toBe('resume');
+      if (patient) expect(JSON.parse(String((init.body as FormData).get('metadata')))).toMatchObject({
+        speaker: 'patient', message_id: 10, playback_complete: false, playback_start_ms: null, playback_end_ms: null,
+      });
       body = {turn_media_id: 'local', preserved: true, sha256: 'a'.repeat(64), metadata_hash: 'b'.repeat(64)};
     } else if (url.endsWith('/recording/turns/recovery')) {
       gaps.push(...JSON.parse(String(init.body)).missing_message_ids); body = {recorded: true};
@@ -139,12 +146,21 @@ it('recovers an available turn before calibration', async () => {
   expect(state.rows.size).toBe(0);
 });
 
+it('recovers patient camera by its exchange ID without fabricating a playback window', async () => {
+  const {gaps} = recoveryRoutes(false, true);
+  state.original.mockResolvedValue(new File(['original'], 'turn.webm', {type: 'video/webm'}));
+  const resume = await resumeTurnInterview(1, 'resume-request');
+  expect(resume.recoveredPatientMessageId).toBe(10);
+  expect(gaps).toEqual([5]);
+  expect(state.rows.size).toBe(0);
+});
+
 it('keeps unreadable local originals and records absence without blocking the resume dialog', async () => {
   const {gaps} = recoveryRoutes();
   state.original.mockRejectedValue(new Error('Synthetic missing file'));
   vi.spyOn(console, 'warn').mockImplementation(() => undefined);
   await resumeTurnInterview(1, 'resume-request');
-  expect(gaps).toEqual([5]);
+  expect(gaps).toEqual([5, 10]);
   expect(state.rows.get('local')?.state).toBe('closed');
 });
 
@@ -160,8 +176,62 @@ it('records lost evidence when resuming in another browser with no local checkpo
   const {gaps} = recoveryRoutes();
   state.rows.clear();
   await resumeTurnInterview(1, 'resume-request');
-  expect(gaps).toEqual([5]);
+  expect(gaps).toEqual([5, 10]);
   expect(state.original).not.toHaveBeenCalled();
+});
+
+it('repeats the resume after a reload without sending an original twice', async () => {
+  const {fetch} = recoveryRoutes();
+  state.original.mockResolvedValue(new File(['original'], 'turn.webm', {type: 'video/webm'}));
+  await resumeTurnInterview(1, 'resume-request');
+  // The same request after another reload (or a double click): the server answers the same attempt and nothing is pending locally.
+  await resumeTurnInterview(1, 'resume-request');
+  expect(fetch.mock.calls.filter((call) => call[1].method === 'PUT')).toHaveLength(1);
+  expect(state.original).toHaveBeenCalledTimes(1);
+});
+
+it('carries the status and the code of a rejected request so callers can tell a verdict from a fault', async () => {
+  vi.stubGlobal('fetch', vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({detail: {code: 'stale_capture'}}), {status: 409}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({detail: 'Interview not found'}), {status: 404}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({}), {status: 500})));
+  await expect(turnJson(1, '/recording/segments')).rejects.toMatchObject({status: 409, code: 'stale_capture', transient: false});
+  await expect(turnJson(1, '/recording/segments')).rejects.toMatchObject({status: 404, code: 'Interview not found', transient: false});
+  await expect(turnJson(1, '/recording/segments')).rejects.toMatchObject({status: 500, transient: true});
+});
+
+it('retries a busy server by itself and a slow upload does not create a second request', async () => {
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response('{}', {status: 503}))
+    .mockResolvedValueOnce(new Response('{}', {status: 504}))
+    .mockResolvedValueOnce(new Response('{"segment_id":"s"}'));
+  vi.stubGlobal('fetch', fetch);
+  const answer = turnJson(1, '/recording/segments', {method: 'POST', body: 'same-start-request'});
+  await vi.advanceTimersByTimeAsync(300 + 600);
+  await expect(answer).resolves.toEqual({segment_id: 's'});
+  expect(fetch.mock.calls.map((call) => call[1].body)).toEqual(['same-start-request', 'same-start-request', 'same-start-request']);
+});
+
+it('keeps an original that the server failed to store and sends it again when asked, then releases it', async () => {
+  const turn: LocalInterviewTurn = {id: 'late', scope: 'one:1', requestId: 'r', state: 'closed', mimeType: 'video/webm',
+    chunks: 2, confirmedEndMs: 2000, expiresAt: new Date(Date.now() + 86400_000).toISOString(),
+    metadata: {capture_attempt_id: 'capture', order: 0, duration_ms: 2000, message_id: 5, speaker: 'student', session_clock_ms: 0}};
+  state.rows.set(turn.id, turn);
+  state.original.mockResolvedValue(new File(['original'], 'turn.webm', {type: 'video/webm'}));
+  const fetch = vi.fn()
+    .mockResolvedValueOnce(new Response(JSON.stringify({detail: 'Internal error'}), {status: 500}))
+    .mockResolvedValueOnce(new Response(JSON.stringify({turn_media_id: 'late', preserved: true, sha256: 'a'.repeat(64), metadata_hash: 'b'.repeat(64)})));
+  vi.stubGlobal('fetch', fetch);
+  forgetTurnQueue(1);
+  const queue = turnUploadQueue(1, () => 'capture');
+  await expect(queue.enqueue(turn)).rejects.toMatchObject({status: 500});
+  // The failure left the local original untouched.
+  expect(state.rows.get('late')?.state).toBe('closed');
+  expect(queue.retryTransient()).toBe(1);
+  await queue.drain();
+  expect(fetch).toHaveBeenCalledTimes(2);
+  expect(state.rows.has('late')).toBe(false);
+  forgetTurnQueue(1);
 });
 
 it('bounds every network step of forced recovery with one cancellation signal', async () => {

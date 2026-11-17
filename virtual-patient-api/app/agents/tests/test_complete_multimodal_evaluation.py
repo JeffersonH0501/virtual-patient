@@ -54,14 +54,22 @@ MESSAGES = [
 
 
 @pytest.mark.parametrize("aspect", list(MULTIMODAL_EVALUATION_CONFIG))
-def test_original_prompt_is_preserved_as_exact_prefix(aspect):
+def test_multimodal_scoring_prompt_is_the_text_prompt_plus_one_evidence_block(aspect):
     for language in ("English", "Spanish"):
-        original = get_evaluation_prompts(language)[aspect]
-        enriched = MULTIMODAL_EVALUATION_CONFIG[aspect]["prompt"](language)
-        assert enriched.startswith(original)
-        assert "Relevant multimodal evidence:" in enriched[len(original):]
-        assert "Critical Turns" not in enriched and "Learning Moments" not in enriched
-        assert "Missing or unavailable multimodal evidence must not be penalized" in enriched
+        unimodal = get_evaluation_prompts(language)[aspect]
+        multimodal = MULTIMODAL_EVALUATION_CONFIG[aspect]["prompt"](language)
+        assert multimodal != unimodal
+        # The two conditions must differ only in the evidence: removing the block returns the text prompt exactly.
+        start = unimodal.index("\nInstructions:")
+        assert multimodal[:start] == unimodal[:start]
+        block = multimodal[start:multimodal.index("\nInstructions:", start)]
+        assert "Multimodal evidence:" in block and "must NOT be penalized" in block
+        assert multimodal[:start] + multimodal[start + len(block):] == unimodal
+        assert "Score: X/5" in multimodal and language in multimodal
+        # The long comment is written by a second call that does not score.
+        feedback_prompt = MULTIMODAL_EVALUATION_CONFIG[aspect]["feedback_prompt"](language)
+        assert "do not change or discuss the score" in feedback_prompt and "positive first and improvement last" in feedback_prompt
+        assert language in feedback_prompt and "{" not in feedback_prompt
 
 
 def test_matched_control_preserves_text_and_ids_without_multimodal_labels():
@@ -92,10 +100,10 @@ def test_transcript_is_identical_and_unmatched_messages_survive(aspect):
 
 @pytest.mark.parametrize("aspect,patient_families,doctor_families", [
     ("show_interest", ["Visual orientation", "Head gestural feedback", "Smile behavior"],
-     ["Visual orientation", "Head gestural feedback", "Smile behavior"]),
+     []),
     ("show_empathy", ["Visual orientation", "Head gestural feedback", "Smile behavior"],
-     ["Visual orientation", "Head gestural feedback", "Smile behavior", "Prosodic level", "Prosodic modulation"]),
-    ("speak_clearly", [], ["Temporal speech pattern", "Prosodic modulation"]),
+     ["Visual orientation", "Head gestural feedback", "Smile behavior", "Temporal speech pattern", "Prosodic level", "Prosodic modulation"]),
+    ("speak_clearly", [], ["Temporal speech pattern", "Prosodic level", "Prosodic modulation"]),
 ])
 def test_evidence_allowlist_filters_by_category_and_speaker(aspect, patient_families, doctor_families):
     formatted = MultimodalConversationFormatter.format_messages(MESSAGES[:2], turns(), aspect)
@@ -240,31 +248,32 @@ def test_metadata_exposes_only_three_enriched_categories_with_original_criteria(
         assert all(item["multimodal_evaluation_aspects"] == item["evidence"] for item in metadata)
 
 
-def test_real_agent_calls_only_three_enriched_categories_without_contextual_feedback():
+def test_real_agent_scores_with_the_text_call_and_writes_the_comment_in_a_second_call():
     agent = EvaluationAgent()
     conversations = {aspect: MultimodalConversationFormatter.format_messages(MESSAGES, turns(), aspect)
                      for aspect in MULTIMODAL_EVALUATION_CONFIG}
-    model = SimpleNamespace(ainvoke=AsyncMock(side_effect=[{
-        "parsed": None,
-        "raw": SimpleNamespace(tool_calls=[{"args": {
-            "aspect": aspect, "score": 4, "feedback": f"Feedback {aspect}",
-            "critical_turns": [{"turn_id": identifier, "annotation": "A contextual issue."}
-                               for identifier in ("invented", "turn-1", "turn-1", "turn-2")],
-        }}]),
-    } for aspect in MULTIMODAL_EVALUATION_CONFIG]))
+    scoring = SimpleNamespace(ainvoke=AsyncMock(side_effect=[
+        EvaluationResult(aspect=aspect, score=4, feedback="Short") for aspect in MULTIMODAL_EVALUATION_CONFIG]))
+    commenting = SimpleNamespace(ainvoke=AsyncMock(side_effect=[
+        SimpleNamespace(feedback=f"Comment {aspect}") for aspect in MULTIMODAL_EVALUATION_CONFIG]))
+    agent.structured_model = scoring
     agent.llm = MagicMock()
-    agent.llm.with_structured_output.return_value = model
+    agent.llm.with_structured_output.return_value = commenting
     results = asyncio.run(agent.evaluate_multimodal(conversations))
-    assert [item.aspect for item in results] == list(MULTIMODAL_EVALUATION_CONFIG)
-    assert model.ainvoke.await_count == 3
-    for item, call in zip(results, model.ainvoke.await_args_list):
-        assert "critical_turns" not in item.model_dump()
-        assert conversations[item.aspect].text in call.args[0][1].content
-    # No fallback call when all authorized evidence becomes unavailable.
+    assert [(item.aspect, item.score, item.feedback) for item in results] == [
+        (aspect, 4, f"Comment {aspect}") for aspect in MULTIMODAL_EVALUATION_CONFIG]
+    assert scoring.ainvoke.await_count == 3 and commenting.ainvoke.await_count == 3
+    for aspect, score_call, comment_call in zip(MULTIMODAL_EVALUATION_CONFIG, scoring.ainvoke.await_args_list, commenting.ainvoke.await_args_list):
+        # The score call is worded exactly like the text-only call and carries the enriched conversation.
+        assert score_call.args[0][1].content.startswith(f"Please evaluate the following medical interview conversation for {aspect}:")
+        assert conversations[aspect].text in score_call.args[0][1].content
+        # The comment call sees the score but cannot change it.
+        assert "Score already assigned" in comment_call.args[0][1].content and "4" in comment_call.args[0][1].content
+    # No call when all authorized evidence becomes unavailable.
     empty = {aspect: MultimodalConversationFormatter.format_messages(MESSAGES, [], aspect)
              for aspect in MULTIMODAL_EVALUATION_CONFIG}
     assert asyncio.run(agent.evaluate_multimodal(empty)) == []
-    assert model.ainvoke.await_count == 3
+    assert scoring.ainvoke.await_count == 3 and commenting.ainvoke.await_count == 3
 
 
 def test_partial_valid_evidence_remains_available_but_unknown_or_invalid_labels_do_not():

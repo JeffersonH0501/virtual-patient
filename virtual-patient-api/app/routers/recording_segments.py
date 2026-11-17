@@ -10,7 +10,9 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.controllers.interview_lifecycle import require_capture_open
-from app.controllers.recording_segments import owned_interview as _owned_interview, latest_segment, lock_recording, pending_patient_message, seal_segment
+from app.controllers.recording_segments import (
+    owned_interview as _owned_interview, latest_segment, lock_recording, pending_patient_message, require_active_segment, seal_segment,
+)
 from app.core.database import get_db
 from app.media.retention import media_retention_deadline
 from app.media.upload_route import RecordingUploadRoute
@@ -122,6 +124,11 @@ def start_segment(
         if (recording is None or existing.recording_id != recording.id or
                 (existing.capture_config or {}).get("_start_request") != requested):
             raise HTTPException(status_code=409, detail="Segment request ID is already in use")
+        # A replay also tells a client that lost its connection whether this segment can still write: it creates
+        # nothing, answers 409 `capture_closed` once the interview or recording ended and 409 `stale_capture`
+        # once the segment was sealed or replaced (for example by a resume).
+        require_capture_open(interview)
+        require_active_segment(db, interview_id, existing.id, recording=recording)
         return {"segment_id": existing.id, "offset_ms": existing.offset_ms,
                 "retention_expires_at": recording.retention_expires_at}
     require_capture_open(interview)

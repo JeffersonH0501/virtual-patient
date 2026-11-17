@@ -47,17 +47,23 @@ class MedicalInterviewController:
         if not interviews:
             return {}
         confirmed = case((and_(InterviewRecordingDB.status.in_(["ready", "partial"]),
-                              InterviewRecordingDB.ended_at.isnot(None)), InterviewRecordingDB.duration_ms))
-        rows = self.db.query(MedicalInterviewDB.id, func.coalesce(confirmed, func.max(InterviewTurnDB.end_ms))).outerjoin(
+                               InterviewRecordingDB.ended_at.isnot(None)), InterviewRecordingDB.duration_ms))
+        rows = self.db.query(
+            MedicalInterviewDB.id,
+            func.coalesce(confirmed, func.max(InterviewTurnDB.end_ms)),
+        ).outerjoin(
             InterviewRecordingDB, InterviewRecordingDB.medical_interview_id == MedicalInterviewDB.id,
-        ).outerjoin(InterviewTurnDB, InterviewTurnDB.medical_interview_id == MedicalInterviewDB.id).filter(
+        ).outerjoin(
+            InterviewTurnDB, InterviewTurnDB.medical_interview_id == MedicalInterviewDB.id,
+        ).filter(
             MedicalInterviewDB.id.in_([interview.id for interview in interviews]),
-        ).group_by(MedicalInterviewDB.id, InterviewRecordingDB.status, InterviewRecordingDB.ended_at,
-                   InterviewRecordingDB.duration_ms).all()
+        ).group_by(
+            MedicalInterviewDB.id, InterviewRecordingDB.status, InterviewRecordingDB.ended_at,
+            InterviewRecordingDB.duration_ms,
+        ).all()
         result = {identifier: duration // 1000 if duration is not None else None for identifier, duration in rows}
+
         from app.models.turn_media import InterviewTurnMediaDB
-        # Per-turn transport: the recording spans up to the end of its last turn
-        # media on the common session clock (session_clock_ms + duration_ms).
         turn_durations = self.db.query(
             InterviewRecordingDB.medical_interview_id,
             func.max(InterviewTurnMediaDB.session_clock_ms + func.coalesce(InterviewTurnMediaDB.duration_ms, 0)),

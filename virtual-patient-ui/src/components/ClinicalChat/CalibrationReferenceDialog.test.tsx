@@ -21,24 +21,25 @@ it('retains a not-passed checkpoint label when an experiment was allowed to cont
     mediaUrl:null,usedFor:[],metadata:{},result:{passed:false,experimentalQualityBypass:true,
       quality:{leaveOneTargetOut:{medianNormalizedError:.159,p90NormalizedError:.238}}}}]});
   view();
-  fireEvent.click(screen.getByRole('button',{name:'Calibration'}));
+  fireEvent.click(screen.getByRole('button',{name:'Technical details'}));
   await screen.findByText('Gaze: Not passed');
   expect(screen.getByText(/quality limits were not passed/)).toBeDefined();
 });
 
-it('loads only when opened and shows retained video, checkpoint results and accepted references', async () => {
+it('loads only when opened and shows attempts before interview timings', async () => {
   api.load.mockResolvedValue({calibration: {status: 'passed'}, captures: [{id: 'capture', stage: 'unified', durationMs: 23000,
-    mediaUrl: '/medical-interviews/76/calibration/captures/capture/video', usedFor: ['gaze'], metadata: {targets: []},
+    mediaUrl: '/medical-interviews/76/calibration/captures/capture/video', usedFor: ['gaze'], turnRange: {start: 2, end: 8}, metadata: {targets: []},
     result: {gaze: {passed: true, quality: {coveredTargets: 9}}, camera: {passed: false, quality: {cameraRadiusP90: .7}}}}]});
   const {container} = view();
   expect(api.load).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', {name: 'Calibration'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Technical details'}));
   await screen.findByText('Gaze: Passed');
   expect(screen.getByText('Camera: Not passed')).toBeTruthy();
   expect(screen.getByText('Used for this interview: Gaze.')).toBeTruthy();
+  expect(screen.getByText('Attempt 1 · Gaze and camera · Turns 2 to 8')).toBeTruthy();
   expect(container.querySelector('video')?.getAttribute('src')).toContain('/76/calibration/captures/capture/video');
   expect(screen.getByText('Points with sufficient data (out of 9)')).toBeTruthy();
-  expect(screen.getByText('View the accepted interview calibration')).toBeTruthy();
+  expect(container.querySelectorAll('details')).toHaveLength(0);
   fireEvent.error(container.querySelector('video')!);
   expect(screen.getByRole('alert').textContent).toBe(en.calibrationReference.videoUnavailable);
   fireEvent.click(screen.getByRole('button', {name: 'Close'}));
@@ -48,7 +49,7 @@ it('loads only when opened and shows retained video, checkpoint results and acce
 it('shows legacy absence and retries failed loading', async () => {
   api.load.mockRejectedValueOnce(new Error('Synthetic network failure')).mockResolvedValueOnce({calibration: null, captures: []});
   view();
-  fireEvent.click(screen.getByRole('button', {name: 'Calibration'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Technical details'}));
   await screen.findByRole('alert');
   fireEvent.click(screen.getByRole('button', {name: 'Try again'}));
   expect(await screen.findByText(en.calibrationReference.empty)).toBeTruthy();
@@ -57,7 +58,7 @@ it('shows legacy absence and retries failed loading', async () => {
 it('keeps diagnostics available when video retention has expired', async () => {
   api.load.mockResolvedValue({calibration: null, captures: [{id: 'expired', stage: 'camera', durationMs: 5000, mediaUrl: null, usedFor: [], metadata: {}, result: {passed: false}}]});
   const {container} = view();
-  fireEvent.click(screen.getByRole('button', {name: 'Calibration'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Technical details'}));
   expect(await screen.findByText(en.calibrationReference.videoUnavailable)).toBeTruthy();
   expect(screen.getByText('Camera: Not passed')).toBeTruthy();
   expect(container.querySelector('video')).toBeNull();
@@ -81,7 +82,7 @@ it('sums measured processing times across calibration and guided captures', asyn
       }}},
   ]});
   view();
-  fireEvent.click(screen.getByRole('button', {name: 'Calibration'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Technical details'}));
   expect(await screen.findByText('Total test processing time (all captures): 5.75 s')).toBeTruthy();
   expect(screen.getByText('Total processing time: 3.50 s')).toBeTruthy();
 });
@@ -91,7 +92,7 @@ it('does not invent a complete total when a historical capture has no measuremen
     {id: 'legacy', stage: 'camera', durationMs: 5000, mediaUrl: null, usedFor: [], metadata: {}, result: {passed: true}},
   ]});
   view();
-  fireEvent.click(screen.getByRole('button', {name: 'Calibration'}));
+  fireEvent.click(screen.getByRole('button', {name: 'Technical details'}));
   await screen.findByText('Camera: Passed');
   expect(screen.queryByText(/Total test processing time/)).toBeNull();
 });

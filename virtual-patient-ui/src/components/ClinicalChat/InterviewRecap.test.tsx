@@ -13,6 +13,7 @@ vi.mock('react-i18next', async (importOriginal) => ({
 vi.mock('../../services/recordings', () => ({
   resolveRecordingSource: (source: string) => source,
   getInterviewRecap: vi.fn(async () => ({interviewId: 7, recordingStatus: 'complete', durationMs: 60000,
+    replay: {status: 'ready', progress: 100, source: '/replay.mp4'},
     turnMedia: [{turnMediaId: 'one', sessionClockMs: 0, durationMs: 60000, studentVideoSource: '/student.webm', messageId: 2, metadata: {messageId: 2, sessionClockMs: 0}}],
     turns: [{turnId: 'real-uuid', speaker: 'patient', startMs: 16000, endMs: 18000, transcript: 'A concern', inputSource: 'audio', timingSource: 'recording', timingQuality: 'measured'}]})),
 }));
@@ -26,7 +27,7 @@ it('allows the superuser to open turn details and closes them when that role is 
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   const {rerender} = render(<InterviewRecap interviewId={7} />);
   await screen.findByText('A concern');
-  fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.recap.turnInfo'}));
+  fireEvent.click(screen.getByRole('button', {name: /^clinicalChat\.recap\.turnInfo/}));
   expect(screen.getByText('clinicalChat.recap.turnDetails')).toBeTruthy();
   actor.role = 'student';
   rerender(<InterviewRecap interviewId={7} />);
@@ -58,7 +59,7 @@ it('closes technical details when evidence becomes unavailable during processing
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   const {rerender} = render(<InterviewRecap interviewId={7} />);
   await screen.findByText('A concern');
-  fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.recap.turnInfo'}));
+  fireEvent.click(screen.getByRole('button', {name: /^clinicalChat\.recap\.turnInfo/}));
   expect(screen.getByText('clinicalChat.recap.turnDetails')).toBeTruthy();
   rerender(<InterviewRecap interviewId={7} infoDisabled />);
   expect(screen.queryByText('clinicalChat.recap.turnDetails')).toBeNull();
@@ -73,7 +74,7 @@ it('preserves turn timing, numeric formatting and unavailable evidence in detail
   }]});
   render(<InterviewRecap interviewId={7} />);
   await screen.findByText('Synthetic details');
-  fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.recap.turnInfo'}));
+  fireEvent.click(screen.getByRole('button', {name: /^clinicalChat\.recap\.turnInfo/}));
   expect(screen.getByText('0:02 (2000 ms)')).toBeDefined();
   expect(screen.getByText('123.457')).toBeDefined();
   expect(screen.getByText('clinicalChat.recap.nonverbalUnavailable')).toBeDefined();
@@ -82,7 +83,6 @@ it('preserves turn timing, numeric formatting and unavailable evidence in detail
 it('does not show the previous recap while the next interview is loading', async () => {
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.mocked(getInterviewRecap).mockResolvedValueOnce({interviewId: 7, recordingStatus: 'ready', durationMs: 1000,
-    blocks: [{blockId: 'old', offsetMs: 0, durationMs: 1000, studentVideoSource: '/old.webm', metadata: {}}],
     turns: [{turnId: 'old', speaker: 'student', transcript: 'A concern', inputSource: 'microphone', timingSource: 'block_speech', timingQuality: 'measured'}]});
   const {rerender} = render(<InterviewRecap interviewId={7} />);
   await screen.findByText('A concern');
@@ -97,8 +97,9 @@ it('does not show the previous recap while the next interview is loading', async
 
 it('keeps confirmed recap media on a polling error and offers a retry', async () => {
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
-  const saved = {interviewId: 7, recordingStatus: 'ready' as const, durationMs: 1000, blocks: [{blockId: 'kept', offsetMs: 0, durationMs: 1000, studentVideoSource: '/kept.webm', patientAudioSource: null, metadata: {patientMessageId: 1}}],
-    turns: [], observationProcessing: {status: 'queued'}};
+  const saved = {interviewId: 7, recordingStatus: 'ready' as const, durationMs: 1000,
+    replay: {status: 'ready' as const, progress: 100, source: '/kept.mp4'},
+    turns: [], observationProcessing: {status: 'queued' as const}};
   vi.mocked(getInterviewRecap).mockResolvedValueOnce(saved).mockRejectedValueOnce(new Error('Synthetic network failure'));
   vi.useFakeTimers();
   let container!: HTMLElement;
@@ -117,4 +118,21 @@ it('keeps confirmed recap media on a polling error and offers a retry', async ()
   });
   expect(screen.queryByRole('alert')).toBeNull();
   expect(container.querySelector('video')).toBe(video);
+});
+
+it('shows the replay progress while it is prepared and the video once it is ready', async () => {
+  vi.useFakeTimers();
+  vi.mocked(getInterviewRecap)
+    .mockResolvedValueOnce({interviewId: 7, recordingStatus: 'ready', durationMs: 1000, turns: [], replay: {status: 'processing', progress: 40}})
+    .mockResolvedValueOnce({interviewId: 7, recordingStatus: 'ready', durationMs: 1000, turns: [], replay: {status: 'ready', progress: 100, source: '/replay.mp4'}});
+  let container!: HTMLElement;
+  await act(async () => {
+    container = render(<InterviewRecap interviewId={7} />).container;
+  });
+  expect(screen.getByRole('status').textContent).toContain('clinicalChat.recap.preparing');
+  expect(container.querySelector('video')).toBeNull();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1500);
+  });
+  expect(container.querySelector('video')?.getAttribute('src')).toBe('/replay.mp4');
 });

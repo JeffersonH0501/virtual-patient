@@ -6,9 +6,14 @@ import logging
 
 from app.agents.evaluation_agent import EvaluationAgent
 from app.core.database import SessionLocal
+from app.controllers.interview_evaluation_controller import InterviewEvaluationController
+from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.models.medical_interview import MedicalInterviewDB, InterviewRecordingDB
+from app.models.medical_interview.interview_evaluation import EvaluationCondition, InterviewEvaluationCreate
+from app.agents.schemas.evaluation import EvaluationResult
 from app.utils.language import convert_language_code_to_name
-from app.multimodal.evaluation_service import evaluate_and_store_multimodal
+from app.multimodal.evaluation_service import evaluate_and_store_multimodal, validate_text_control
+from app.multimodal.evaluation_runs import stage_evaluation_run
 
 
 logger = logging.getLogger(__name__)
@@ -32,7 +37,7 @@ async def reprocess_interview_evaluation(
     interview_id: int,
     recording_id: str,
 ) -> None:
-    """Replace the multimodal evaluation using already persisted evidence."""
+    """Regenerate both automatic conditions using the saved interview and evidence."""
     await _evaluate_saved_evidence(interview_id, recording_id)
 
 
@@ -98,13 +103,51 @@ async def _evaluate_saved_evidence(interview_id: int, recording_id: str) -> None
             patient_gender=interview.patient_gender,
         )
 
-        # Review refresh never changes or recreates the text-only control.
-        evaluation_results = await evaluate_and_store_multimodal(db, interview_id, agent)
+        source = MedicalInterviewController(db)
+        source_data = source.get_interview_evaluation_data(interview_id)
+        canonical_messages = source.format_messages_for_evaluation(source_data["messages"])
+        from app.routers.medical_interviews import _ensure_final_summary
+        source_data["progress_summary"] = await _ensure_final_summary(
+            db, interview_id, source_data, canonical_messages,
+        )
+        text_results = await agent.evaluate_all_aspects(
+            conversation_messages=canonical_messages,
+            clinical_case=source_data["clinical_case"],
+            progress_summary=source_data["progress_summary"],
+            hypotheses=source_data.get("hypotheses", []),
+            aspects=[
+                "general_communication", "completeness", "show_interest",
+                "show_empathy", "speak_clearly", "open_communication",
+            ],
+        )
+        validate_text_control(text_results)
+        controller = InterviewEvaluationController(db)
+        text_payload = InterviewEvaluationCreate(
+            evaluation_condition=EvaluationCondition.TEXT_ONLY,
+            evaluation_results=text_results,
+            overall_score=controller.calculate_overall_score(text_results),
+        )
+        stage_evaluation_run(db, interview_id, text_payload.evaluation_condition, agent, {
+            "canonical_messages": canonical_messages,
+            "clinical_case": source_data["clinical_case"],
+            "progress_summary": source_data["progress_summary"],
+            "hypotheses": source_data.get("hypotheses", []),
+            "prompts": agent.evaluation_prompts,
+            "output_schema": EvaluationResult.model_json_schema(),
+        }, text_payload)
+        if controller.update_evaluation(interview_id, text_payload, commit=False) is None:
+            controller.create_evaluation(interview_id, text_payload, commit=False)
+
+        # The multimodal update commits both automatic conditions together.
+        # If it fails, the worker rolls back the new text run and result as well.
+        evaluation_results = await evaluate_and_store_multimodal(
+            db, interview_id, agent, canonical_messages=canonical_messages,
+        )
         _set_evaluation_status(db, recording_id, "complete" if evaluation_results else "unavailable")
 
         logger.info(
             "reprocess_interview interview_id=%s recording_id=%s stage=evaluation "
-            "condition=TEXT_PLUS_MULTIMODAL result=persisted aspect_count=%s",
+            "conditions=TEXT_ONLY,TEXT_PLUS_MULTIMODAL result=persisted aspect_count=%s",
             interview_id,
             recording_id,
             len(evaluation_results),

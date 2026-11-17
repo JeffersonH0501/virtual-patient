@@ -1,0 +1,5 @@
+Multimodal evidence: some turns include observations of the doctor's behavior. Under "DOCTOR BEHAVIOR WHILE LISTENING" (patient turns): visual orientation, head gestural feedback (nods) and smile behavior while the patient spoke. Under "DOCTOR BEHAVIOR WHILE SPEAKING" (doctor turns): temporal speech pattern (pace and pauses), prosodic level (loudness relative to the doctor's other turns) and prosodic modulation (variation in intonation) while the doctor answered.
+- The transcript remains the main basis of the score. First find where the patient expressed a concern, worry, fear or sadness and judge the doctor's verbal response; use the observations only around those moments.
+- They describe observable behavior, not empathy, warmth or any internal state. Looking, nodding, smiling or a given tone do not prove empathy by themselves, and a behavior must be read against what was being said.
+- Missing, partial or unavailable evidence must NOT be penalized. The absence of nods or smiles is neutral information.
+- The observations always describe the DOCTOR, never the patient.

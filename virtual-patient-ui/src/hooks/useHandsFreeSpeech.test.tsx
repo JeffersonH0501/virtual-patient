@@ -6,19 +6,19 @@ import {SpeechInputCallbacks} from '../speech/SpeechInputProvider';
 const provider = vi.hoisted(() => ({callbacks: null as SpeechInputCallbacks | null,
   instances: [] as {start: ReturnType<typeof vi.fn>; pause: ReturnType<typeof vi.fn>}[]}));
 vi.mock('../speech/ServerSpeechTranscriptionProvider', () => ({
-  ServerSpeechTranscriptionProvider: vi.fn().mockImplementation((callbacks: SpeechInputCallbacks) => {
-    provider.callbacks = callbacks;
-    const instance = {
-      isSupported: true,
-      start: vi.fn(),
-      pause: vi.fn(),
-      resume: vi.fn(),
-      stop: vi.fn(),
-      dispose: vi.fn(),
-    };
-    provider.instances.push(instance);
-    return instance;
-  }),
+  // A class is used on purpose: the hook creates the provider with `new`.
+  ServerSpeechTranscriptionProvider: class {
+    isSupported = true;
+    start = vi.fn();
+    pause = vi.fn();
+    resume = vi.fn();
+    stop = vi.fn();
+    dispose = vi.fn();
+    constructor(callbacks: SpeechInputCallbacks) {
+      provider.callbacks = callbacks;
+      provider.instances.push(this);
+    }
+  },
 }));
 afterEach(() => {
   cleanup();

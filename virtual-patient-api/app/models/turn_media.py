@@ -1,10 +1,4 @@
-"""One immutable camera/microphone original per student turn.
-
-Replaces the former per-exchange block model: each student turn owns its own
-durable media file instead of referencing a window inside a shared block. The
-patient turn is text-to-speech and keeps its served audio, so it has no captured
-media row here.
-"""
+"""Immutable camera/microphone originals for student turns and camera-only originals for replies."""
 from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Integer, JSON, String, UniqueConstraint
 from sqlalchemy.sql import func
 from app.core.database import Base
@@ -20,8 +14,8 @@ class InterviewTurnMediaDB(Base):
     capture_attempt_id = Column(
         String(36), ForeignKey("interview_recording_segments.id", ondelete="CASCADE"), nullable=False
     )
-    # The conversation message this turn media captures. Nullable only transiently
-    # while a turn is being reconciled; the finalize manifest requires coverage.
+    # The conversation message this clip captures. Null for idle clips that keep
+    # the replay continuous between turns; they carry no analysis window.
     message_id = Column(Integer, ForeignKey("interview_messages.id", ondelete="SET NULL"), nullable=True, index=True)
     speaker = Column(String(20), nullable=False)
     order = Column(Integer, nullable=False)
@@ -32,7 +26,9 @@ class InterviewTurnMediaDB(Base):
     storage_key = Column(String(500), nullable=False, unique=True)
     content_type = Column(String(100), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
+    # Digest of the stored, seekable file; upload_sha256 is the digest of the bytes the browser sent.
     sha256 = Column(String(64), nullable=False)
+    upload_sha256 = Column(String(64), nullable=False)
     metadata_hash = Column(String(64), nullable=False)
     turn_metadata = Column(JSON, nullable=False)
     encoded_timing = Column(JSON, nullable=False)

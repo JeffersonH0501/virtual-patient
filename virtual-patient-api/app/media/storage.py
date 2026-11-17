@@ -19,7 +19,7 @@ from fastapi import HTTPException, UploadFile
 MEDIA_STORAGE_ROOT = Path("/app/media")
 MEDIA_MIN_FREE_BYTES = 256 * 1024 * 1024  # 256 MiB
 MIB = 1024 * 1024
-TURN_VIDEO_MAX_BYTES = 64 * MIB
+TURN_VIDEO_MAX_BYTES = 128 * MIB
 RECORDING_FILE_LIMITS = {
     "student_audio": 64 * MIB,
     "patient_audio": 64 * MIB,

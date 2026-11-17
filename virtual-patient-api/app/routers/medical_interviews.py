@@ -823,8 +823,9 @@ def complete_interview(
         from app.controllers.recording_segments import require_capture_epoch
         require_capture_epoch(db, int(interview_id), capture_segment_id)
     if (recording.status not in {"ready", "partial"}
-            or recording.ended_at is None or (recording.duration_ms is None and (recording.capture_config or {}).get('mediaTransport') != 'per_turn_v1')
-            or (not recording.segments and not any(asset.status == "ready" for asset in recording.assets))):
+            or recording.ended_at is None
+            or recording.duration_ms is None
+            or not recording.segments):
         raise HTTPException(status_code=409, detail="Interview media has not been finalized")
     try:
         for asset in recording.assets:

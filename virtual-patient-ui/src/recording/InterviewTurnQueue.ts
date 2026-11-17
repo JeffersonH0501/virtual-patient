@@ -1,3 +1,4 @@
+import {CaptureSyncError} from './CaptureSyncError';
 import type {LocalInterviewTurn} from './InterviewTurnStore';
 
 export type TurnReceipt = {turn_media_id: string; preserved: boolean; sha256: string; metadata_hash: string};
@@ -5,7 +6,7 @@ export type TurnReceipt = {turn_media_id: string; preserved: boolean; sha256: st
 /** One upload lane per interview, independent from the conversation request. */
 export class InterviewTurnQueue {
   private pending = new Map<string, Promise<void>>();
-  private failed = new Set<string>();
+  private failed = new Map<string, {turn: LocalInterviewTurn; error: unknown}>();
   private tail: Promise<void> = Promise.resolve();
 
   constructor(private upload: (turn: LocalInterviewTurn) => Promise<TurnReceipt>,
@@ -24,11 +25,35 @@ export class InterviewTurnQueue {
     });
     this.pending.set(turn.id, task);
     this.tail = task;
-    void task.then(() => this.pending.delete(turn.id), () => this.failed.add(turn.id));
+    void task.then(() => this.pending.delete(turn.id), (error: unknown) => this.failed.set(turn.id, {turn, error}));
     return task;
   }
 
-  async drain(): Promise<void> {
-    await Promise.all([...this.pending.values()]);
+  /**
+   * Send again the originals that failed because of a transient server or transport fault. They are still stored
+   * locally, so a retry loses nothing; a rejection (conflict, stale capture, invalid file) is left failed so
+   * finalization or the resume flow decides. The server accepts an identical original again as a no-op.
+   * Returns how many uploads were restarted.
+   */
+  retryTransient(): number {
+    let restarted = 0;
+    for (const {turn, error} of [...this.failed.values()]) {
+      if (!(error instanceof CaptureSyncError) || !error.transient) continue;
+      void this.enqueue(turn).catch(() => undefined);
+      restarted += 1;
+    }
+    return restarted;
+  }
+
+  /** Wait for every upload to settle; rejected originals are declared missing by finalization.
+   *  `onProgress` receives how many of the pending uploads have settled and how many are awaited. */
+  async drain(onProgress?: (settled: number, total: number) => void): Promise<void> {
+    const tasks = [...this.pending.values()];
+    let settled = 0;
+    onProgress?.(0, tasks.length);
+    await Promise.allSettled(tasks.map((task) => task.then(() => undefined, () => undefined).then(() => {
+      settled += 1;
+      onProgress?.(settled, tasks.length);
+    })));
   }
 }

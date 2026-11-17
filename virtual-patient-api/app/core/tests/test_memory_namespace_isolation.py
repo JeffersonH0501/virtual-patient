@@ -12,7 +12,7 @@ from langgraph.checkpoint.base import empty_checkpoint
 from langgraph.store.base import GetOp, PutOp, SearchOp
 
 from app.core.config import settings
-from app.controllers.virtual_patient_controller import PostgresStore
+from app.core.memory_store import PostgresStore
 from app.agents.enhanced_memory_manager import SemanticMemory
 
 
@@ -156,11 +156,13 @@ def test_real_background_memory_retrieval(store):
 def test_all_production_store_consumers_use_the_shared_boundary():
     from pathlib import Path
     from app.core.memory_store import PostgresStore as SafeStore
-    from app.controllers import virtual_patient_controller, summary_controller
-    from app.agents import virtual_patient_agent
-    from app.core import langgraph_schema
+    from app.controllers import summary_controller
+    from app.core import langgraph_schema, langgraph_runtime
+    # Every module that constructs a store must use the safe subclass. The patient
+    # flow now builds stores through the shared pooled runtime rather than
+    # importing the store itself, so the boundary is checked there.
     assert all(module.PostgresStore is SafeStore for module in (
-        virtual_patient_controller, summary_controller, virtual_patient_agent, langgraph_schema))
+        summary_controller, langgraph_schema, langgraph_runtime))
     root = Path(__file__).resolve().parents[3]
     for folder in ('app', 'scripts'):
         for path in (root / folder).rglob('*.py'):

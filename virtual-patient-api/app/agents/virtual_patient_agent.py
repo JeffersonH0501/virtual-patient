@@ -11,7 +11,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from app.utils.clinical_case import create_clinical_case_summary
 
-from app.core.azure_openai import create_chat_model
+from app.core.azure_openai import CONVERSATION_LLM_VARIANT, create_chat_model
 from app.models.clinical_case import ClinicalCaseDB
 
 from app.agents.prompts.interview_prompt import create_interview_prompt
@@ -22,10 +22,10 @@ logger = logging.getLogger(__name__)
 # Key: (clinical_case_id, updated_at), Value: summary string
 _clinical_case_summary_cache = {}
 
-# Azure OpenAI clients use the globally selected LLM variant.
+# The patient replies with the conversation model (fast and inexpensive).
 # Typical replies take 1-2 s; Azure occasionally stalls. A short per-attempt timeout cuts a
 # stalled call quickly and a single retry recovers it, so a stall costs ~7 s instead of ~18 s.
-llm = create_chat_model(timeout=6, max_retries=1)
+llm = create_chat_model(variant=CONVERSATION_LLM_VARIANT, timeout=6, max_retries=1)
 
 # Checkpointer for graph state persistence
 

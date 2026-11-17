@@ -4,7 +4,6 @@ import {gradingRequest, Workspace} from '../../services/doctorGrading';
 import {Button, Field} from '../common';
 import {Badge} from '../common/Badge';
 import {MotionHeight} from '../common/Motion';
-import {List} from 'lucide-react';
 import {CompleteInterviewResponse} from '../../types/interview';
 import {EvaluationResultsPanel} from './EvaluationResultsPanel';
 import {getAspectDisplayName} from './helpers';
@@ -103,6 +102,9 @@ export const HumanRatingPanel = ({
       setWorkspace(item);
       if (operation === 'submit') {
         await onSubmitted();
+        if (selfInterviewId !== undefined) {
+          window.dispatchEvent(new Event('perception-survey-updated'));
+        }
         setNotice(t('grading.ratingSaved'));
       } else if (operation === 'draft') {
         setDraftAspect(undefined);
@@ -122,8 +124,7 @@ export const HumanRatingPanel = ({
       value.score.trim() !== '' &&
       Number.isFinite(Number(value.score)) &&
       Number(value.score) >= 0 &&
-      Number(value.score) <= 5 &&
-      value.feedback.trim() !== '',
+      Number(value.score) <= 5,
     );
   const valid =
     workspace &&
@@ -163,19 +164,15 @@ export const HumanRatingPanel = ({
                 className={aspectToEdit ? 'rating-component-editor' : 'space-y-layout'}
                 key={aspect}
               >
-                <header className="ui-text-pair">
-                  <h3 className="default-title">{getAspectDisplayName(aspect, t)}</h3>
-                </header>
                 <section className="rating-component-criteria" aria-label={t('evaluation.evaluationCriteria')}>
-                  <header className="rating-criteria-title">
-                    <List aria-hidden="true" />
-                    <span>{t('evaluation.evaluationCriteria')}</span>
+                  <header className="rating-criteria-title ui-text-pair">
+                    <h3 className="default-title">{getAspectDisplayName(aspect, t)}</h3>
                     <Badge tone="neutral">
                       {t('grading.criteriaCount', {count: criteria.length})}
                     </Badge>
                   </header>
                   {aspect === 'completeness' && reviewInterviewId !== undefined && (
-                    <div className="mx-inset mt-inset flex flex-col items-start gap-layout">
+                    <div className="mx-inset mt-inset flex flex-wrap items-center gap-layout">
                       <button type="button" className="ui-action-text underline secondary-text" onClick={() => setCaseDetailsOpen(true)}>{t('grading.viewFullClinicalCase')}</button>
                       <button type="button" className="ui-action-text underline secondary-text" onClick={() => setHypothesesOpen(true)}>{t('grading.viewSubmittedHypotheses')}</button>
                     </div>
@@ -187,9 +184,7 @@ export const HumanRatingPanel = ({
                       </li>
                     ))}
                   </ol>
-                </section>
-
-                <div className={aspectToEdit ? 'rating-editor-fields' : 'ui-form-stack'}>
+                  <div className={'rating-fields-within-card ' + (aspectToEdit ? 'rating-editor-fields' : 'ui-form-stack')}>
                   {aspectToEdit ? (
                     <div className="ui-field">
                       <label htmlFor={'rating-' + aspect} className="ui-field-label text-neutral-500">
@@ -241,14 +236,13 @@ export const HumanRatingPanel = ({
                     />
                   )}
                   <div className="ui-field">
-                    <label htmlFor={'feedback-' + aspect} className={aspectToEdit ? 'text-neutral-500' : undefined}>{t('grading.comment')}</label>
+                    <label htmlFor={'feedback-' + aspect} className={aspectToEdit ? 'text-neutral-500' : undefined}>{t('grading.comment')} <span className="text-content-muted">({t('grading.optional')})</span></label>
                     <textarea
                       id={'feedback-' + aspect}
                       className="ui-textarea"
                       rows={aspectToEdit ? 1 : undefined}
                       value={values[aspect]?.feedback ?? ''}
                       disabled={busy}
-                      required
                       onChange={(event) => {
                         const feedback = event.currentTarget.value;
                         setValues((current) => ({
@@ -258,7 +252,8 @@ export const HumanRatingPanel = ({
                       }}
                     />
                   </div>
-                </div>
+                  </div>
+                </section>
               </section>
             ))}
           {!aspectToEdit && (
@@ -321,7 +316,7 @@ export const HumanRatingPanel = ({
           className="xl:col-start-3 xl:row-start-1"
           evaluationData={{interview, evaluationResults: []}}
           hideConditionSelector
-          assessmentControls={workspace?.status !== 'submitted' ? <div className="assessment-controls"><p className="ui-notice text-left">{t('grading.completeBeforeAutomaticEvaluation')}</p></div> : undefined}
+          assessmentControls={!aspectToEdit && workspace?.status !== 'submitted' ? <div className="assessment-controls"><p className="ui-notice text-left">{t('grading.completeBeforeAutomaticEvaluation')}</p></div> : undefined}
           draftResults={Object.keys(workspace?.rubric ?? {}).map((aspect) => ({
             aspect,
             score: values[aspect]?.score ? Number(values[aspect].score) : null,

@@ -397,6 +397,30 @@ class MultimodalPipelineTests(unittest.TestCase):
 
     # --- Happy path --------------------------------------------------------
 
+    def test_per_turn_reprocess_uses_worker_results_and_marks_missing_listening(self):
+        turns = _default_turns()[:2]
+        harness = _PipelineHarness(turns=turns, assets=_all_assets())
+        harness.recording.capture_config = {"mediaTransport": "per_turn_v1"}
+        harness.recording.segments = [SimpleNamespace(id="segment", offset_ms=0, duration_ms=8000, calibration=None)]
+        for turn in turns:
+            turn.segment_id = "segment"
+        raw = _nonverbal_payload("student")
+        raw["extractor"] = {"paraverbal_raw": _paraverbal_raw().model_dump()}
+        harness.session._by_model[pipeline_module.TurnVideoAnalysisDB] = [
+            SimpleNamespace(turn_id=turns[0].id, result=raw)
+        ]
+        with patch("app.multimodal.turn_staging.stage_turn_media"), \
+                patch("app.multimodal.turn_staging.valid_turn_job", return_value=True), \
+                patch.object(pipeline_module, "_wait_for_turn_video_jobs"), \
+                patch.object(pipeline_module, "_extract_nonverbal") as full_video, \
+                patch.object(pipeline_module, "_extract_paraverbal") as full_audio:
+            harness.run()
+        full_video.assert_not_called()
+        full_audio.assert_not_called()
+        self.assertEqual(harness.observation_processing()["status"], "partial")
+        self.assertIsNotNone(turns[0].nonverbal_features["raw"])
+        self.assertIsNone(turns[1].nonverbal_features["raw"])
+
     def test_happy_path_sets_layers_and_completes(self):
         """Both extractors usable + baseline present -> layered results persisted.
 

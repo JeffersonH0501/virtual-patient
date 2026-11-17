@@ -125,6 +125,20 @@ def test_general_update_cannot_change_lifecycle_time(lifecycle_api):
         assert db.get(MedicalInterviewDB, state.id).end_time is None
 
 
+def test_recorded_duration_query_supports_json_capture_config(lifecycle_api):
+    state = lifecycle_api
+    with Session(state.engine) as db:
+        interview = db.get(MedicalInterviewDB, state.id)
+        db.add(InterviewRecordingDB(
+            medical_interview_id=state.id,
+            started_at=datetime.now(timezone.utc),
+            capture_config={"mediaTransport": "per_turn_v1"},
+        ))
+        db.commit()
+
+        assert MedicalInterviewController(db)._recorded_durations([interview]) == {state.id: None}
+
+
 @pytest.fixture
 def exchange_agent(monkeypatch):
     async def generate(**kwargs):
@@ -377,7 +391,9 @@ def test_durable_completion_retry_preserves_control_snapshot_and_frozen_media(li
         first_job = db.query(InterviewProcessingJobDB).filter_by(kind="completion").one().id
         end_time = db.get(MedicalInterviewDB, state.id).end_time
         media_keys = sorted(asset.storage_key for asset in db.query(InterviewMediaAssetDB).all())
-    asyncio.run(jobs._run(first_job))
+    # A recoverable failure requeues the job until the attempts are exhausted.
+    for _ in range(jobs.MAX_JOB_ATTEMPTS):
+        asyncio.run(jobs._run(first_job))
     with factory() as db:
         assert db.get(InterviewProcessingJobDB, first_job).status == "failed"
         assert db.get(MedicalInterviewDB, state.id).status == InterviewStatus.INTERRUPTED
@@ -408,7 +424,7 @@ def test_durable_completion_retry_preserves_control_snapshot_and_frozen_media(li
             assert next(run.snapshot for run in runs if run.evaluation_condition == "TEXT_ONLY") == snapshot
         assert sorted(asset.storage_key for asset in db.query(InterviewMediaAssetDB).all()) == media_keys
         assert db.query(InterviewEvaluationDB).count() == 2
-    assert agent.evaluate_all_aspects.await_count == (1 if initial_control_complete else 2)
+    assert agent.evaluate_all_aspects.await_count == (1 if initial_control_complete else jobs.MAX_JOB_ATTEMPTS + 1)
     assert summary.await_count == 1
     agent.evaluate_multimodal.assert_not_awaited()
 

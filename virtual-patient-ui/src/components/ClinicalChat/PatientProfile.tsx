@@ -6,7 +6,7 @@ import {useTranslation} from 'react-i18next';
 import {Patient} from '../../types';
 import {TagGroup} from './TagGroup';
 import {Personality} from '../../types/personality';
-import {readDesignNumber} from '../../utils/designTokens';
+import {readDesignDuration} from '../../utils/designTokens';
 
 const PatientDetailCard = ({title, status, fields}: {
   title: string;
@@ -174,7 +174,7 @@ export const PatientProfile: FC<PatientProfileProps> = ({
     const nextPositions = measure();
     const animations: Animation[] = [];
     if (enabled && !reduced) {
-      const duration = readDesignNumber('--app-motion-expand');
+      const duration = readDesignDuration('--app-motion-expand');
       for (const [row, position] of nextPositions) {
         const previous = sectionPositions.current.get(row);
         if (previous !== undefined && previous !== position && row.animate) {

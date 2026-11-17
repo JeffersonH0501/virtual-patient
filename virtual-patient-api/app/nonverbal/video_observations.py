@@ -41,13 +41,15 @@ def extract_nonverbal_video_observations(
     timings: dict[str, list[float]] | None = None,
     stage_durations: dict[str, float] | None = None,
     calibration_profile: dict | None = None,
+    window_ms: tuple[float, float] | None = None,
 ) -> list[EnrichedFrameObservation]:
     """Extract shared facial observations and calibrated MediaPipe gaze."""
     from app.nonverbal.mediapipe_calibration import gaze_observation
 
     started = perf_counter()
     observations = []
-    for shared in extract_video(video_path, sample_fps=sample_fps, landmarker=landmarker, timings=timings):
+    for shared in extract_video(video_path, sample_fps=sample_fps, landmarker=landmarker, timings=timings,
+                                window_ms=window_ms):
         gaze_started = perf_counter()
         gaze = (gaze_observation(shared, calibration_profile) if calibration_profile
                 else GazeObservation(shared.timestamp_ms, False, "gaze_calibration_pending"))
@@ -68,11 +70,13 @@ def extract_nonverbal_video_observations_parallel(
     video_path: Path, *, sample_fps: float = 15.0,
     timings: dict[str, list[float]] | None = None,
     queue_capacity: int = 16, calibration_profile: dict | None = None,
+    window_ms: tuple[float, float] | None = None,
 ) -> list[EnrichedFrameObservation]:
     if queue_capacity <= 0:
         raise ValueError("queue_capacity must be positive")
     return extract_nonverbal_video_observations(
-        video_path, sample_fps=sample_fps, timings=timings, calibration_profile=calibration_profile)
+        video_path, sample_fps=sample_fps, timings=timings, calibration_profile=calibration_profile,
+        window_ms=window_ms)
 
 
 def segment_nonverbal_observations_by_turn(

@@ -12,7 +12,7 @@ vi.mock('../../contexts/EvaluationAspectsContext', () => ({
 vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key})}));
 const rubric = Object.fromEntries(
   [
-    'coherence',
+    'general_communication',
     'show_interest',
     'show_empathy',
     'speak_clearly',
@@ -47,7 +47,7 @@ it('shows the private rubric table immediately and starts grading from its penci
   const row = within(table).getAllByRole('rowheader')[0].closest('tr')!;
   expect(within(row).queryByRole('button', {name: 'evaluation.toggleFeedback'})).toBeNull();
   request.mockResolvedValue({...workspace, status: 'in_progress'});
-  fireEvent.click(within(row).getByRole('button', {name: 'grading.editScore'}));
+  fireEvent.click(within(row).getByRole('button', {name: 'grading.scorePending'}));
   const score = await screen.findByRole('spinbutton');
   const save = screen.getByRole<HTMLButtonElement>('button', {name: 'common.save'});
   expect(save.disabled).toBe(true);
@@ -59,13 +59,13 @@ it('shows the private rubric table immediately and starts grading from its penci
   expect(save.disabled).toBe(false);
   expect(request).toHaveBeenLastCalledWith('/doctor-assignments/1/start', 'POST', undefined);
   request.mockResolvedValue({...workspace, status: 'in_progress', results: [
-    {aspect: 'completeness', score: 0, feedback: 'Draft comment'},
+    {aspect: 'general_communication', score: 0, feedback: 'Draft comment'},
   ]});
   fireEvent.click(screen.getByRole('button', {name: 'common.save'}));
   await screen.findByLabelText('0.0/5');
   expect(screen.queryByRole('status')).toBeNull();
   expect(request).toHaveBeenLastCalledWith('/doctor-assignments/1/draft', 'PUT', {
-    results: expect.arrayContaining([{aspect: 'completeness', score: 0, feedback: 'Draft comment'}]),
+    results: expect.arrayContaining([{aspect: 'general_communication', score: 0, feedback: 'Draft comment'}]),
   });
   expect(screen.getByLabelText('0.0/5')).toBeTruthy();
   const toggle = screen.getByRole('button', {name: 'evaluation.toggleFeedback'});
@@ -73,8 +73,10 @@ it('shows the private rubric table immediately and starts grading from its penci
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
 });
 
-it.each(['assigned', 'self'])('requires all six scores and nonblank comments for %s submission, including valid zero', async (mode) => {
+it.each(['assigned', 'self'])('requires all six scores but not comments for %s submission, including valid zero', async (mode) => {
   const submitted = vi.fn();
+  const eligibilityUpdated = vi.fn();
+  window.addEventListener('perception-survey-updated', eligibilityUpdated);
   render(<HumanRatingPanel assignmentId={mode === 'assigned' ? 1 : undefined} selfInterviewId={mode === 'self' ? 7 : undefined} onSubmitted={submitted} />);
   await screen.findByRole('button', {name: 'grading.start'});
   expect(screen.getByText('grading.completeBeforeAutomaticEvaluation').classList.contains('ui-notice')).toBe(true);
@@ -86,27 +88,21 @@ it.each(['assigned', 'self'])('requires all six scores and nonblank comments for
     true,
   );
   scores.forEach((score, index) => fireEvent.change(score, {target: {value: index ? '4.5' : '0'}}));
-  expect((screen.getByRole('button', {name: 'grading.submit'}) as HTMLButtonElement).disabled).toBe(
-    true,
-  );
-  const comments = screen.getAllByRole('textbox');
-  comments.forEach((comment) =>
-    fireEvent.change(comment, {target: {value: 'Independent rationale'}}),
-  );
-  fireEvent.change(comments[0], {target: {value: '  \n '}});
-  expect((screen.getByRole('button', {name: 'grading.submit'}) as HTMLButtonElement).disabled).toBe(
-    true,
-  );
-  fireEvent.change(comments[0], {target: {value: '  Independent rationale  '}});
+  expect(screen.getAllByRole('textbox')).toHaveLength(6);
+  expect((screen.getByRole('button', {name: 'grading.submit'}) as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.change(screen.getAllByRole('textbox')[1], {target: {value: '  Independent rationale  '}});
   request.mockResolvedValue({...workspace, status: 'submitted'});
   fireEvent.click(screen.getByRole('button', {name: 'grading.submit'}));
   expect(screen.queryByRole('dialog')).toBeNull();
   await waitFor(() => expect(submitted).toHaveBeenCalledTimes(1));
+  expect(eligibilityUpdated).toHaveBeenCalledTimes(mode === 'self' ? 1 : 0);
+  window.removeEventListener('perception-survey-updated', eligibilityUpdated);
   const sent = request.mock.calls.at(-1)!;
   expect(sent[0]).toBe(mode === 'self' ? '/medical-interviews/7/self-rating/submit' : '/doctor-assignments/1/submit');
   expect(sent[2].results).toHaveLength(6);
   expect(sent[2].results[0].score).toBe(0);
-  expect(sent[2].results[0].feedback).toBe('Independent rationale');
+  expect(sent[2].results[0].feedback).toBe('');
+  expect(sent[2].results[1].feedback).toBe('Independent rationale');
 });
 
 it('edits completed ratings and saves all six scores while keeping the form available', async () => {
@@ -131,7 +127,7 @@ it('edits completed ratings and saves all six scores while keeping the form avai
   await screen.findByText('grading.ratingSaved');
   expect(updated).toHaveBeenCalledTimes(1);
   expect(request).toHaveBeenLastCalledWith('/doctor-assignments/1/submit', 'POST', {
-    results: expect.arrayContaining([{aspect: 'coherence', score: 0, feedback: 'Revised comment'}]),
+    results: expect.arrayContaining([{aspect: 'general_communication', score: 0, feedback: 'Revised comment'}]),
   });
   expect(screen.getAllByRole('spinbutton')).toHaveLength(6);
 });
@@ -140,7 +136,7 @@ it('loads a private draft and preserves values after a recoverable save error', 
   request.mockResolvedValue({
     ...workspace,
     status: 'in_progress',
-    results: [{aspect: 'coherence', score: 2.5, feedback: 'Draft rationale'}],
+    results: [{aspect: 'general_communication', score: 2.5, feedback: 'Draft rationale'}],
   });
   render(<HumanRatingPanel assignmentId={1} onSubmitted={vi.fn()} />);
   const scores = await screen.findAllByRole('spinbutton');
@@ -197,4 +193,18 @@ it('keeps other categories visible without the completeness case link', async ()
   await screen.findByText('Original criterion show_interest');
   expect(screen.queryByRole('button', {name: 'grading.viewFullClinicalCase'})).toBeNull();
   expect(document.querySelector('details, summary')).toBeNull();
+});
+
+it('shows the category title and rating fields inside the criteria card', async () => {
+  request.mockResolvedValue({...workspace, interviewId: 7, status: 'in_progress'});
+  render(<HumanRatingPanel assignmentId={1} onSubmitted={vi.fn()} />);
+  const title = await screen.findByRole('heading', {name: 'evaluation.generalCommunication'});
+  const card = title.closest('.rating-component-criteria');
+  expect(card).toBeTruthy();
+  expect(within(card!).getByText('Original criterion general_communication')).toBeTruthy();
+  expect(within(card!).getByText('grading.criteriaCount')).toBeTruthy();
+  expect(within(card!).getByRole('spinbutton')).toBeTruthy();
+  expect(within(card!).getByRole('textbox')).toBeTruthy();
+  expect(within(card!).queryByText('Criterios de evaluación')).toBeNull();
+  expect(within(card!).queryByRole('img')).toBeNull();
 });

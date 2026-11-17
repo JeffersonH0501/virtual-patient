@@ -2,6 +2,8 @@ import type {MediaAccessState} from '../contexts/interviewMedia';
 
 export type UseInterviewRecordingOptions = {
   missingMessageIds?: number[];
+  studentMessageIds?: number[];
+  patientMessageIds?: number[];
   interviewId?: number;
   enabled: boolean;
   cameraStream: MediaStream | null;
@@ -13,6 +15,8 @@ export type UseInterviewRecordingOptions = {
   patientAvatar: string;
   patientName: string;
   resumeAttemptId?: string | null;
+  recoveredPatientMessageId?: number | null;
+  initialPatientMessageId?: number | null;
   initialOffsetMs?: number;
 };
 

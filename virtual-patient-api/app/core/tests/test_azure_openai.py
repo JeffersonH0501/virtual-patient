@@ -6,7 +6,8 @@ from unittest.mock import MagicMock, patch
 
 from app.core import azure_openai
 from app.core.config import Settings
-from app.utils import tts_service
+from app.speech import azure_openai as speech_azure_openai
+from app.speech.contracts import SpeechSynthesisRequest
 
 
 def configured_settings(**overrides: object) -> Settings:
@@ -70,6 +71,18 @@ class AzureOpenAIConfigurationTests(unittest.TestCase):
 
         self.assertEqual(chat_class.call_args.kwargs["model"], "llm-normal")
 
+    def test_conversation_defaults_to_mini_and_evaluation_uses_the_normal_deployment(self) -> None:
+        self.assertIs(azure_openai.CONVERSATION_LLM_VARIANT, azure_openai.LLMVariant.MINI)
+        self.assertIs(azure_openai.EVALUATION_LLM_VARIANT, azure_openai.LLMVariant.NORMAL)
+        with (
+            patch.object(azure_openai, "settings", configured_settings()),
+            patch.object(azure_openai, "ChatOpenAI") as chat_class,
+        ):
+            azure_openai.create_chat_model()
+            self.assertEqual(chat_class.call_args.kwargs["model"], "llm-mini")
+            azure_openai.create_chat_model(variant=azure_openai.EVALUATION_LLM_VARIANT)
+            self.assertEqual(chat_class.call_args.kwargs["model"], "llm-normal")
+
     def test_embeddings_use_canonical_deployment_and_dimensions(self) -> None:
         with (
             patch.object(azure_openai, "settings", configured_settings()),
@@ -93,6 +106,8 @@ class AzureOpenAIConfigurationTests(unittest.TestCase):
         self.assertEqual(
             openai_class.call_args.kwargs,
             {
+                "timeout": 15,
+                "max_retries": 1,
                 "api_key": "test-key",
                 "base_url": "https://example.openai.azure.com/openai/v1/",
             },
@@ -108,6 +123,8 @@ class AzureOpenAIConfigurationTests(unittest.TestCase):
         self.assertEqual(
             azure_openai_class.call_args.kwargs,
             {
+                "timeout": 15,
+                "max_retries": 1,
                 "api_key": "test-key",
                 "azure_endpoint": "https://example.openai.azure.com/",
                 "api_version": "2025-03-01-preview",
@@ -142,13 +159,14 @@ class AzureOpenAIConfigurationTests(unittest.TestCase):
         client.audio.speech.create.return_value = SimpleNamespace(content=b"mp3-data")
         fake_settings = configured_settings()
 
-        with patch.object(tts_service, "settings", fake_settings):
-            audio = tts_service.TTSService(client=client).generate_audio(
-                "Short test sentence.",
-                voice="alloy",
-            )
+        provider = speech_azure_openai.AzureOpenAITextToSpeechProvider(
+            client=client,
+            configuration=fake_settings,
+        )
+        request = SpeechSynthesisRequest(text="Short test sentence.", voice="alloy")
+        audio = provider.synthesize(request)
 
-        self.assertEqual(audio, b"mp3-data")
+        self.assertEqual(audio.content, b"mp3-data")
         client.audio.speech.create.assert_called_once_with(
             model="text-to-speech",
             input="Short test sentence.",
@@ -160,11 +178,13 @@ class AzureOpenAIConfigurationTests(unittest.TestCase):
         client = MagicMock()
         fake_settings = configured_settings(azure_openai_tts_deployment_name=None)
 
-        with patch.object(tts_service, "settings", fake_settings):
-            audio = tts_service.TTSService(client=client).generate_audio(
-                "Short test sentence.",
-                voice="alloy",
-            )
+        from app.speech.contracts import SpeechConfigurationError
+        provider = speech_azure_openai.AzureOpenAITextToSpeechProvider(
+            client=client,
+            configuration=fake_settings,
+        )
+        request = SpeechSynthesisRequest(text="Short test sentence.", voice="alloy")
+        with self.assertRaises(SpeechConfigurationError):
+            provider.synthesize(request)
 
-        self.assertIsNone(audio)
         client.audio.speech.create.assert_not_called()

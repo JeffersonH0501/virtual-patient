@@ -163,9 +163,8 @@ describe('Evaluation condition selector', () => {
   it('shows moments only under their multimodal category without replacing the table', async () => {
     vi.mocked(requestLearningMoments).mockResolvedValueOnce({
       status: 'completed', stale: false, moments: [{
-        id: 'moment', category: 'show_interest', type: 'improvement',
-        observation: 'The concern went unacknowledged.',
-        recommendation: 'Acknowledge the concern before continuing.',
+        id: 'moment', category: 'show_interest',
+        text: 'When the patient raised a concern you looked away. Acknowledge it before continuing.',
         turnIds: ['c12aba83-0d0b-47b9-b230-fb5c809f7eae'], evidenceUsed: ['text'],
       }],
     });
@@ -186,9 +185,8 @@ describe('Evaluation condition selector', () => {
     }
     fireEvent.click(screen.getByRole('button', {name: i18n.t('evaluation.toggleFeedback', {criterion: en.evaluation.interestInPatient})}));
     const moments = await screen.findByRole('region', {name: en.learningMoments.title});
-    const message = within(moments).getByText('The concern went unacknowledged. Acknowledge the concern before continuing.');
+    const message = within(moments).getByText('When the patient raised a concern you looked away. Acknowledge it before continuing.');
     expect(message.closest('article')?.classList.contains('ui-notice--warning')).toBe(true);
-    expect(within(moments).queryByText(en.learningMoments.improvement)).toBeNull();
     expect(within(moments).getByRole('button', {name: i18n.t('evaluation.turnReference', {id: 4})})).toBeTruthy();
     expect(moments.closest('tbody')?.querySelector('th')?.textContent).toContain(en.evaluation.interestInPatient);
     expect(screen.getByRole('table')).toBeTruthy();
@@ -198,6 +196,47 @@ describe('Evaluation condition selector', () => {
     expect(screen.queryByRole('region', {name: en.learningMoments.title})).toBeNull();
   });
 
+  describe('learning moment counts', () => {
+    const moment = (id: string, category: string) => ({
+      id, category, text: 'Observed. Try this.',
+      turnIds: ['c12aba83-0d0b-47b9-b230-fb5c809f7eae'], evidenceUsed: ['gaze_orientation'],
+    });
+    const rowFor = (name: string) => screen.getByRole('rowheader', {name: new RegExp(name)});
+    it('states the count per multimodal category for admins, including when there are none', async () => {
+      fixtures.role = 'admin';
+      vi.mocked(requestLearningMoments).mockResolvedValueOnce({
+        status: 'completed', stale: false, moments: [
+          moment('a', 'show_interest'), moment('b', 'show_interest'), moment('c', 'speak_clearly'),
+        ],
+      } as never);
+      renderPanel();
+      fireEvent.click(screen.getByRole('button', {name: en.evaluation.multimodalCondition}));
+      await screen.findByText('2 learning moments');
+      expect(within(rowFor(en.evaluation.interestInPatient)).getByText('2 learning moments')).toBeTruthy();
+      expect(within(rowFor(en.evaluation.communicationClarity)).getByText('1 learning moment')).toBeTruthy();
+      expect(within(rowFor(en.evaluation.understandingAndEmpathy)).getByText('No learning moments')).toBeTruthy();
+      expect(screen.getAllByText(/learning moments?$/)).toHaveLength(3);
+    });
+    it('hides the counts from non-admin users', async () => {
+      fixtures.role = 'student';
+      vi.mocked(requestLearningMoments).mockResolvedValueOnce({
+        status: 'completed', stale: false, moments: [moment('a', 'show_interest')],
+      } as never);
+      renderPanel();
+      fireEvent.click(screen.getByRole('button', {name: en.evaluation.multimodalCondition}));
+      await screen.findByRole('rowheader', {name: new RegExp(en.evaluation.interestInPatient)});
+      expect(screen.queryByText(/learning moments?$/)).toBeNull();
+    });
+    it('does not claim "none" while moments are not generated or are stale', async () => {
+      fixtures.role = 'admin';
+      vi.mocked(requestLearningMoments).mockResolvedValueOnce({status: 'failed', stale: false, moments: []} as never);
+      renderPanel();
+      fireEvent.click(screen.getByRole('button', {name: en.evaluation.multimodalCondition}));
+      await screen.findByRole('rowheader', {name: new RegExp(en.evaluation.interestInPatient)});
+      await Promise.resolve();
+      expect(screen.queryByText('No learning moments')).toBeNull();
+    });
+  });
   it('does not render empty critical turns and retains textual fallback categories', () => {
     const data = makeData([]);
     renderPanel(data);
@@ -315,6 +354,18 @@ describe('Evaluation condition selector', () => {
 
 });
 
+it('does not repeat a numeric score already shown in the category row', () => {
+  const data = makeData();
+  data.multimodalEvaluationResults!.find((result) => result.aspect === 'show_interest')!.feedback =
+    'Limited interest (puntuación: 2.0/5). The doctor moved on without addressing the concern.';
+  renderPanel(data);
+  fireEvent.click(screen.getByRole('button', {name: en.evaluation.multimodalCondition}));
+  const row = screen.getByText(en.evaluation.interestInPatient).closest('tr')!;
+  fireEvent.click(within(row).getByRole('button', {name: en.evaluation.toggleFeedback.replace('{{criterion}}', en.evaluation.interestInPatient)}));
+  const feedback = screen.getByRole('region', {name: en.evaluation.feedbackForCriterion.replace('{{criterion}}', en.evaluation.interestInPatient)});
+  expect(within(feedback).getByText('Limited interest. The doctor moved on without addressing the concern.')).toBeTruthy();
+});
+
 it.each(['student', 'doctor', 'admin'])('shows the case comparison inside the completeness criteria for %s', (role) => {
   fixtures.role = role;
   const data = makeData();
@@ -325,11 +376,25 @@ it.each(['student', 'doctor', 'admin'])('shows the case comparison inside the co
   expect(within(row).queryByRole('button', {name: en.evaluation.clinicalCaseComparison})).toBeNull();
   openCriteria(en.evaluation.completeness);
   const dialog = screen.getByRole('dialog', {name: en.evaluation.evaluationCriteria});
-  expect(within(dialog).getByRole('heading', {name: en.evaluation.clinicalCaseComparison})).toBeDefined();
-  expect(within(dialog).getByText('Synthetic hypothesis')).toBeDefined();
+  expect(within(dialog).getByRole('button', {name: en.grading.viewFullClinicalCase})).toBeDefined();
+  expect(within(dialog).getByRole('button', {name: en.grading.viewSubmittedHypotheses})).toBeDefined();
+  expect(within(dialog).getByText(en.evaluation.criteriaBuiltFrom)).toBeDefined();
+  expect(within(dialog).queryByRole('heading', {name: en.evaluation.clinicalCaseComparison})).toBeNull();
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(row);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   fireEvent.click(toggle.querySelector('svg')!);
   expect(toggle.getAttribute('aria-expanded')).toBe('false');
+});
+
+it('flags unscored criteria with a pending dot on the edit button while rating', () => {
+  const data = makeData();
+  data.evaluationResults = data.evaluationResults.map((result, index) =>
+    index === 0 ? {...result, score: null} : result);
+  render(<I18nextProvider i18n={i18n}><EvaluationResultsPanel evaluationData={data} onEditScore={vi.fn()} /></I18nextProvider>);
+  const pending = screen.getByRole('button', {name: i18n.t('grading.scorePending')});
+  expect(pending.querySelector('.survey-pending')).not.toBeNull();
+  const scored = screen.getAllByRole('button', {name: i18n.t('grading.editScore')});
+  expect(scored.length).toBe(5);
+  expect(scored.every((button) => button.querySelector('.survey-pending') === null)).toBe(true);
 });

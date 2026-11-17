@@ -49,6 +49,47 @@ def test_attempt_start_is_idempotent_and_rejects_changed_request_content(capture
     assert state.client.post(state.root + '/segments', json=changed).status_code == 409
 
 
+def _segment_count(state):
+    with Session(state.engine) as db:
+        return db.query(InterviewRecordingSegmentDB).count()
+
+
+def test_repeated_start_replays_confirm_the_active_segment_without_creating_another(capture):
+    """A client that lost its connection replays the start request to confirm it may keep writing."""
+    state = capture
+    for _ in range(5):
+        response = state.client.post(state.root + '/segments', json=state.start_payload)
+        assert response.status_code == 200, response.text
+        assert response.json()['segment_id'] == state.segment_id
+    assert _segment_count(state) == 1
+
+
+def test_start_replay_reports_a_replaced_writer_as_stale_capture(capture):
+    state = capture
+    assert state.client.post(state.root + '/resume', json={'request_id': str(uuid4())}).status_code == 200
+    replay = state.client.post(state.root + '/segments', json=state.start_payload)
+    assert replay.status_code == 409
+    assert replay.json()['detail'] == {'code': 'stale_capture'}
+    assert _segment_count(state) == 1
+
+
+def test_start_replay_reports_an_ended_interview_or_recording_as_capture_closed(capture):
+    state = capture
+    with Session(state.engine) as db:
+        recording = db.query(InterviewRecordingDB).one()
+        recording.status = 'ready'
+        db.commit()
+    closed_recording = state.client.post(state.root + '/segments', json=state.start_payload)
+    assert (closed_recording.status_code, closed_recording.json()['detail']) == (409, {'code': 'capture_closed'})
+    with Session(state.engine) as db:
+        db.query(InterviewRecordingDB).one().status = 'recording'
+        db.get(MedicalInterviewDB, state.id).status = InterviewStatus.COMPLETED
+        db.commit()
+    closed_interview = state.client.post(state.root + '/segments', json=state.start_payload)
+    assert (closed_interview.status_code, closed_interview.json()['detail']) == (409, {'code': 'capture_closed'})
+    assert _segment_count(state) == 1
+
+
 def test_resume_keeps_request_identity_and_fences_previous_writer(capture, exchange_agent):
     state = capture
     key = str(uuid4())

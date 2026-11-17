@@ -293,9 +293,18 @@ def _shutdown() -> None:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     _start()
+    # Own the durable processing-job loop (replay preview, pipeline, evaluation,
+    # learning moments) and the periodic media/calibration maintenance here, so
+    # all heavy background work runs in this constrained worker and never in the
+    # API. A PostgreSQL advisory slot lock keeps a single active job across
+    # processes, so running the loop here instead of the API is safe.
+    from app.multimodal.processing_jobs import run_processing_jobs
+    processor = asyncio.create_task(run_processing_jobs())
     try:
         yield
     finally:
+        processor.cancel()
+        await asyncio.gather(processor, return_exceptions=True)
         await asyncio.to_thread(_shutdown)
 
 

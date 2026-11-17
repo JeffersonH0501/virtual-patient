@@ -91,7 +91,7 @@ def seal_segment(db, segment, pending_patient_message_id=None):
             ends = db.query(func.max(
                 InterviewTurnMediaDB.session_clock_ms + func.coalesce(InterviewTurnMediaDB.duration_ms, 0)
             )).filter_by(capture_attempt_id=segment.id).scalar()
-            segment.duration_ms = ends or 0
+            segment.duration_ms = max(0, (ends or 0) - segment.offset_ms)
             segment.sealed_at = datetime.now(timezone.utc)
             return segment.duration_ms
         end = db.query(func.max(InterviewTurnDB.end_ms)).filter_by(segment_id=segment.id)

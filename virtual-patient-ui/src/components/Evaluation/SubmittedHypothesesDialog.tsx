@@ -6,7 +6,7 @@ import {gradingRequest} from '../../services/doctorGrading';
 
 type Hypothesis = {id: number; hypothesisText: string; hypothesisOrder: number};
 
-export function SubmittedHypothesesDialog({interviewId, onClose}: {interviewId: number; onClose: () => void}) {
+export function SubmittedHypothesesDialog({interviewId, onClose, containerId}: {interviewId: number; onClose: () => void; containerId?: string}) {
   const {t} = useTranslation();
   const [items, setItems] = useState<Hypothesis[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -23,7 +23,7 @@ export function SubmittedHypothesesDialog({interviewId, onClose}: {interviewId: 
       active = false;
     };
   }, [interviewId, attempt]);
-  return <Dialog title={t('clinicalChat.submittedHypotheses')} size="large" onClose={onClose}>
+  return <Dialog title={t('grading.hypothesesDialogTitle')} size="small" containerId={containerId} onClose={onClose}>
     {failed ? <div className="ui-form-stack"><p className="ui-notice ui-notice--danger" role="alert">{t('grading.hypothesesLoadError')}</p><div className="ui-button-group"><Button variant="secondary" onClick={() => setAttempt((value) => value + 1)}>{t('common.retry')}</Button></div></div>
       : items === null ? <p role="status">{t('common.loading')}</p>
         : items.length ? <ol className="numbered-list space-y-1">{[...items].sort((a, b) => a.hypothesisOrder - b.hypothesisOrder).map((item) => <li key={item.id}>{item.hypothesisText}</li>)}</ol>

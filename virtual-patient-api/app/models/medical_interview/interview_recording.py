@@ -303,4 +303,6 @@ class InterviewRecapResponse(BaseModel):
     observation_processing: Dict[str, Any] = Field(default_factory=dict)
     evaluation_processing: Dict[str, Any] = Field(default_factory=dict)
     turn_media: Optional[List[Dict[str, Any]]] = None
+    # Continuous replay preview: status (queued|processing|ready|failed|unavailable), progress 0-100, source.
+    replay: Dict[str, Any] = Field(default_factory=dict)
     turns: List[RecapTurn] = Field(default_factory=list)

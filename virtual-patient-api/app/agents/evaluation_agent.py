@@ -10,6 +10,7 @@ from math import isclose
 from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from pydantic import BaseModel, Field
 from .schemas import EvaluationResult
+from .schemas.multimodal_evaluation import CategoryFeedback
 from .prompts.evaluation_prompts import get_evaluation_prompts
 from .helpers.formatting_helpers import (
     format_demographics,
@@ -19,7 +20,7 @@ from .helpers.formatting_helpers import (
 )
 from app.models.clinical_case import ClinicalCase
 from app.models.medical_interview.progress_summary import ProgressSummary
-from app.core.azure_openai import create_chat_model
+from app.core.azure_openai import EVALUATION_LLM_VARIANT, create_chat_model
 from app.core.functional_config import read_config_json
 
 COMPLETENESS_WEIGHTS = read_config_json("scoring/completeness.json")
@@ -31,8 +32,8 @@ if (
 ):
     raise ValueError("Invalid completeness scoring weights")
 
-# Initialize the globally selected Azure OpenAI v1 LLM.
-llm = create_chat_model(temperature=0.7)
+# Every evaluation workload (text and multimodal scores, feedback and learning moments) uses the evaluation model.
+llm = create_chat_model(variant=EVALUATION_LLM_VARIANT, temperature=0.7)
 
 class EvaluationAgent:
     """
@@ -49,7 +50,7 @@ class EvaluationAgent:
 
     def _invocation_config(self, aspect, messages):
         from .evaluation_provenance import EvaluationProvenanceCallback
-        return {"callbacks": [EvaluationProvenanceCallback(self.run_provenance, aspect, messages[0].content)]}
+        return {"callbacks": [EvaluationProvenanceCallback(self.run_provenance, aspect, messages[0].content, messages)]}
     
 
 
@@ -133,27 +134,29 @@ class EvaluationAgent:
         if not hasattr(self, "run_provenance"):
             self.run_provenance = []
 
-        model = self.llm.with_structured_output(
-            EvaluationResult, method="function_calling", include_raw=True,
-        )
+        feedback_model = self.llm.with_structured_output(CategoryFeedback)
         results = []
         for aspect, config in MULTIMODAL_EVALUATION_CONFIG.items():
             conversation = conversations.get(aspect)
             if conversation is None or not conversation.has_valid_evidence:
                 continue
+            # 1) Score: same prompt, message and structured output as the text-only call; only the evidence differs.
             messages = [
                 SystemMessage(content=config["prompt"](self.target_language)),
-                HumanMessage(content=f"Evaluate this enriched medical interview for {aspect}:\n\n{conversation.text}"),
+                HumanMessage(content=f"Please evaluate the following medical interview conversation for {aspect}:\n\n{conversation.text}"),
             ]
-            response = await model.ainvoke(messages, config=self._invocation_config(aspect, messages))
-            parsed = response.get("parsed")
-            raw = response.get("raw")
-            calls = getattr(raw, "tool_calls", [])
-            # Retain score and feedback only; contextual feedback is a separate call.
-            payload = calls[0]["args"] if calls else (parsed.model_dump() if parsed is not None else None)
-            if payload is None:
-                raise ValueError("Multimodal structured evaluation failed") from response.get("parsing_error")
-            results.append(EvaluationResult.model_validate({**payload, "aspect": aspect}))
+            scored = await self.structured_model.ainvoke(messages, config=self._invocation_config(aspect, messages))
+            # 2) Comment: a second call that explains the score and never changes it.
+            feedback_messages = [
+                SystemMessage(content=config["feedback_prompt"](self.target_language)),
+                HumanMessage(content=(
+                    f"Score already assigned for {aspect}: {scored.score}/5.\n\n"
+                    f"Conversation:\n\n{conversation.text}"
+                )),
+            ]
+            comment = await feedback_model.ainvoke(
+                feedback_messages, config=self._invocation_config(f"{aspect}_feedback", feedback_messages))
+            results.append(EvaluationResult(aspect=aspect, score=scored.score, feedback=comment.feedback))
         return results
     
     async def evaluate_completeness(

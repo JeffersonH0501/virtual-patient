@@ -173,6 +173,30 @@ class TurnResponseContractTests(unittest.TestCase):
         self.assertEqual(response.nonverbal_features["reason"], "insufficient_signal")
         self.assertEqual(response.nonverbal_features["integrated_labels"]["gaze_orientation"]["status"], "unavailable")
 
+    def test_recap_drops_per_frame_raw_except_gaze_observations(self) -> None:
+        from app.routers.interview_recordings import _turn_response
+
+        turn = self._turn(
+            paraverbal={**self._layered_paraverbal(), "raw": {"f0_samples_semitones": [1.0, 2.0]}},
+            nonverbal_features={**self._layered_nonverbal(),
+                                "raw": {"gaze_observations": [{"t": 1}], "nod_frame_features": [[0.1]]}},
+        )
+
+        response = _turn_response(turn, recap=True)
+
+        self.assertNotIn("raw", response.paraverbal)
+        self.assertEqual(response.nonverbal_features["raw"], {"gaze_observations": [{"t": 1}]})
+        self.assertEqual(response.nonverbal_features["processed"]["nod_count"], 0)
+
+    def test_recap_without_evidence_access_omits_observations(self) -> None:
+        from app.routers.interview_recordings import _turn_response
+
+        response = _turn_response(self._turn(), recap=True, with_observations=False)
+
+        self.assertIsNone(response.paraverbal)
+        self.assertIsNone(response.nonverbal_features)
+        self.assertEqual(response.transcript, "hello")
+
 
 if __name__ == "__main__":
     unittest.main()

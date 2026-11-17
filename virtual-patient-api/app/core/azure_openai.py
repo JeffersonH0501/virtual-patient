@@ -19,8 +19,11 @@ class LLMVariant(str, Enum):
     MINI = "mini"
 
 
-# Change this single constant to switch all application LLM workloads.
-ACTIVE_LLM_VARIANT = LLMVariant.MINI
+# Conversation workloads (patient replies, progress summary, translation) use the fast, inexpensive model.
+# Everything that evaluates the student (category scores, feedback, learning moments) uses the stronger
+# model. Change these constants to switch each group of workloads.
+CONVERSATION_LLM_VARIANT = LLMVariant.MINI
+EVALUATION_LLM_VARIANT = LLMVariant.NORMAL
 
 
 def _required(value: str | None, variable_name: str) -> str:
@@ -63,7 +66,7 @@ def create_chat_model(
     **model_options: Any,
 ) -> ChatOpenAI:
     """Create a LangChain chat model against Azure's OpenAI-compatible v1 API."""
-    selected_variant = variant or ACTIVE_LLM_VARIANT
+    selected_variant = variant or CONVERSATION_LLM_VARIANT
     return ChatOpenAI(
         model=deployment_for(selected_variant),
         **_client_arguments(),
@@ -84,13 +87,19 @@ def create_embeddings() -> OpenAIEmbeddings:
 
 
 def create_openai_client() -> OpenAI:
-    """Create the standard SDK client for Azure OpenAI v1 audio operations."""
-    return OpenAI(**_client_arguments())
+    """Create the standard SDK client for Azure OpenAI v1 audio operations.
+
+    TTS and STT run inside a request the browser is waiting on, so a stalled Azure
+    call must fail fast and retry rather than hang the patient audio.
+    """
+    return OpenAI(timeout=15, max_retries=1, **_client_arguments())
 
 
 def create_azure_openai_client() -> AzureOpenAI:
     """Create the deployment-based Azure client used by versioned endpoints."""
     return AzureOpenAI(
+        timeout=15,
+        max_retries=1,
         api_key=_required(
             settings.azure_openai_api_key,
             "AZURE_OPENAI_API_KEY",

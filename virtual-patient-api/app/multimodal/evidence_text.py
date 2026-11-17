@@ -3,11 +3,16 @@
 from .label_glossary import LABEL_GLOSSARY
 from .quality_policy import family_evidence_available
 
+NEUTRAL_ABSENCE_LABELS = frozenset({"no_nodding", "absent_smile_activity"})
+
 
 def render_family_evidence(payload: dict, family: str) -> str | None:
     outcome = (payload.get("integrated_labels") or {}).get(family) or {}
     label = outcome.get("value")
     if outcome.get("status") != "ok" or label not in LABEL_GLOSSARY or label == "unavailable" or not family_evidence_available(payload, family):
+        return None
+    # Absence of a behavior (no nods, no smile) is neutral: it is not rendered as evidence.
+    if label in NEUTRAL_ABSENCE_LABELS:
         return None
     description = LABEL_GLOSSARY[label]
     if family in {"prosodic_level", "prosodic_variability"} and "truncated_audio" in (payload.get("quality") or {}).get("issues", []):

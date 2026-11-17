@@ -4,8 +4,6 @@ import {evaluation, evaluationTitles, experience, sus} from './questions';
 import {cachedSurvey, loadSurvey, saveSurvey, Survey} from '../../services/perceptionSurvey';
 import {useUser} from '../../hooks';
 import {PageHeader} from '../common/PageHeader';
-import {Button} from '../common';
-import {ChevronLeft, ChevronRight} from 'lucide-react';
 
 const allQuestions = [...sus, ...experience, ...evaluation];
 const sections = {SUS: {title: 'perceptionSusTableTitle', questions: sus}, EXP: {title: 'perceptionExpTableTitle', questions: experience}, EVA: {title: 'perceptionEvaTableTitle', questions: evaluation}} as const;
@@ -30,7 +28,6 @@ export function PerceptionSurvey() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [reload, setReload] = useState(0);
-  const [currentSectionIndex, setCurrentSectionIndex] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -75,25 +72,14 @@ export function PerceptionSurvey() {
   if (!survey) return <div className="survey-page" role="status">{error ? <><p role="alert">{t('perception.error')}</p><button className="ui-button ui-button--secondary" onClick={() => setReload((n) => n + 1)}>{t('perception.retry')}</button></> : t('common.loading')}</div>;
   if (!survey.eligible) return <div className="survey-page">{t('perception.locked')}</div>;
 
-  const currentSectionKey = sectionKeys[currentSectionIndex];
-  const currentSection = sections[currentSectionKey];
-  const canGoNext = currentSectionIndex < sectionKeys.length - 1;
-  const canGoPrev = currentSectionIndex > 0;
-
   return <div className="ui-page survey-page">
     <PageHeader eyebrow={t('perceptionEyebrow')} title={t('perception.title')} />
-    
-    <div className="survey-progress" role="status" aria-live="polite">
-      <p className="text-center font-semibold secondary-text">
-        {t('perception.stepIndicator', {current: currentSectionIndex + 1, total: sectionKeys.length})}
-      </p>
-    </div>
 
-    <div className="survey-table-scroll" role="region" aria-label={t(currentSection.title)} tabIndex={0}>
+    {sectionKeys.map((section) => <div key={section} className="survey-table-scroll" role="region" aria-label={t(sections[section].title)} tabIndex={0}>
       <table className="survey-table">
         <thead className="survey-table-sticky-header">
           <tr>
-            <th scope="col">{t(currentSection.title)}</th>
+            <th scope="col">{t(sections[section].title)}</th>
             {[1, 2, 3, 4, 5].map((value) => <th scope="col" key={value}>
               <span>{value}</span>
               {t(`perception.scale.${value}`)}
@@ -101,8 +87,8 @@ export function PerceptionSurvey() {
           </tr>
         </thead>
         <tbody>
-          {currentSection.questions.map((question, index, list) => <Fragment key={question.id}>
-            {question.group && question.group.es !== list[index - 1]?.group?.es && 
+          {sections[section].questions.map((question, index, list) => <Fragment key={question.id}>
+            {question.group && question.group.es !== list[index - 1]?.group?.es &&
               <tr className="survey-group-row">
                 <th colSpan={6} scope="colgroup">{question.group[language]}</th>
               </tr>
@@ -110,10 +96,10 @@ export function PerceptionSurvey() {
             <tr>
               <th scope="row">
                 <span className="survey-id">{question.id}.</span>{' '}
-                {currentSectionKey === 'EVA' && <>{evaluationTitles[index][language]}.{' '}</>}
+                {section === 'EVA' && <>{evaluationTitles[index][language]}.{' '}</>}
                 <span className="survey-statement">{question.text[language]}</span>
                 {question.caption && <span className="survey-caption">{question.caption[language]}</span>}
-                {question.criteria && 
+                {question.criteria &&
                   <details className="survey-criteria">
                     <summary>{t('perception.criteria')}</summary>
                     <ul>{question.criteria.map((item) => <li key={item.es}>{item[language]}</li>)}</ul>
@@ -122,16 +108,16 @@ export function PerceptionSurvey() {
               </th>
               {[1, 2, 3, 4, 5].map((value) => <td key={value}>
                 <label className="survey-table-choice">
-                  <input 
-                    type="radio" 
-                    name={question.id} 
-                    value={value} 
-                    aria-label={`${question.id}: ${value}. ${t(`perception.scale.${value}`)}`} 
-                    checked={answers[question.id] === value} 
+                  <input
+                    type="radio"
+                    name={question.id}
+                    value={value}
+                    aria-label={`${question.id}: ${value}. ${t(`perception.scale.${value}`)}`}
+                    checked={answers[question.id] === value}
                     onChange={() => {
-                      setAnswers({...answers, [question.id]: value}); 
+                      setAnswers({...answers, [question.id]: value});
                       setSaved(false);
-                    }} 
+                    }}
                   />
                 </label>
               </td>)}
@@ -143,59 +129,40 @@ export function PerceptionSurvey() {
             <td colSpan={6}>
               <label className="survey-comment">
                 <span className="survey-comment-label">
-                  {t(openQuestionKeys[currentSectionKey])} ({t('perception.optional')})
+                  {t(openQuestionKeys[section])} ({t('perception.optional')})
                 </span>
-                <textarea 
-                  rows={3} 
-                  maxLength={10000} 
-                  value={comments[currentSectionKey] ?? ''} 
+                <textarea
+                  rows={3}
+                  maxLength={10000}
+                  value={comments[section] ?? ''}
                   onChange={(event) => {
-                    setComments({...comments, [currentSectionKey]: event.target.value}); 
+                    setComments({...comments, [section]: event.target.value});
                     setSaved(false);
-                  }} 
+                  }}
                 />
               </label>
             </td>
           </tr>
         </tfoot>
       </table>
-    </div>
-
-    <div className="survey-navigation ui-button-group ui-button-group--large">
-      <Button 
-        variant="secondary" 
-        disabled={!canGoPrev} 
-        onClick={() => setCurrentSectionIndex(currentSectionIndex - 1)}
-      >
-        <ChevronLeft aria-hidden="true" />
-        {t('perception.previousSection')}
-      </Button>
-      <Button 
-        variant="secondary" 
-        disabled={!canGoNext} 
-        onClick={() => setCurrentSectionIndex(currentSectionIndex + 1)}
-      >
-        {t('perception.nextSection')}
-        <ChevronRight aria-hidden="true" />
-      </Button>
-    </div>
+    </div>)}
 
     {error && <p role="alert">{t('perception.error')}</p>}
     {saved && <p role="status" className="ui-notice ui-notice--success mx-auto w-fit max-w-full text-center">{t('perception.saved')}</p>}
-    
+
     <div className="survey-actions ui-button-group ui-button-group--large">
-      <button 
-        type="button" 
-        className="ui-button ui-button--primary" 
-        disabled={saving || !dirty || (survey.status === 'SUBMITTED' && !complete)} 
+      <button
+        type="button"
+        className="ui-button ui-button--primary"
+        disabled={saving || !dirty || (survey.status === 'SUBMITTED' && !complete)}
         onClick={() => void persist('save')}
       >
         {t('perception.save')}
       </button>
-      <button 
-        type="button" 
-        className="ui-button ui-button--primary" 
-        disabled={saving || !complete || (survey.status === 'SUBMITTED' && !dirty)} 
+      <button
+        type="button"
+        className="ui-button ui-button--primary"
+        disabled={saving || !complete || (survey.status === 'SUBMITTED' && !dirty)}
         onClick={() => void persist('submit')}
       >
         {t(survey.status === 'SUBMITTED' ? 'perception.update' : 'perception.submit')}

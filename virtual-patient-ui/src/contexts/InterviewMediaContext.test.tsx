@@ -1,6 +1,6 @@
-import {act, cleanup, renderHook} from '@testing-library/react';
+import {act, cleanup, render, renderHook, screen, waitFor} from '@testing-library/react';
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
-import {PropsWithChildren} from 'react';
+import {PropsWithChildren, useEffect} from 'react';
 import {InterviewMediaProvider} from './InterviewMediaContext';
 import {useInterviewMedia} from './interviewMedia';
 
@@ -16,9 +16,11 @@ const microphone = {
   getAudioTracks: () => [new EventTarget()],
 } as unknown as MediaStream;
 let interviewId: string | undefined;
+let capturing = true;
 beforeEach(() => {
   stop.mockReset();
   interviewId = undefined;
+  capturing = true;
   Object.defineProperty(navigator, 'mediaDevices', {
     configurable: true,
     value: {
@@ -28,7 +30,7 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 const wrapper = ({children}: PropsWithChildren) => (
-  <InterviewMediaProvider interviewId={interviewId}>{children}</InterviewMediaProvider>
+  <InterviewMediaProvider interviewId={interviewId} capturing={capturing}>{children}</InterviewMediaProvider>
 );
 
 it('keeps the exact calibrated streams when binding the newly created interview', async () => {
@@ -78,4 +80,33 @@ it('releases both devices when leaving for another interview without a calibrate
   rerender();
   expect(stop).toHaveBeenCalledTimes(2);
   expect(result.current.cameraStream).toBeNull();
+});
+
+it('releases the camera and microphone when leaving calibration or the session', async () => {
+  const {result, rerender} = renderHook(useInterviewMedia, {wrapper});
+  await act(async () => {
+    await result.current.startCamera();
+    await result.current.startMicrophone();
+  });
+  capturing = false;
+  rerender();
+  expect(stop).toHaveBeenCalledTimes(2);
+  expect(result.current.cameraStream).toBeNull();
+  expect(result.current.microphoneStream).toBeNull();
+  expect(result.current.cameraState).toBe('idle');
+});
+it('grants camera and microphone when resuming calibration from the session route of the same interview', async () => {
+  // Resuming leaves /interviews/:id/session (interviewId set) for /calibration (no interviewId) and mounts the
+  // calibration screen, which asks for both devices in its own effect during that same navigation.
+  const Probe = () => {
+    const media = useInterviewMedia();
+    useEffect(() => {
+      void Promise.all([media.startCamera(), media.startMicrophone()]);
+    }, [media.startCamera, media.startMicrophone]);
+    return <span data-testid="devices">{media.cameraState}/{media.microphoneState}</span>;
+  };
+  const view = render(<InterviewMediaProvider interviewId="6837" capturing>{null}</InterviewMediaProvider>);
+  view.rerender(<InterviewMediaProvider interviewId={undefined} capturing><Probe /></InterviewMediaProvider>);
+  await waitFor(() => expect(screen.getByTestId('devices').textContent).toBe('ready/ready'));
+  expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
 });

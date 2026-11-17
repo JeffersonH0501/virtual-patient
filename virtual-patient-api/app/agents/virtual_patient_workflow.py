@@ -44,7 +44,7 @@ class VirtualPatientWorkflow:
     
     def __init__(self, store: BaseStore, checkpointer: BaseCheckpointSaver, interview_id: str, 
                  current_language: str = "English", patient_gender: str = None, patient_name: str = None,
-                 personality: str = None, *, persist_background_memory: bool = True):
+                 personality: str = None):
         self.store = store
         self.checkpointer = checkpointer
         self.interview_id = interview_id
@@ -54,10 +54,7 @@ class VirtualPatientWorkflow:
         self.personality = personality
         
         # Create the existing VirtualPatientAgent
-        self.agent = VirtualPatientAgent(
-            store=store, checkpointer=checkpointer, interview_id=interview_id,
-            persist_background_memory=persist_background_memory,
-        )
+        self.agent = VirtualPatientAgent(store=store, checkpointer=checkpointer, interview_id=interview_id)
         
         # Create the translator agent
         self.translator_agent = TranslatorAgent()

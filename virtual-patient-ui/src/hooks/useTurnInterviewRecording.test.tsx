@@ -1,6 +1,7 @@
 import {act, cleanup, renderHook, waitFor} from '@testing-library/react';
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import type {LocalInterviewTurn} from '../recording/InterviewTurnStore';
+import type {StudentCaptureTiming} from '../types/recording';
 import {useInterviewRecording as useTurnInterviewRecording} from './useInterviewRecording';
 import {StrictMode, type PropsWithChildren} from 'react';
 
@@ -10,6 +11,7 @@ const flow = vi.hoisted(() => ({
   upload: vi.fn(),
   request: vi.fn(),
   create: vi.fn(),
+  tracks: vi.fn(),
 }));
 
 vi.mock('../services/recordings/turns', () => ({
@@ -18,7 +20,7 @@ vi.mock('../services/recordings/turns', () => ({
   subscribeTurnConnection: () => () => undefined,
   turnJson: (...args: unknown[]) => flow.request(...args),
   getTurnManifest: async () => ({turns: []}),
-  turnUploadQueue: () => ({enqueue: flow.upload, drain: async () => undefined}),
+  turnUploadQueue: () => ({enqueue: flow.upload, drain: async () => undefined, retryTransient: () => 0}),
 }));
 
 vi.mock('../recording/InterviewTurnStore', () => ({
@@ -60,7 +62,8 @@ vi.mock('../recording/InterviewTurnRecorder', () => ({
     constructor(store: {scope: string; patch: (id: string, p: Partial<LocalInterviewTurn>) => Promise<LocalInterviewTurn>}, turn: LocalInterviewTurn) {
       this.store = store; this.turn = turn;
     }
-    async start() {
+    async start(camera: MediaStream, microphone?: MediaStream) {
+      flow.tracks(camera, microphone);
       await this.store.create(this.turn);
     }
     async stop() {
@@ -69,8 +72,8 @@ vi.mock('../recording/InterviewTurnRecorder', () => ({
     async flush() {
       return;
     }
-    elapsed() {
-      return 1000;
+    elapsed(at?: number) {
+      return at == null ? 1200 : Math.max(0, at - 2000);
     }
     pause() {
       return;
@@ -98,10 +101,12 @@ const options = (interviewId = 1) => ({
 });
 
 beforeEach(() => {
-  flow.rows.clear(); flow.upload.mockReset(); flow.request.mockReset(); flow.create.mockReset();
+  flow.rows.clear(); flow.upload.mockReset(); flow.upload.mockResolvedValue(undefined); flow.request.mockReset(); flow.create.mockReset(); flow.tracks.mockReset();
   flow.request.mockResolvedValue({segment_id: 'seg-1', retention_expires_at: new Date(Date.now() + 86400_000).toISOString(), offset_ms: 0});
 });
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => {
+  cleanup(); vi.restoreAllMocks();
+});
 
 it('transitions to recording after a successful segment start', async () => {
   const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
@@ -110,37 +115,81 @@ it('transitions to recording after a successful segment start', async () => {
   expect(result.current.isCapturing).toBe(true);
 });
 
-it('opens a turn recorder on beginStudentTurn and closes it on recordStudentTurn', async () => {
-  const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
+it('opens a camera and microphone clip as soon as capture is armed', async () => {
+  const configuration = options();
+  const {result} = renderHook(() => useTurnInterviewRecording(configuration), {wrapper});
   await waitFor(() => expect(result.current.status).toBe('recording'));
-  act(() => result.current.beginStudentTurn());
-  await waitFor(() => expect(flow.create).toHaveBeenCalledTimes(1));
-  expect(flow.rows.size).toBe(1);
-  act(() => result.current.recordStudentTurn(42));
-  await waitFor(() => expect(flow.upload).toHaveBeenCalledTimes(1));
-  expect(flow.rows.get([...flow.rows.keys()][0])?.metadata.message_id).toBe(42);
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
+  expect(flow.tracks).toHaveBeenCalledWith(configuration.cameraStream, configuration.microphoneStream);
+  expect(result.current.elapsedAt()).toBe(1200);
 });
 
-it('discards an open turn recorder on discardStudentTurn', async () => {
-  const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
-  await waitFor(() => expect(result.current.status).toBe('recording'));
-  act(() => result.current.beginStudentTurn());
-  await waitFor(() => expect(flow.create).toHaveBeenCalled());
-  act(() => result.current.discardStudentTurn());
-  await waitFor(() => expect(flow.rows.size).toBe(0));
-  expect(flow.upload).not.toHaveBeenCalled();
-});
-
-it('patient-turn callbacks are no-ops and do not create uploads', async () => {
-  const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
-  await waitFor(() => expect(result.current.status).toBe('recording'));
+it('switches to camera-only at submission and closes the student clip with its speech onset', async () => {
+  const configuration = options();
+  const {result} = renderHook(() => useTurnInterviewRecording(configuration), {wrapper});
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
   act(() => {
-    result.current.beginPatientTurn();
-    result.current.endPatientTurn();
-    result.current.recordWrittenPatientTurn();
+    result.current.markSpeechStart();
+    result.current.submitStudentTurn('exchange-id');
   });
-  await new Promise((r) => setTimeout(r, 50));
-  expect(flow.create).not.toHaveBeenCalled();
+  let studentTiming: StudentCaptureTiming | undefined;
+  await act(async () => {
+    studentTiming = await result.current.prepareStudentTurn();
+  });
+  const rows = [...flow.rows.values()];
+  expect(flow.tracks).toHaveBeenNthCalledWith(2, configuration.cameraStream, undefined);
+  expect(studentTiming?.turn_media_id).toBe(rows[0].id);
+  expect(rows[1]).toMatchObject({requestId: 'exchange-id', metadata: {speaker: 'patient', session_clock_ms: 1200}});
+  expect(flow.upload).not.toHaveBeenCalled();
+  act(() => result.current.recordStudentTurn(18));
+  await waitFor(() => expect(flow.upload).toHaveBeenCalledOnce());
+  expect(flow.upload.mock.calls[0][0].metadata).toMatchObject({speaker: 'student', message_id: 18});
+  expect(flow.upload.mock.calls[0][0].metadata.speech_start_ms).toBeGreaterThanOrEqual(0);
+});
+
+it('records listening bounds and immediately reopens the student clip after the reply', async () => {
+  const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
+  act(() => result.current.submitStudentTurn('exchange-id'));
+  await act(async () => {
+    await result.current.preparePatientTurn(19);
+  });
+  expect(flow.create).toHaveBeenCalledTimes(2);
+  act(() => {
+    result.current.beginPatientTurn(19, 2200);
+    result.current.endPatientTurn(19, true, 3100);
+  });
+  await waitFor(() => expect(flow.upload).toHaveBeenCalledOnce());
+  expect(flow.upload.mock.calls[0][0].metadata).toMatchObject({
+    speaker: 'patient', message_id: 19, playback_complete: true,
+    playback_start_ms: 200, playback_end_ms: 1100,
+  });
+  expect(flow.create).toHaveBeenCalledTimes(3);
+  expect([...flow.rows.values()].at(-1)?.metadata).toMatchObject({speaker: 'student', session_clock_ms: 2400});
+  await waitFor(() => expect(result.current.isCapturing).toBe(true));
+});
+
+it('starts the reply clip from an idle student clip when no submission preceded it', async () => {
+  const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
+  await act(async () => {
+    await result.current.preparePatientTurn(5);
+  });
+  const rows = [...flow.rows.values()];
+  expect(rows.at(-1)?.metadata).toMatchObject({speaker: 'patient', message_id: 5});
+  act(() => result.current.endPatientTurn(5, false));
+  await waitFor(() => expect(flow.upload).toHaveBeenCalledOnce());
+  expect(flow.upload.mock.calls[0][0].metadata).toMatchObject({speaker: 'patient', message_id: 5, playback_start_ms: null});
+});
+
+it('returns the floor to a new student clip when the utterance produced no message', async () => {
+  const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
+  act(() => result.current.submitStudentTurn('exchange-id'));
+  await waitFor(() => expect(flow.create).toHaveBeenCalledTimes(2));
+  act(() => result.current.returnFloorToStudent());
+  await waitFor(() => expect(flow.create).toHaveBeenCalledTimes(3));
+  expect([...flow.rows.values()].at(-1)?.metadata.speaker).toBe('student');
   expect(flow.upload).not.toHaveBeenCalled();
 });
 
@@ -160,9 +209,70 @@ it('finalize drains the upload queue and posts to the finalize endpoint', async 
   const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
   await waitFor(() => expect(result.current.status).toBe('recording'));
   let sealed = false;
-  await act(async () => { sealed = await result.current.finalize(); });
+  await act(async () => {
+    sealed = await result.current.finalize();
+  });
   expect(sealed).toBe(true);
   // Should POST to /recording/turns/finalize.
   const finalizeCalls = flow.request.mock.calls.filter(([, path]: [number, string]) => String(path).includes('finalize'));
   expect(finalizeCalls.length).toBeGreaterThanOrEqual(1);
+  expect(JSON.parse(String(finalizeCalls[0][2].body)).missing_message_ids).toEqual([]);
+});
+
+it('declares transcript turns without preserved media and keeps server finalization errors distinct', async () => {
+  flow.request
+    .mockResolvedValueOnce({segment_id: 'seg-1', retention_expires_at: new Date(Date.now() + 86400_000).toISOString(), offset_ms: 0})
+    .mockRejectedValueOnce(new Error('Missing evidence must be declared explicitly'));
+  const {result} = renderHook(() => useTurnInterviewRecording({...options(), studentMessageIds: [21, 22]}), {wrapper});
+  await waitFor(() => expect(result.current.status).toBe('recording'));
+  let finalized = true;
+  await act(async () => {
+    finalized = await result.current.finalize();
+  });
+  expect(finalized).toBe(false);
+  expect(result.current.errorCode).toBe('finalize-failed');
+  const finalizeCall = flow.request.mock.calls.find(([, path]: [number, string]) => String(path).includes('finalize'));
+  expect(JSON.parse(String(finalizeCall?.[2].body)).missing_message_ids).toEqual([21, 22]);
+});
+
+it('starts the recording and the clock when the greeting starts playing', async () => {
+  const configuration = {...options(), initialPatientMessageId: 3};
+  const {result} = renderHook(() => useTurnInterviewRecording(configuration), {wrapper});
+  await waitFor(() => expect(result.current.isCapturing).toBe(true));
+  await act(async () => {
+    await result.current.preparePatientTurn(3);
+  });
+  expect(flow.create).not.toHaveBeenCalled();
+  expect(result.current.elapsedAt()).toBe(0);
+  act(() => result.current.beginPatientTurn(3, 2000));
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
+  expect(flow.tracks).toHaveBeenCalledWith(configuration.cameraStream, undefined);
+  expect([...flow.rows.values()][0].metadata).toMatchObject({speaker: 'patient', message_id: 3, session_clock_ms: 0});
+  act(() => result.current.endPatientTurn(3, true, 2900));
+  await waitFor(() => expect(flow.upload).toHaveBeenCalledOnce());
+  expect(flow.upload.mock.calls[0][0].metadata).toMatchObject({message_id: 3, playback_start_ms: 0, playback_complete: true});
+  await waitFor(() => expect([...flow.rows.values()].at(-1)?.metadata.speaker).toBe('student'));
+});
+
+it('starts with the student when the greeting could not be played', async () => {
+  const {result} = renderHook(() => useTurnInterviewRecording({...options(), initialPatientMessageId: 3}), {wrapper});
+  await waitFor(() => expect(result.current.isCapturing).toBe(true));
+  act(() => result.current.endPatientTurn(3, false));
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
+  expect([...flow.rows.values()][0].metadata.speaker).toBe('student');
+  expect(flow.upload).not.toHaveBeenCalled();
+});
+
+it('keeps the listening window when playback starts before the reply binding is persisted', async () => {
+  const {result} = renderHook(() => useTurnInterviewRecording(options()), {wrapper});
+  await waitFor(() => expect(flow.create).toHaveBeenCalledOnce());
+  act(() => result.current.submitStudentTurn('exchange-id'));
+  await waitFor(() => expect(flow.create).toHaveBeenCalledTimes(2));
+  act(() => {
+    void result.current.preparePatientTurn(8);
+    result.current.beginPatientTurn(8, 2300);
+    result.current.endPatientTurn(8, true, 3000);
+  });
+  await waitFor(() => expect(flow.upload).toHaveBeenCalledOnce());
+  expect(flow.upload.mock.calls[0][0].metadata).toMatchObject({message_id: 8, playback_start_ms: 300, playback_end_ms: 1000});
 });

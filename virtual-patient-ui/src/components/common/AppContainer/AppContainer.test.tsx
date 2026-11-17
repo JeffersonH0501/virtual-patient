@@ -13,7 +13,7 @@ vi.mock('../../../contexts/SessionLists', () => ({SessionListsProvider: ({childr
 vi.mock('../../../contexts/InterviewMediaContext', () => ({InterviewMediaProvider: ({children}: PropsWithChildren) => <>{children}</>}));
 vi.mock('../Motion', () => ({MotionContent: ({children}: PropsWithChildren) => <>{children}</>}));
 vi.mock('../Header', () => ({Header: () => <header>Application header</header>}));
-vi.mock('../Footer', () => ({Footer: () => null}));
+vi.mock('../Footer', () => ({Footer: () => <footer>Application footer</footer>}));
 
 afterEach(() => {
   cleanup(); session.user = null; session.isLoading = true;
@@ -45,7 +45,6 @@ it('redirects a direct visit without ever mounting the protected page', async ()
 });
 
 it.each([
-  ['/interviews/session-preview', false],
   ['/interviews/7/session', false],
   ['/interviews/7/review', true],
   ['/cases', true],
@@ -57,6 +56,16 @@ it.each([
   </Routes></MemoryRouter>);
   await screen.findByRole('heading', {name: 'Page content'});
   expect(Boolean(screen.queryByRole('banner'))).toBe(hasHeader);
+});
+
+it.each(['/interviews/7/review', '/cases'])('shows the footer only outside review at %s', async (pathname) => {
+  session.user = {id: 1, role: 'admin'};
+  session.isLoading = false;
+  render(<MemoryRouter initialEntries={[pathname]}><Routes>
+    <Route element={<AppContainer />}><Route path="*" element={<h1>Page content</h1>} /></Route>
+  </Routes></MemoryRouter>);
+  await screen.findByRole('heading', {name: 'Page content'});
+  expect(Boolean(screen.queryByText('Application footer'))).toBe(pathname !== '/interviews/7/review');
 });
 
 it.each(['student', 'doctor'])('allows %s recalibration for the same active interview during an authorized resume', async (role) => {

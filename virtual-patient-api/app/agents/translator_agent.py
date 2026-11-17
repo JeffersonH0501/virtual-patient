@@ -16,12 +16,7 @@ if TYPE_CHECKING:
 from .prompts.translator import STRUCTURED_TRANSLATE_PROMPT
 from .prompts.personalities import build_personality_prompt
 from .schemas.clinical_case import ClinicalCaseTranslatableFields
-from app.core.azure_openai import create_chat_model
-
-# Both workloads follow the globally selected LLM variant.
-llm = create_chat_model(temperature=0.2)
-llm_personality = create_chat_model(temperature=1)
-
+from app.core.azure_openai import CONVERSATION_LLM_VARIANT, create_chat_model
 
 class PatientResponseError(RuntimeError):
     """A patient response could not be finalized for clinical use."""
@@ -33,8 +28,8 @@ class TranslatorAgent:
     """
     
     def __init__(self):
-        self.llm = llm
-        self.llm_personality = llm_personality
+        self.llm = create_chat_model(variant=CONVERSATION_LLM_VARIANT, temperature=0.2)
+        self.llm_personality = create_chat_model(variant=CONVERSATION_LLM_VARIANT, temperature=1)
     
     async def translate_patient_with_personality(
         self, 

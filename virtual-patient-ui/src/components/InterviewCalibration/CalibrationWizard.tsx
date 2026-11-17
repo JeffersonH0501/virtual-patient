@@ -342,11 +342,8 @@ export const CalibrationCheckpoint: FC<CheckpointProps> = ({
   const {t} = useTranslation();
   const hasResult = passed !== undefined;
   const quality = diagnostics && typeof diagnostics === 'object' ? diagnostics as Record<string, unknown> : {};
-  const targets = quality.targets && typeof quality.targets === 'object' ? quality.targets as Record<string, {eligible?: boolean; validSamples?: number; validRatio?: number; validDurationMs?: number}> : {};
+  const targets = quality.targets && typeof quality.targets === 'object' ? quality.targets as Record<string, {eligible?: boolean}> : {};
   const unavailableTargets = Object.entries(targets).filter(([, target]) => target.eligible === false);
-  const precision = quality.leaveOneTargetOut as {medianNormalizedError?: number; p90NormalizedError?: number; perTarget?: Record<string, {p90NormalizedError?: number}>} | undefined;
-  const limits = quality.qualityLimits as {medianNormalizedError?: number; p90NormalizedError?: number} | undefined;
-  const percent = (value?: number) => value == null ? '—' : `${(value * 100).toFixed(1)}%`;
 
 
   let retryLabel = 'calibration.startStep';
@@ -390,24 +387,6 @@ export const CalibrationCheckpoint: FC<CheckpointProps> = ({
           <p>{t('calibration.diagnostics.targets', {targets: unavailableTargets.map(([name]) => t(`calibration.targetNames.${name}`)).join(', ')})}</p>
         )}
         {failureReason === 'capture_quality' && <p>{t('calibration.diagnostics.captureQuality')}</p>}
-        {hasResult && ['mediapipe_five_point_quality_v1', 'mediapipe_five_point_quality_v2'].includes(String(quality.version)) && <details className="w-full text-left">
-          <summary>{t('calibration.diagnostics.qualityTitle')}</summary>
-          <p>{t('calibration.diagnostics.precision', {median: percent(precision?.medianNormalizedError), p90: percent(precision?.p90NormalizedError),
-            medianLimit: percent(limits?.medianNormalizedError), p90Limit: percent(limits?.p90NormalizedError)})}</p>
-          <div className="overflow-auto"><table className="w-full text-left">
-            <thead><tr>{['point', 'samples', 'coverage', 'support', 'p90'].map((key) => <th scope="col" className="p-2" key={key}>{t(`calibration.diagnostics.${key}`)}</th>)}</tr></thead>
-            <tbody>{Object.entries(targets).map(([name, target]) => <tr key={name}>
-              <th scope="row" className="p-2">{t(`calibration.targetNames.${name}`)}</th>
-              <td className="p-2">{target.validSamples ?? '—'}</td><td className="p-2">{percent(target.validRatio)}</td>
-              <td className="p-2">{target.validDurationMs == null ? '—' : `${(target.validDurationMs / 1000).toFixed(2)} s`}</td>
-              <td className="p-2">{percent(precision?.perTarget?.[name]?.p90NormalizedError)}</td>
-            </tr>)}</tbody>
-          </table></div>
-          <p>{t('calibration.diagnostics.errorNote')}</p>
-          {typeof quality.cameraRadiusP90 === 'number' && <p>{t('calibration.diagnostics.cameraQuality', {
-            radius: quality.cameraRadiusP90.toFixed(4), limit: Number(quality.cameraRadiusLimit).toFixed(4),
-            seconds: (Number(quality.cameraValidDurationMs) / 1000).toFixed(2)})}</p>}
-        </details>}
         {error && (
           <p className="calibration-friendly-alert" role="alert">
             {t('clinicalSession.startFailed')}

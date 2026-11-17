@@ -174,3 +174,41 @@ it('keeps a failed completion terminal after media was saved and retries without
 
 
 
+
+it('shows the saving percentage by stages and keeps it from going backwards on retry', async () => {
+  let report!: (fraction: number) => void;
+  let finish!: (saved: boolean) => void;
+  const beforeComplete = vi.fn((onProgress: (fraction: number) => void) => {
+    report = onProgress;
+    return new Promise<boolean>((resolve) => {
+      finish = resolve;
+    });
+  });
+  render(<ClinicalHypotheses onCancel={vi.fn()} beforeComplete={beforeComplete} onCompleted={vi.fn()} />);
+  enter();
+  fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.submit'}));
+  const bar = () => screen.getByRole('progressbar');
+  // Hypotheses are saved first: 10 % of the bar.
+  await waitFor(() => expect(beforeComplete).toHaveBeenCalled());
+  expect(bar().getAttribute('aria-valuenow')).toBe('10');
+  // The recording stage fills 10 % to 90 % with the real upload progress.
+  act(() => report(0.5));
+  expect(bar().getAttribute('aria-valuenow')).toBe('50');
+  act(() => report(1));
+  expect(bar().getAttribute('aria-valuenow')).toBe('90');
+  await act(async () => finish(false));
+  await waitFor(() => expect(screen.queryByRole('progressbar')).toBeNull());
+  // A retry starts over from the first stage but the bar does not move backwards.
+  beforeComplete.mockImplementationOnce(() => new Promise<boolean>(() => undefined));
+  fireEvent.click(screen.getByRole('button', {name: 'common.retry'}));
+  await waitFor(() => expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('90'));
+});
+
+it('reaches 100 % when the interview is completed', async () => {
+  const onCompleted = vi.fn();
+  render(<ClinicalHypotheses onCancel={vi.fn()} beforeComplete={async () => true} onCompleted={onCompleted} />);
+  enter();
+  fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.submit'}));
+  await waitFor(() => expect(onCompleted).toHaveBeenCalled());
+  expect(screen.getByRole('progressbar').getAttribute('aria-valuenow')).toBe('100');
+});

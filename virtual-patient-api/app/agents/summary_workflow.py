@@ -17,10 +17,10 @@ from app.agents.prompts.progress_summary import get_thread_extractor_instruction
 from app.agents.schemas.progress_summary import ProgressSummarySchema
 from app.agents.helpers import normalize_summary_data
 from app.models.clinical_case import ClinicalCaseDB
-from app.core.azure_openai import create_chat_model
+from app.core.azure_openai import CONVERSATION_LLM_VARIANT, create_chat_model
 
-# Initialize the globally selected Azure OpenAI v1 LLM.
-llm = create_chat_model()
+# The progress summary is part of the conversation, so it uses the conversation model.
+llm = create_chat_model(variant=CONVERSATION_LLM_VARIANT)
 
 class SummaryState(TypedDict):
     """State for the summary workflow"""

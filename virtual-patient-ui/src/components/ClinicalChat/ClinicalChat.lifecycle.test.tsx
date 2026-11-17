@@ -37,6 +37,7 @@ const flow = vi.hoisted(() => ({
     isEnabled: true,
     isSubmittingUtterance: false,
     hasPendingUtterance: false,
+    start: vi.fn(),
     stop: vi.fn(),
   },
   recording: {
@@ -49,7 +50,6 @@ const flow = vi.hoisted(() => ({
     sealForEnding: vi.fn(),
     canRestartWithCurrentGeometry: vi.fn(),
     restartAfterCancel: vi.fn(),
-    recordWrittenPatientTurn: vi.fn(),
     endPatientTurn: vi.fn(),
     get canResume() {
       return this.status === 'paused';
@@ -59,9 +59,10 @@ const flow = vi.hoisted(() => ({
     finalize: vi.fn(),
     resumeAudioGraph: vi.fn(),
     recordStudentTurn: vi.fn(),
-    endStudentTurn: vi.fn(),
-    discardStudentTurn: vi.fn(),
-    beginStudentTurn: vi.fn(),
+    prepareStudentTurn: undefined as (() => Promise<import('../../types/recording').StudentCaptureTiming>) | undefined,
+    submitStudentTurn: vi.fn(),
+    returnFloorToStudent: vi.fn(),
+    markSpeechStart: vi.fn(),
     beginPatientTurn: vi.fn(),
     elapsedAt: () => 0,
   },
@@ -240,6 +241,7 @@ beforeEach(() => {
   flow.interview.reviewAccess = undefined;
   flow.complete.mockResolvedValue({});
   flow.recording.status = 'recording';
+  flow.recording.prepareStudentTurn = undefined;
   flow.recording.isCapturing = true;
   flow.recording.syncPending = false;
   flow.recording.stopForRecovery.mockResolvedValue(undefined);
@@ -445,8 +447,20 @@ it('keeps the same request key and speech timing after a lost message acknowledg
   await waitFor(() => expect(flow.send).toHaveBeenCalledTimes(2));
   expect(flow.send.mock.calls[0][2]).toBeTruthy();
   expect(flow.send.mock.calls[1]).toEqual(flow.send.mock.calls[0]);
-  expect(flow.recording.recordStudentTurn).toHaveBeenCalledWith(9, 0, 'Synthetic retry', timing);
+  expect(flow.recording.recordStudentTurn).toHaveBeenCalledWith(9);
+  expect(flow.recording.submitStudentTurn).toHaveBeenCalledWith(flow.send.mock.calls[0][2]);
   expect(flow.speechOptions.paused).toBe(false);
+});
+
+it('closes and queues a captured student turn after its message is confirmed', async () => {
+  flow.recording.prepareStudentTurn = vi.fn().mockResolvedValue({turn_media_id: 'turn-1', capture_scope: 'account:7',
+    start_ms: 0, end_ms: 500, input_source: 'microphone', timing_source: 'turn_media', timing_quality: 'provisional', patient_roi_snapshots: []});
+  await open();
+  flow.send.mockResolvedValueOnce({messages: [{id: 11, content: 'Synthetic question', senderType: 'user', createdAt: '', interviewId: 7}], newMessageIds: [11]});
+  await act(async () => flow.speechOptions.onUtterance('Synthetic question'));
+  expect(flow.send.mock.calls[0][4]).toEqual(expect.objectContaining({turn_media_id: 'turn-1'}));
+  expect(flow.recording.recordStudentTurn).toHaveBeenCalledWith(11);
+  expect(flow.recording.returnFloorToStudent).toHaveBeenCalledOnce();
 });
 
 it('correlates spoken input and first playback to the same request', async () => {
@@ -483,8 +497,8 @@ it('retries technical completion from review without reopening capture', async (
   });
   render(<ClinicalChat mode="review" />);
   fireEvent.click(await screen.findByText('common.retry'));
-  await screen.findByText('clinicalChat.processing');
-  expect(flow.complete).toHaveBeenCalledWith('7');
+  await waitFor(() => expect(flow.complete).toHaveBeenCalledWith('7'));
+  expect(screen.queryByText('clinicalChat.processing')).toBeNull();
   expect(flow.captureOptions.enabled).toBe(false);
   expect(flow.recording.resume).not.toHaveBeenCalled();
 });
@@ -497,7 +511,7 @@ it('blocks clicks and keyboard handlers while speech is being submitted', async 
   expect(flow.recording.sealForEnding).not.toHaveBeenCalled();
 });
 
-it('discards an unsent intervention and seals once before allowing cancellation', async () => {
+it('seals the open capture once, keeping the idle time, before allowing cancellation', async () => {
   flow.speech.hasPendingUtterance = true;
   await open();
   expect(flow.toolbar.endDisabled).toBe(false);
@@ -505,13 +519,15 @@ it('discards an unsent intervention and seals once before allowing cancellation'
     flow.toolbar.onEndInterview(); flow.toolbar.onEndInterview();
   });
   expect(flow.speech.stop).toHaveBeenCalled();
-  expect(flow.recording.discardStudentTurn).toHaveBeenCalledOnce();
   expect(flow.recording.sealForEnding).toHaveBeenCalledOnce();
   expect(flow.hypotheses.canCancel).toBe(true);
   await act(async () => {
     await flow.hypotheses.onCancel();
   });
   expect(flow.recording.restartAfterCancel).toHaveBeenCalledOnce();
+  // The capture is reopened with new audio and video, so speech recognition (the voice bubble) must come back too.
+  expect(flow.speech.start).toHaveBeenCalledOnce();
+  expect(flow.speech.start.mock.invocationCallOrder[0]).toBeGreaterThan(flow.recording.restartAfterCancel.mock.invocationCallOrder[0]);
   expect(screen.queryByTestId('hypotheses')).toBeNull();
 });
 
@@ -650,8 +666,7 @@ it('replays only the pending server patient message after recalibration', async 
   expect(flow.transcript.messages?.filter((message) => message.messageMetadata?.isNew).map((message) => message.id)).toEqual([12]);
   expect(flow.speechOptions.paused).toBe(true);
   expect(flow.toolbar.endDisabled).toBe(true);
-  act(() => flow.transcript.onPatientTurnComplete?.(12, 'written'));
-  expect(flow.recording.recordWrittenPatientTurn).toHaveBeenCalled();
+  act(() => flow.transcript.onPatientTurnComplete?.(12));
   expect(flow.toolbar.endDisabled).toBe(false);
   expect(flow.send).not.toHaveBeenCalled();
 });

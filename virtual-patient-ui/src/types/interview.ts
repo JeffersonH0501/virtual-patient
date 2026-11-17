@@ -41,7 +41,7 @@ export type CompleteInterviewResponse = {
     errorCode?: string | null;
     recordingTransport?: string | null;
   } | null;
-  reviewAccess?: {canViewAssessments: boolean; assignmentId: number | null; canAssignDoctors?: boolean; selfAssessmentRequired?: boolean};
+  reviewAccess?: {canViewAssessments: boolean; assignmentId: number | null; canAssignDoctors?: boolean; selfAssessmentRequired?: boolean; selfAssessmentStatus?: 'pending' | 'in_progress' | 'submitted'};
   id: number;
   publicId: string;
   userId: number;

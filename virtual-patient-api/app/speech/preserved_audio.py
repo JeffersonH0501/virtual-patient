@@ -7,11 +7,15 @@ from uuid import uuid4
 from app.speech.contracts import SpeechProviderError
 
 
+def patient_audio_key(interview_id, recording_id, message_id) -> str:
+    return f"interviews/{interview_id}/{recording_id}/patient-speech/{message_id}.mp3"
+
+
 def preserved_patient_audio(storage, interview_id, recording_id, message_id, generate) -> Path:
-    directory = (storage.root / "interviews" / str(interview_id) / recording_id / "patient-speech").resolve()
-    storage._assert_within_root(directory)
+    target = (storage.root / patient_audio_key(interview_id, recording_id, message_id)).resolve()
+    storage._assert_within_root(target)
+    directory = target.parent
     directory.mkdir(parents=True, exist_ok=True)
-    target = directory / f"{message_id}.mp3"
     # A per-message filesystem lock also serializes generators in other API processes.
     with (directory / f"{message_id}.lock").open("a+b") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)

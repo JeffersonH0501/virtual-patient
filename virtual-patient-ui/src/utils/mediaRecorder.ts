@@ -9,8 +9,8 @@ export const selectAudioMimeType = (): string | null => selectSupportedMimeType(
   'audio/mp4',
 ]);
 
-export const selectVideoMimeType = (): string | null => selectSupportedMimeType([
-  'video/webm;codecs=vp8,opus',
+export const selectVideoMimeType = (withAudio = true): string | null => selectSupportedMimeType([
+  ...(withAudio ? ['video/webm;codecs=vp8,opus'] : []),
   'video/webm;codecs=vp8',
   'video/webm',
   'video/mp4',

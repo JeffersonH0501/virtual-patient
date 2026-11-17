@@ -84,13 +84,13 @@ class SpeechProviderTests(unittest.TestCase):
         service.synthesize_patient_message("Hello", "rude_unfriendly", "female")
 
         request = provider.synthesize.call_args.args[0]
-        self.assertEqual(request.voice, "alloy")
+        self.assertEqual(request.voice, "coral")
         self.assertEqual(request.vocal_style.profile_key, "rude_unfriendly")
         self.assertEqual(
             request.vocal_style.policy_version,
             VOCAL_STYLE_POLICY_VERSION,
         )
-        self.assertEqual(select_patient_voice(None, "female"), "shimmer")
+        self.assertEqual(select_patient_voice(None, "female"), "coral")
 
     def test_patient_vocal_style_is_provider_independent(self) -> None:
         style = select_patient_vocal_style("elderly_forgetful")
@@ -147,7 +147,7 @@ class SpeechProviderTests(unittest.TestCase):
         )
 
         self.assertIsNone(persisted.audio_url)
-        self.assertEqual(persisted.synthesis_metadata["voice"], "echo")
+        self.assertEqual(persisted.synthesis_metadata["voice"], "sage")
         self.assertEqual(
             persisted.synthesis_metadata["style_policy_version"],
             VOCAL_STYLE_POLICY_VERSION,

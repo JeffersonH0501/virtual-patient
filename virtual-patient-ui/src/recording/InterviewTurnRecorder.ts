@@ -1,7 +1,7 @@
 import {selectVideoMimeType} from '../utils/mediaRecorder';
 import {InterviewTurnStore, type TurnCaptureMetadata, type LocalInterviewTurn} from './InterviewTurnStore';
 
-/** One muxed original per student turn (camera + microphone). */
+/** One original per turn, with a microphone track only during student speech. */
 export class InterviewTurnRecorder {
   private recorder: MediaRecorder | null = null;
   private origin: number | null = null;
@@ -14,17 +14,18 @@ export class InterviewTurnRecorder {
   constructor(readonly store: InterviewTurnStore, readonly turn: LocalInterviewTurn,
     private onStorageFailure: (error: unknown) => void) {}
 
-  async start(camera: MediaStream, microphone: MediaStream): Promise<void> {
+  async start(camera: MediaStream, microphone?: MediaStream): Promise<void> {
     if (this.recorder) throw new Error('Turn recorder already started');
-    const tracks = [...camera.getVideoTracks(), ...microphone.getAudioTracks()];
-    if (!tracks.some((track) => track.kind === 'video') || !tracks.some((track) => track.kind === 'audio')) {
-      throw new Error('Turn capture requires camera and microphone tracks');
+    const video = camera.getVideoTracks();
+    const audio = microphone?.getAudioTracks() ?? [];
+    if (!video.length || (microphone && !audio.length)) {
+      throw new Error('Required turn capture tracks are unavailable');
     }
-    const mimeType = selectVideoMimeType();
-    if (!mimeType) throw new Error('A supported camera/microphone recording format is unavailable');
+    const mimeType = selectVideoMimeType(audio.length > 0);
+    if (!mimeType) throw new Error('A supported turn recording format is unavailable');
     this.turn.mimeType = mimeType;
     await this.store.create(this.turn);
-    const recorder = new MediaRecorder(new MediaStream(tracks), {mimeType});
+    const recorder = new MediaRecorder(new MediaStream([...video, ...audio]), {mimeType});
     this.recorder = recorder;
     recorder.addEventListener('dataavailable', (event) => {
       if (!event.data.size) return;
@@ -83,10 +84,6 @@ export class InterviewTurnRecorder {
     this.writes = this.writes.then(async () => {
       Object.assign(this.turn, await this.store.patch(this.turn.id, {metadata}));
     });
-    await this.writes;
-  }
-
-  async flush(): Promise<void> {
     await this.writes;
   }
 

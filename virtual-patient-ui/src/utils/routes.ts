@@ -2,7 +2,6 @@ export const ROUTES = {
   home: '/',
   welcome: '/welcome',
   clinicalCases: '/cases',
-  patientPreview: '/interviews/session-preview',
   calibration: '/interviews/calibration',
   interviews: '/interviews',
   interviewSession: '/interviews/:interviewId/session',
@@ -20,7 +19,7 @@ export type NavigationSection = 'cases' | 'interviews' | 'users' | 'perception';
 /** Resolve one visible navigation tab, including interview detail routes. */
 export const getNavigationSection = (pathname: string, role?: string): NavigationSection => {
   if (pathname === ROUTES.perceptionSurvey && role !== 'admin') return 'perception';
-  if (pathname === ROUTES.calibration || pathname === ROUTES.patientPreview) return 'cases';
+  if (pathname === ROUTES.calibration) return 'cases';
   if (pathname === ROUTES.clinicalCases || pathname.startsWith(ROUTES.clinicalCases + '/')) return 'cases';
   if (pathname === ROUTES.users && role === 'admin') return 'users';
   if (pathname === ROUTES.interviews || pathname.startsWith(ROUTES.interviews + '/')) {
@@ -44,4 +43,5 @@ export type InterviewResumeState = {
   resumeAttemptId: string;
   offsetMs: number;
   pendingPatientMessageId?: number | null;
+  recoveredPatientMessageId?: number | null;
 };

@@ -10,7 +10,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 from langchain_core.messages import HumanMessage, AIMessage
 from langgraph.store.base import BaseStore
-from enum import Enum
 from langmem import create_manage_memory_tool, create_search_memory_tool, create_memory_store_manager
 from .prompts.memory_tool_instructions import MANAGE_MEMORY_INSTRUCTIONS, SEARCH_MEMORY_INSTRUCTIONS, BACKGROUND_LEARNING_INSTRUCTIONS
 
@@ -58,9 +57,6 @@ class SemanticMemory:
         return results
     
 
-class InteractionRole(Enum):
-    PATIENT = "patient"
-    DOCTOR = "doctor"
 
 
 class ProceduralMemory:

@@ -44,8 +44,8 @@ Stored events cover real interview creation and calibration, session start,
 conversation, server speech transcription and synthesis, multimodal processing,
 paraverbal extraction, and evaluation when the producer has an interview ID.
 The server checks that the interview exists and is not marked
-`calibration_test=true` before writing an event. Gaze calibration tests,
-nonverbal tests, and `PatientPreview` / “Prueba entrevista” are excluded. Global
+`calibration_test=true` before writing an event. Gaze calibration tests and
+nonverbal tests are excluded. Global
 worker warmup/idle events without an interview ID remain in stdout only.
 
 Metadata is limited to safe technical scalars such as stage, status, counts,

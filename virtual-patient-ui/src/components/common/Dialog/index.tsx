@@ -6,6 +6,7 @@ import {Modal, ModalProps} from '../Modal';
 type DialogShellProps = PropsWithChildren<{
   title: string;
   onClose?: () => void;
+  headerAction?: ReactNode;
   busy?: boolean;
   actions?: ReactNode;
   /** The footer already provides Cancel, Close or an equivalent dismissal. */
@@ -17,6 +18,7 @@ type DialogShellProps = PropsWithChildren<{
 export const DialogShell = ({
   title,
   onClose,
+  headerAction,
   busy = false,
   actions,
   hasDismissAction = false,
@@ -31,6 +33,7 @@ export const DialogShell = ({
         <h2 id={titleId} className="dialog-title">
           {title}
         </h2>
+        {headerAction}
         {onClose && !hasDismissAction && (
           <button
             type="button"

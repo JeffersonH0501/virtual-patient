@@ -1,0 +1,44 @@
+# Public tunnel mode: serve the optimized production UI (nginx) and reach it,
+# plus the API it proxies, through the named Cloudflare tunnel at patientbot.com.co.
+# Everything is one origin; nginx proxies /api/ to the API, so there is no CORS and
+# no second subdomain. Use with the base file:
+#   docker compose -f docker-compose.local.yml -f docker-compose.tunnel.yml ...
+services:
+  api:
+    environment:
+      RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY:?Set RECAPTCHA_SECRET_KEY in .env.local for tunnel mode}
+  ui:
+    # Distinct tag so the production (nginx) build never overwrites the development
+    # image (virtual-patient-ui:local) that `deploy-local.sh up` starts with --no-build.
+    image: virtual-patient-ui:tunnel
+    build:
+      target: production
+      args:
+        # Real site key (domain-restricted to the public host); the matching secret is applied to the API below.
+        VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_KEY:?Set VITE_RECAPTCHA_SITE_KEY in .env.local for tunnel mode}
+        # Same-origin: the browser calls /api, which nginx proxies to the API.
+        VITE_API_HOST: ""
+        VITE_API_PORT: ""
+    # The dev bind mount would hide the built site baked into the image.
+    volumes: []
+    ports:
+      - "127.0.0.1:8080:80"
+    # nginx serves plain HTTP on 80 here; TLS is terminated by the Cloudflare tunnel.
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "--config", "/etc/cloudflared/config.yml", "run"]
+    volumes:
+      - ./.cloudflared:/etc/cloudflared:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    depends_on:
+      ui:
+        condition: service_healthy

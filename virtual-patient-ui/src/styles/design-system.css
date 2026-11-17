@@ -1753,7 +1753,7 @@
 /* Perception survey */
 .survey-page { width: 100%; max-width: var(--content-max-width); margin: 0 auto; }
 .survey-actions { display: flex; flex-wrap: wrap; justify-content: center; }
-.survey-table-scroll { position: relative; width: 100%; overflow-x: auto; border: 1px solid #dbe3ed; border-radius: .75rem; background: white; }
+.survey-table-scroll { position: relative; width: 100%; overflow-x: clip; border: 1px solid #dbe3ed; border-radius: .75rem; background: white; }
 .survey-table { width: 100%; min-width: 720px; border-collapse: collapse; table-layout: fixed; }
 .survey-table th, .survey-table td { padding: .7rem .45rem; border-bottom: 1px solid #e5ebf2; }
 .survey-table thead th { background: var(--color-brand-50); color: #52647b; text-align: center; font-size: .75rem; font-weight: 600; line-height: 1.25; }
@@ -1767,8 +1767,15 @@
 .survey-table tbody tr:last-child th, .survey-table tbody tr:last-child td { border-bottom: 0; }
 .survey-table td { text-align: center; }
 .survey-table tfoot td { padding: var(--layout-inset); border-top: 1px solid #e5ebf2; border-bottom: 0; text-align: left; }
-.survey-table-choice { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; cursor: pointer; }
-.survey-table-choice input { width: 1.1rem; height: 1.1rem; accent-color: var(--color-brand-600); cursor: pointer; }
+/* Survey answer radios: the whole cell is the click target; the circle itself is 1.75rem. */
+.survey-table td:has(> .survey-table-choice) { padding: 0; }
+.survey-table-choice { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 3.25rem; cursor: pointer; }
+.survey-table-choice input { appearance: none; -webkit-appearance: none; flex: none; width: 1.75rem; height: 1.75rem; margin: 0; border: 2px solid #8fa3ba; border-radius: 50%; background: white; cursor: pointer; transition: border-color .12s ease, background-color .12s ease, box-shadow .12s ease; }
+.survey-table-choice:hover input:not(:checked) { border-color: var(--color-brand-600); background: var(--color-brand-50); box-shadow: 0 0 0 4px var(--color-brand-100); }
+.survey-table-choice input:checked { border-color: var(--color-brand-600); background: var(--color-brand-600); }
+.survey-table-choice input:focus-visible { outline: var(--focus-outline-width) solid var(--color-focus); outline-offset: var(--focus-outline-offset); }
+.survey-table tbody tr:has(input:checked) { background: #f8fbff; }
+@media (prefers-reduced-motion: reduce) { .survey-table-choice input { transition: none; } }
 .survey-id { color: #52647b; font-size: .8rem; }
 .survey-caption { color: #52647b; font-size: .875rem; margin: .2rem 0 .6rem; }
 .survey-criteria { margin-top: .4rem; font-size: .875rem; font-weight: 400; }
@@ -1780,6 +1787,6 @@
 
 .survey-table tbody .survey-group-row th { padding: .5rem 1rem; background: var(--color-neutral-50); color: #52647b; font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; text-align: left; }
 
-.survey-progress { margin-bottom: var(--layout-inset); }
-.survey-navigation { margin-top: var(--layout-inset); justify-content: space-between; }
 .survey-actions { margin-top: var(--layout-inset); justify-content: center; }
+/* A scroll container would trap the sticky column labels; scroll sideways only where the table cannot fit. */
+@media (max-width: 760px) { .survey-table-scroll { overflow-x: auto; } }

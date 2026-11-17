@@ -1,5 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {selectVideoMimeType} from '../utils/mediaRecorder';
+import type {CalibrationStage} from '../services/interviews/calibration';
 
 const TARGET_MS = 3_000;
 const GAZE_INSTRUCTION_DELAY_MS = 5_000;
@@ -10,7 +11,7 @@ const TARGETS = [
   ['TOP_RIGHT', 0.9, 0.1], ['BOTTOM_LEFT', 0.1, 0.9],
 ] as const;
 
-export type CalibrationStage = 'gaze' | 'camera' | 'unified' | 'guided';
+export type {CalibrationStage};
 export const GUIDED_CHECKS = [
   {kind: 'gaze_still', durationMs: 5000}, {kind: 'gaze_turn', durationMs: 6000},
   {kind: 'gaze_nod', durationMs: 6000}, {kind: 'gaze_away', durationMs: 5000},

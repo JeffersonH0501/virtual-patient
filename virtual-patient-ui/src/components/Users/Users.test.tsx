@@ -53,7 +53,7 @@ const fill = (label: string, value: string) => {
 };
 beforeEach(() => {
   mocks.activity.mockReset().mockResolvedValue([{userId: 1, hasInterviews: false, hasSubmittedSurvey: false}]);
-  mocks.survey.mockReset().mockResolvedValue({answers: {'CUQ-01': 4}, comments: {CUQ: 'Useful'}, cuq_score: 75});
+  mocks.survey.mockReset().mockResolvedValue({answers: {'SUS-01': 4}, comments: {SUS: 'Useful'}});
   mocks.list.mockReset().mockResolvedValue({users: [account], total: 1});
   mocks.create.mockReset().mockResolvedValue(account);
   mocks.update.mockReset().mockResolvedValue(account);
@@ -86,11 +86,17 @@ describe('account administration', () => {
   });
   it('opens submitted survey details without opening the user editor', async () => {
     mocks.activity.mockResolvedValue([{userId: 1, hasInterviews: false, hasSubmittedSurvey: true}]);
+    mocks.survey.mockResolvedValueOnce({answers: {'SUS-01': 4, 'EVA-01': 2}, comments: {SUS: 'Useful', EVA: 'Clear'}});
     renderUsers();
     const button = await screen.findByRole('button', {name: 'users.viewSurvey'});
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(button);
-    expect(await screen.findByText('Useful')).toBeDefined();
+    expect(await screen.findByText('SUS-01')).toBeDefined();
+    expect(screen.getByText('4')).toBeDefined();
+    expect(screen.getByText('EVA-01')).toBeDefined();
+    expect(screen.getByText('2')).toBeDefined();
+    expect(screen.getByText('Useful')).toBeDefined();
+    expect(screen.getByText('Clear')).toBeDefined();
     expect(mocks.survey).toHaveBeenCalledWith(1);
     expect(screen.queryByLabelText('auth.password')).toBeNull();
   });

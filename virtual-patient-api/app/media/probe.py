@@ -5,6 +5,14 @@ import subprocess
 from pathlib import Path
 
 
+def has_audio_stream(path: Path) -> bool:
+    result = subprocess.run([
+        "ffprobe", "-v", "error", "-protocol_whitelist", "file,pipe", "-select_streams", "a",
+        "-show_entries", "stream=index", "-of", "json", str(path),
+    ], check=True, capture_output=True, text=True, timeout=60)
+    return bool(json.loads(result.stdout)["streams"])
+
+
 def probe_media_timing(path: Path, stream: str | None = None) -> dict:
     result = subprocess.run([
         "ffprobe", "-v", "error", "-protocol_whitelist", "file,pipe",

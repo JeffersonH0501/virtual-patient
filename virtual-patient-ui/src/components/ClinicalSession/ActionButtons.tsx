@@ -5,13 +5,12 @@ type ActionButtonsProps = {
   onStartSession: () => void;
   isFormValid: boolean;
   onView?: () => void;
-  onPreview?: () => void;
   onCalibrationPreview?: () => void;
   onGazePreview?: () => void;
   onCancel?: () => void;
 };
 
-export const ActionButtons: FC<ActionButtonsProps> = ({onStartSession, isFormValid, onView, onPreview, onCalibrationPreview, onGazePreview, onCancel}) => {
+export const ActionButtons: FC<ActionButtonsProps> = ({onStartSession, isFormValid, onView, onCalibrationPreview, onGazePreview, onCancel}) => {
   const {t} = useTranslation();
 
   return (
@@ -23,15 +22,13 @@ export const ActionButtons: FC<ActionButtonsProps> = ({onStartSession, isFormVal
         {onView && <button type="button" className="ui-button ui-button--primary" onClick={onView}>
           {t('patientPreview.view')}
         </button>}
-        {onPreview && <button type="button" className="ui-button ui-button--primary"
-          disabled={!isFormValid} onClick={onPreview}>{t('patientPreview.try')}</button>}
         {onCalibrationPreview && <button type="button" className="ui-button ui-button--primary" onClick={onCalibrationPreview}>
           {t('patientPreview.calibrationTry')}
         </button>}
         {onGazePreview && <button type="button" className="ui-button ui-button--primary" onClick={onGazePreview}>
           {t('patientPreview.gazeTry')}
         </button>}
-        {!onPreview && <button
+        {!onView && <button
           type="button"
           onClick={onStartSession}
           disabled={!isFormValid}

@@ -1,24 +1,6 @@
 """Research snapshots must identify the schema actually used for scoring."""
-import asyncio
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, MagicMock
-from app.agents.schemas.evaluation import EvaluationResult
-from app.multimodal import matched_control
-
-
-def test_matched_control_records_the_actual_evaluation_schema(monkeypatch):
-    captured = {}
-    def stage(db, interview_id, condition, agent, inputs, payload):
-        captured.update(inputs)
-        return "synthetic-run"
-    monkeypatch.setattr(matched_control, "stage_evaluation_run", stage)
-    db = MagicMock()
-    db.query.return_value.filter.return_value.all.return_value = []
-    agent = SimpleNamespace(target_language="English", evaluate_multimodal=AsyncMock(return_value=[]))
-    asyncio.run(matched_control.evaluate_matched_text_control(db, 7, agent,
-        [{"id": 1, "role": "user", "content": "Synthetic question"}]))
-    assert captured["output_schema"] == EvaluationResult.model_json_schema()
-    assert "critical_turns" not in captured["output_schema"].get("properties", {})
+from unittest.mock import MagicMock
 
 
 def test_mediapipe_rejects_an_unverified_artifact_before_native_loading(tmp_path):

@@ -257,14 +257,35 @@ case "$action" in
     compose down
     ;;
 
+  tunnel)
+    # Public tunnel mode: build and serve the optimized production UI (nginx),
+    # start the API, and run the Cloudflare tunnel. One origin at
+    # patientbot.com.co; nginx proxies /api/ to the API. Rebuild the UI here
+    # after editing code so the tunnel reflects the change.
+    echo "Starting public tunnel environment (production UI + Cloudflare tunnel)..."
+    TUNNEL=(-f "$COMPOSE_FILE" -f "$ROOT_DIR/docker-compose.tunnel.yml")
+    docker compose --env-file "$ENV_FILE" "${TUNNEL[@]}" build ui
+    docker compose --env-file "$ENV_FILE" "${TUNNEL[@]}" up -d --force-recreate api media-processing-worker ui cloudflared
+    wait_for_url "API" "http://127.0.0.1:8000/health"
+    wait_for_url "UI" "http://127.0.0.1:8080/health"
+    echo "Public app: https://patientbot.com.co"
+    ;;
+
+  tunnel-down)
+    echo "Stopping the public tunnel environment..."
+    docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" -f "$ROOT_DIR/docker-compose.tunnel.yml" down
+    ;;
+
   *)
-    echo "Usage: bash deploy-local.sh {setup|up|build|rebuild|restart|ui|database|test|verify|status|logs|down}" >&2
+    echo "Usage: bash deploy-local.sh {setup|up|build|rebuild|restart|ui|database|test|verify|status|logs|down|tunnel|tunnel-down}" >&2
     echo "" >&2
-    echo "  up       Start dev env; auto-rebuilds only the service whose" >&2
-    echo "           dependency files (requirements.txt / package.json /" >&2
-    echo "           yarn.lock / .yarnrc.yml / Dockerfile) changed." >&2
-    echo "  rebuild  Force a full rebuild and recreate (use after clearing" >&2
-    echo "           caches or when in doubt)." >&2
+    echo "  up          Start dev env (Vite, hot reload); auto-rebuilds only the" >&2
+    echo "              service whose dependency files changed." >&2
+    echo "  rebuild     Force a full rebuild and recreate of the dev env." >&2
+    echo "  tunnel      Serve the optimized production UI through the Cloudflare" >&2
+    echo "              tunnel at https://patientbot.com.co. Re-run after code" >&2
+    echo "              changes to publish them." >&2
+    echo "  tunnel-down Stop the public tunnel environment." >&2
     exit 2
     ;;
 

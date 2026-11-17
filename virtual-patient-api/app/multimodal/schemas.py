@@ -248,13 +248,6 @@ class NonverbalIntegratedLabels(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class IntegratedLabels(BaseModel):
-    """Integrated labels across both modalities for a turn (Requirement 3.3)."""
-
-    paraverbal: ParaverbalIntegratedLabels | None = None
-    nonverbal: NonverbalIntegratedLabels | None = None
-
-
 class ModalityLayer(BaseModel):
     """Layered result for one modality of one turn.
 

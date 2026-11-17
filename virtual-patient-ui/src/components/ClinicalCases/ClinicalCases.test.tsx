@@ -59,5 +59,4 @@ it.each(['student', 'doctor', 'admin'])('keeps test actions inside individual ca
   await screen.findByText('5: Default 5');
   expect(screen.queryByText('Create case')).toBeNull();
   expect(screen.queryByText(/Custom case/)).toBeNull();
-  expect(screen.queryByRole('button', {name: 'patientPreview.title'})).toBeNull();
 });

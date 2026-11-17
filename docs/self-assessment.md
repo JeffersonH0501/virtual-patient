@@ -7,7 +7,7 @@ do not gain replay/evaluation access through this change.
 
 Student and teacher owners complete a private self-assessment before receiving
 automated feedback. The existing human rating editor, six-category rubric, bilingual
-snapshot, 0–5 finite scores, required trimmed comments and one-decimal mean are reused.
+snapshot, 0–5 finite scores, optional trimmed comments, required scores and one-decimal mean are reused.
 Drafts remain partial and private. Complete submissions require all six categories;
 updates preserve the initial submission timestamp. This product workflow is separate
 from the study's five-category expert reference and does not establish instrument validity.
@@ -17,12 +17,16 @@ the interview foreign-key cascade. Teacher assignments and teacher ratings retai
 their own tables. Each write locks the interview, verifies ownership and role, and
 accepts only processing/completed interviews. Repeated starts reuse the same row.
 
-Owner-only endpoints:
+Self-assessment endpoints:
 
-- `GET /medical-interviews/{id}/self-rating`: rubric, status and private results.
+- `GET /medical-interviews/{id}/self-rating`: owners can read their rubric, status and private results; superusers can read submitted results only.
 - `POST /medical-interviews/{id}/self-rating/start`: initialize once.
 - `PUT /medical-interviews/{id}/self-rating/draft`: save partial work.
 - `POST /medical-interviews/{id}/self-rating/submit`: submit/update all six categories.
+
+Start, draft and submit remain owner-only. Draft status is exposed to superusers
+without draft contents so the review can show the self-assessment source disabled
+until submission.
 
 `review_access.self_assessment_required` selects the owner editor. Until submission,
 `can_view_assessments` is false for a finished owner interview. Scores, human ratings,
@@ -37,7 +41,7 @@ After submission, source buttons wrap and are horizontally centered:
 | --- | --- |
 | Interview owner (student/teacher) | Automatic multimodal assessment; own self-assessment |
 | Assigned teacher | Automatic multimodal assessment; own assigned assessment |
-| Organization superuser | Automatic unimodal; automatic multimodal; named assigned teacher assessments |
+| Superuser | Automatic multimodal by default; automatic unimodal; submitted owner self-assessment; named assigned teacher assessments |
 
 Non-administrators cannot list other teachers' ratings. Self-assessments are not
 presented as teacher assignments or expert reference ratings. Submitted authors retain
@@ -49,7 +53,7 @@ policies remain unchanged.
 ## Unified personal and assigned history
 
 `GET /medical-interviews` includes owned started interviews and, for teachers only,
-assigned started interviews whose owner still belongs to the actor's organization.
+assigned started interviews.
 The SQL visibility condition precedes ordering and pagination; assignments never
 multiply rows. `is_assigned` distinguishes the additional blue badge and disables
 owner-only deletion. Assigned rows expose no interview metadata or other teachers'
@@ -70,8 +74,7 @@ before the first criterion, using the same read-only CaseDetailsDialog/CaseRecor
 as the superuser catalog. Closing the dialog preserves unsaved rating fields.
 
 `GET /medical-interviews/{id}/clinical-case` returns the localized source case only
-to the owner, an assigned teacher in the current organization, or an organization
-superuser, and only while the interview is `processing` or `completed`. It does
+to the owner, an assigned teacher, or a superuser, and only while the interview is `processing` or `completed`. It does
 not require prior rating submission: the source case is evidence for assessing
 completeness, not an automatic assessment. Existing automatic-result blinding is
 unchanged. The public/authenticated catalog still exposes simplified cases to

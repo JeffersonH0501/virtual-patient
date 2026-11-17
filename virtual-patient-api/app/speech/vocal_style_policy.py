@@ -11,7 +11,15 @@ from app.speech.contracts import (
 )
 
 
-VOCAL_STYLE_POLICY_VERSION = "2"
+VOCAL_STYLE_POLICY_VERSION = "3"
+
+# A slight slowdown reads as less rushed and more human. Mapped from the
+# categorical speaking rate so the provider speed stays consistent with it.
+_RATE_SPEED = {
+    SpeakingRate.MODERATELY_SLOW: 0.92,
+    SpeakingRate.MODERATE: 0.96,
+    SpeakingRate.BRISK: 1.0,
+}
 
 
 def _style(
@@ -32,16 +40,19 @@ def _style(
         intonation_variation=intonation_variation,
         hesitation_frequency=hesitation_frequency,
         delivery_tone=delivery_tone,
+        speed=_RATE_SPEED[speaking_rate],
     )
 
 
 DEFAULT_VOCAL_STYLE = _style(
     profile_key="default",
-    speaking_rate=SpeakingRate.BRISK,
+    # Moderate pace with light hesitation reads as a real person describing
+    # symptoms, not a brisk, fluent assistant.
+    speaking_rate=SpeakingRate.MODERATE,
     pause_frequency=PauseFrequency.NATURAL,
     energy=VocalEnergy.MODERATE,
     intonation_variation=IntonationVariation.NATURAL,
-    hesitation_frequency=HesitationFrequency.NONE,
+    hesitation_frequency=HesitationFrequency.LIGHT,
     delivery_tone=DeliveryTone.NEUTRAL,
 )
 
@@ -104,13 +115,55 @@ PERSONALITY_VOCAL_STYLES = {
 }
 
 
+import hashlib
+from dataclasses import replace
+
+# Small, reversible per-turn nudges so consecutive replies do not share one
+# uniform delivery. Each option stays within the natural range of the base style.
+_RATE_NUDGE = {
+    SpeakingRate.MODERATELY_SLOW: (SpeakingRate.MODERATELY_SLOW, SpeakingRate.MODERATE),
+    SpeakingRate.MODERATE: (SpeakingRate.MODERATELY_SLOW, SpeakingRate.MODERATE, SpeakingRate.BRISK),
+    SpeakingRate.BRISK: (SpeakingRate.MODERATE, SpeakingRate.BRISK),
+}
+_PAUSE_NUDGE = {
+    PauseFrequency.SPARSE: (PauseFrequency.SPARSE, PauseFrequency.OCCASIONAL),
+    PauseFrequency.NATURAL: (PauseFrequency.NATURAL, PauseFrequency.OCCASIONAL),
+    PauseFrequency.OCCASIONAL: (PauseFrequency.NATURAL, PauseFrequency.OCCASIONAL, PauseFrequency.FREQUENT),
+    PauseFrequency.FREQUENT: (PauseFrequency.OCCASIONAL, PauseFrequency.FREQUENT),
+}
+
+
+def _seed(text: str) -> int:
+    return int.from_bytes(hashlib.sha256((text or "").encode("utf-8")).digest()[:4], "big")
+
+
+def vary_vocal_style(style: VocalStyle, text: str | None) -> VocalStyle:
+    """Deterministically nudge rate and pauses per reply, keyed on the text.
+
+    The variation is derived from the text, so the same reply always synthesizes
+    identically. This keeps replay and re-synthesis reproducible while avoiding a
+    single uniform delivery across turns. It changes how the configured content
+    is delivered, not what the patient says, and infers no psychological state.
+    """
+    if not text:
+        return style
+    seed = _seed(text)
+    rate_options = _RATE_NUDGE[style.speaking_rate]
+    pause_options = _PAUSE_NUDGE[style.pause_frequency]
+    rate = rate_options[seed % len(rate_options)]
+    pause = pause_options[(seed // 7) % len(pause_options)]
+    return replace(style, speaking_rate=rate, pause_frequency=pause, speed=_RATE_SPEED[rate])
+
+
 def select_patient_vocal_style(
     personality_namespace_key: str | None = None,
+    text: str | None = None,
 ) -> VocalStyle:
-    """Select configured acting directions without inferring patient state."""
-    if not personality_namespace_key:
-        return DEFAULT_VOCAL_STYLE
-    return PERSONALITY_VOCAL_STYLES.get(
-        personality_namespace_key,
-        DEFAULT_VOCAL_STYLE,
-    )
+    """Select configured acting directions without inferring patient state.
+
+    When ``text`` is supplied, apply a deterministic per-turn variation so
+    consecutive replies do not share one uniform delivery.
+    """
+    base = PERSONALITY_VOCAL_STYLES.get(personality_namespace_key, DEFAULT_VOCAL_STYLE) \
+        if personality_namespace_key else DEFAULT_VOCAL_STYLE
+    return vary_vocal_style(base, text)

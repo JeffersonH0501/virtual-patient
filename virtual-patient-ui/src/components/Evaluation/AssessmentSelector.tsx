@@ -22,7 +22,7 @@ export const AssessmentSelector = ({
   const isSelf = !isAdmin && props.evaluationData.interview.isOwner === true;
   const canManageDoctors = canAssignDoctors && isAdmin;
   const interviewId = props.evaluationData.interview.id;
-  const defaultSource = isAdmin ? 'TEXT_ONLY' : 'TEXT_PLUS_MULTIMODAL';
+  const defaultSource = 'TEXT_PLUS_MULTIMODAL';
   const [source, setSource] = useState(defaultSource);
   const [ratings, setRatings] = useState<HumanRating[]>([]);
   const [reviewers, setReviewers] = useState<Reviewer[]>([]);
@@ -40,14 +40,18 @@ export const AssessmentSelector = ({
         if (request.current !== token) return;
         setSelfRating(saved);
       } else {
-        const [saved, people] = await Promise.all([
+        const [saved, people, ownerSelfRating] = await Promise.all([
           gradingRequest<HumanRating[]>('/medical-interviews/' + interviewId + '/doctor-ratings'),
           gradingRequest<Reviewer[]>('/medical-interviews/' + interviewId + '/reviewers'),
+          isAdmin && props.evaluationData.interview.reviewAccess?.selfAssessmentStatus === 'submitted'
+            ? gradingRequest<Workspace>('/medical-interviews/' + interviewId + '/self-rating')
+            : Promise.resolve(null),
         ]);
         if (request.current !== token) return;
         const visible = isAdmin ? people : people.filter((person) => person.doctorId === user?.id);
         setRatings(saved);
         setReviewers(visible);
+        setSelfRating(ownerSelfRating);
         setSource((current) => current.startsWith('doctor:') &&
           !visible.some((person) => current === 'doctor:' + person.assignmentId) ? defaultSource : current);
       }
@@ -68,16 +72,16 @@ export const AssessmentSelector = ({
     return () => {
       request.current += 1;
     };
-  }, [interviewId, defaultSource, isSelf, user?.id]);
+  }, [interviewId, defaultSource, isSelf, isAdmin, props.evaluationData.interview.reviewAccess?.selfAssessmentStatus, user?.id]);
   const isHuman = source === 'self' || source.startsWith('doctor:');
   const reviewer = reviewers.find((person) => 'doctor:' + person.assignmentId === source);
   const ownAssignment = user?.role === 'doctor' && reviewer?.doctorId === user.id &&
     reviewer.status === 'submitted' ? reviewer : undefined;
-  const canEditSelf = source === 'self' && selfRating?.status === 'submitted';
+  const canEditSelf = isSelf && source === 'self' && selfRating?.status === 'submitted';
   const selected = source === 'self' && selfRating?.status === 'submitted'
     ? {results: selfRating.results as EvaluationResult[], overallScore: selfRating.overallScore}
     : ratings.find((rating) => rating.id === reviewer?.ratingId);
-  const humanLabel = source === 'self' ? t('grading.selfAssessment') :
+  const humanLabel = source === 'self' ? t(isAdmin ? 'grading.selfAssessmentAdmin' : 'grading.selfAssessment') :
     isAdmin ? t('grading.doctorEvaluation', {name: reviewer?.doctorName}) : t('grading.yourEvaluation');
   const data = isHuman ? {
     ...props.evaluationData,
@@ -89,19 +93,19 @@ export const AssessmentSelector = ({
         overallScore: selected.overallScore,
       } : undefined},
   } : props.evaluationData;
-  const options = [
+  const options: {value: string; label: string; disabled?: boolean}[] = [
     ...(isAdmin ? [{value: 'TEXT_ONLY', label: t('grading.automaticTextBased')}] : []),
     {value: 'TEXT_PLUS_MULTIMODAL', label: t(isAdmin ? 'grading.automaticMultimodalEvidence' : 'grading.automaticEvaluation')},
-    ...(isSelf ? [{value: 'self', label: t('grading.selfAssessment')}] :
-      reviewers.map((person) => ({value: 'doctor:' + person.assignmentId,
-        label: isAdmin ? t('grading.doctorEvaluation', {name: person.doctorName}) : t('grading.yourEvaluation')}))),
+    ...(isSelf || isAdmin ? [{value: 'self', label: t(isAdmin ? 'grading.selfAssessmentAdmin' : 'grading.selfAssessment'), disabled: isAdmin && selfRating?.status !== 'submitted'}] : []),
+    ...(isSelf ? [] : reviewers.map((person) => ({value: 'doctor:' + person.assignmentId,
+      label: isAdmin ? t('grading.doctorEvaluation', {name: person.doctorName}) : t('grading.yourEvaluation')}))),
   ];
   const controls = <div className="assessment-controls">
     <div role="group" aria-label={t('grading.evaluationSource')}
       className="flex w-full flex-wrap items-center justify-center gap-layout">
-      {options.map(({value, label}) => <button key={value} type="button"
+      {options.map(({value, label, disabled}) => <button key={value} type="button"
         className={'ui-navigation-link min-w-0 break-words text-center ' + (source === value ? 'ui-navigation-link--active' : '')}
-        aria-pressed={source === value} disabled={editingBusy} onClick={() => {
+        aria-pressed={source === value} disabled={editingBusy || disabled} onClick={() => {
           if (source === value) return;
           setEditingAspect(null);
           setSource(value);
@@ -133,7 +137,7 @@ export const AssessmentSelector = ({
       canRegenerate={props.canRegenerate && (!isHuman || Boolean(props.onReprocess))}
       onRegenerate={isHuman ? undefined : props.onRegenerate} isRegenerating={!isHuman && props.isRegenerating} />
     <MotionPresence visible={assigning && canManageDoctors}>
-      {assigning && canManageDoctors && <AssignmentDialog interviewId={interviewId}
+      {assigning && canManageDoctors && <AssignmentDialog interviewId={interviewId} ownerId={props.evaluationData.interview.userId}
         onClose={() => setAssigning(false)} onSaved={() => void load()} />}
     </MotionPresence>
   </>;

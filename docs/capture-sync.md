@@ -1,5 +1,11 @@
 # Durable capture synchronization
 
+> **Retired transport.** The `/capture/sync`, `/capture/state` and `/capture/preservation/retry` endpoints and the
+> `CaptureCoordinator` journal described below are no longer registered or present in the UI; the application's
+> contract test asserts that they stay absent. Interviews use the per-turn transport. Its reconnection,
+> recovery and finalization contract is in [per-turn-recording.md](per-turn-recording.md#reconnection-and-recovery).
+> The rest of this file is kept only as a historical record.
+
 Migration `009_capture_operations` adds operation receipts with a unique
 `(interview_id, operation_id)` key and an immutable payload hash. Receipts and
 turn, hypothesis, segment-boundary or completion changes commit together.

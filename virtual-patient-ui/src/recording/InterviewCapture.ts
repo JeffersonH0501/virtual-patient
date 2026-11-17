@@ -1,5 +1,6 @@
 import {InterviewTurnRecorder} from './InterviewTurnRecorder';
 import {InterviewTurnStore, type LocalInterviewTurn, type TurnCaptureMetadata} from './InterviewTurnStore';
+import {CaptureSyncError} from './CaptureSyncError';
 import {forgetTurnQueue, getTurnManifest, turnJson, turnScope, turnUploadQueue} from '../services/recordings/turns';
 import type {RecordingStatus, SpeechTiming, StudentCaptureTiming} from '../types/recording';
 
@@ -7,8 +8,37 @@ import type {RecordingStatus, SpeechTiming, StudentCaptureTiming} from '../types
 const SPEECH_PREROLL_MS = 300;
 /** Frames kept after the playback boundary so frame quantization does not cut off the measured window. */
 const PLAYBACK_TAIL_MS = 120;
+/**
+ * A clip that waits for the student to speak grows for as long as the student stays silent, and the server refuses
+ * originals above a fixed size. Such a wait is split into consecutive idle clips well before that ceiling (about 2.5
+ * minutes is a few tens of MB even with a high-bitrate camera).
+ */
+const MAX_IDLE_CLIP_MS = 150_000;
+const IDLE_CHECK_MS = 5_000;
+/** Finalization gives up only after this long without any pending upload finishing, not after a fixed total time. */
+const UPLOAD_STALL_MS = 180_000;
+/** A manifest or finalize request that is still unanswered after this long fails with a retryable error. */
+const FINALIZE_REQUEST_TIMEOUT_MS = 120_000;
+/** Extra upload rounds finalization spends on originals that failed for a transient reason before declaring them missing. */
+const FINALIZE_RETRY_ROUNDS = 2;
+/** One reconnection probe waits this long for the server; an unanswered probe is a transient failure, not a verdict. */
+const RECONNECT_PROBE_TIMEOUT_MS = 15_000;
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
 
-export type CaptureState = {status: RecordingStatus; syncPending: boolean; errorCode: string | null; captureId: string | null};
+/**
+ * The server's verdict on a capture it will no longer accept writes from. Reconnecting never clears these:
+ * `capture-superseded` is recovered through the resume flow, `capture-closed` means the recording or interview ended.
+ */
+const definitiveCaptureCode = (error: unknown): string | null => {
+  if (!(error instanceof CaptureSyncError) || error.transient || error.status === 401) return null;
+  if (error.status !== 409) return 'capture-closed';
+  return error.code === 'capture_closed' ? 'capture-closed' : 'capture-superseded';
+};
+
+export type CaptureState = {status: RecordingStatus; syncPending: boolean; errorCode: string | null; captureId: string | null;
+  /** The transport dropped and capture is paused until the server confirms this capture is still current. */
+  reconnecting: boolean};
 
 export type CaptureInputs = {
   interviewId?: number;
@@ -57,7 +87,17 @@ export class InterviewCapture {
   private startRequest: string | null = null;
   private startBody: string | null = null;
   private startAbort: AbortController | null = null;
-  private state: CaptureState = {status: 'idle', syncPending: false, errorCode: null, captureId: null};
+  private idleTimer: ReturnType<typeof setInterval> | null = null;
+  /** Advances on every disconnection, so a probe that was in flight when the link dropped again is not trusted. */
+  private connectionEpoch = 0;
+  private reconnection: Promise<void> | null = null;
+  private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private reconnectAttempts = 0;
+  /** The resume flow took over this capture; it must neither probe nor write to the server any more. */
+  private handedOff = false;
+  /** The server accepted the finalization: its recording is closed on purpose and completion carries its own verdict. */
+  private finalized = false;
+  private state: CaptureState = {status: 'idle', syncPending: false, errorCode: null, captureId: null, reconnecting: false};
 
   constructor(private inputs: () => CaptureInputs, private onChange: (state: CaptureState) => void, initialOffsetMs = 0) {
     this.clockMs = initialOffsetMs;
@@ -108,15 +148,17 @@ export class InterviewCapture {
   async attemptStorageRecovery(): Promise<boolean> {
     if (!this.blocked || this.blocked !== 'temporary-storage-failed') return false;
     try {
-      // Try to resume the recorder that failed.
-      const resumed = this.clip?.recorder.resume();
-      if (resumed) {
-        this.blocked = null;
-        this.set({errorCode: null, syncPending: false, status: 'recording'});
-        return true;
+      // Still disconnected: the recorder stays paused and the reconnection resumes it once the server confirms this capture.
+      // Otherwise try to resume the recorder that failed.
+      if (!this.offline && !this.clip?.recorder.resume()) {
+        // If the recorder can't resume, the only option is to stop for recovery.
+        return false;
       }
-      // If the recorder can't resume, the only option is to stop for recovery.
-      return false;
+      this.blocked = null;
+      this.set({errorCode: null, status: 'recording'});
+      this.settle();
+      if (this.offline) void this.goOnline();
+      return true;
     } catch {
       return false;
     }
@@ -155,26 +197,96 @@ export class InterviewCapture {
     if (!this.sealed) this.invalidate('capture-device-changed');
   }
 
+  /** The transport dropped: pause the recorder (the compensated clock excludes the pause) and wait for the link. */
   goOffline() {
+    if (this.handedOff) return;
+    this.connectionEpoch += 1;
     if (this.playback) this.playback.interrupted = true;
     this.offline = true;
     this.clip?.recorder.pause();
-    this.set({syncPending: true});
+    this.set({syncPending: true, reconnecting: true});
   }
 
-  async goOnline() {
+  /**
+   * The transport is back. Capture continues only after the server confirms this capture is still the writer of an
+   * open interview. Concurrent triggers (browser event, transport report, retry timer) share one attempt.
+   */
+  goOnline(): Promise<void> {
+    this.reconnection ??= this.reestablish().finally(() => {
+      this.reconnection = null;
+    });
+    return this.reconnection;
+  }
+
+  /**
+   * Replaying the start request is the ownership check: `POST /recording/segments` is idempotent on its request ID,
+   * so it creates nothing, and it answers 409 `stale_capture` when this segment was sealed or replaced
+   * and 409 `capture_closed` when the recording or interview already ended.
+   */
+  private async confirmWriter(id: number) {
+    const segment = await turnJson<{segment_id: string}>(id, '/recording/segments', {
+      method: 'POST', headers: {'Content-Type': 'application/json'}, body: this.startBody,
+      signal: AbortSignal.timeout(RECONNECT_PROBE_TIMEOUT_MS)});
+    if (segment.segment_id !== this.writer) throw new CaptureSyncError(409, 'stale_capture');
+  }
+
+  private async reestablish() {
     const id = this.inputs().interviewId;
-    if (!id || this.sealed || this.blocked) return;
-    try {
-      const state = await turnJson<{active_segment_id: string | null}>(id, '/capture/state');
-      if (state.active_segment_id !== this.writer) throw new Error('stale_capture');
-      if (this.sealed || this.blocked) return;
-      this.offline = false;
-      this.clip?.recorder.resume();
-      this.set({syncPending: false});
-    } catch {
-      this.fail();
+    // Nothing to confirm without a started segment; a device or geometry change needs recalibration, which no
+    // reconnection can provide.
+    if (!id || !this.writer || !this.startBody || this.handedOff ||
+        (this.blocked && this.blocked !== 'temporary-storage-failed')) {
+      if (this.state.reconnecting) this.set({reconnecting: false});
+      return;
     }
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    if (this.finalized) {
+      // A closed recording is the expected state here; there is nothing left to confirm or resume.
+      this.offline = false;
+      this.set({reconnecting: false});
+      this.settle();
+      return;
+    }
+    try {
+      for (;;) {
+        const epoch = this.connectionEpoch;
+        await this.confirmWriter(id);
+        // The link dropped again while the probe was in flight: its answer says nothing about the new outage.
+        if (epoch === this.connectionEpoch) break;
+      }
+    } catch (error) {
+      if (this.disposed || this.handedOff) return;
+      const code = definitiveCaptureCode(error);
+      if (code) {
+        this.offline = false;
+        this.set({reconnecting: false});
+        this.invalidate(code);
+        return;
+      }
+      // Transient (timeout, dropped link, server busy): stay paused, keep every local original and probe again.
+      this.scheduleReconnect();
+      return;
+    }
+    if (this.disposed || this.handedOff) return;
+    this.reconnectAttempts = 0;
+    this.offline = false;
+    // A recorder that cannot resume has failed on its own storage, which is a different, user-visible block.
+    if (!this.blocked && !this.sealed && this.state.status === 'recording' && this.clip && !this.clip.recorder.resume()) this.fail();
+    this.set({reconnecting: false});
+    this.settle();
+    // Originals that could not be sent during the outage are still stored locally: send them again now.
+    turnUploadQueue(id, () => this.writer).retryTransient();
+  }
+
+  private scheduleReconnect() {
+    if (this.reconnectTimer !== null) return;
+    const delay = Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** this.reconnectAttempts);
+    this.reconnectAttempts += 1;
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      if (!this.disposed) void this.goOnline();
+    }, delay);
   }
 
   sampleRegion() {
@@ -246,6 +358,29 @@ export class InterviewCapture {
       console.warn('Turn original was not preserved', {interviewId: id, turnMediaId: closed.id, error: error instanceof Error ? error.message : 'unknown'}));
   }
 
+  // ---- long idle clips ---------------------------------------------------
+
+  private startIdleRotation() {
+    this.idleTimer ??= setInterval(() => this.rotateLongIdleClip(), IDLE_CHECK_MS);
+  }
+
+  private stopIdleRotation() {
+    if (this.idleTimer !== null) clearInterval(this.idleTimer);
+    this.idleTimer = null;
+  }
+
+  /** Close an idle student clip that has waited too long and open the next one in its place; speech is never split. */
+  private rotateLongIdleClip() {
+    void this.run(async () => {
+      const clip = this.clip;
+      if (this.sealed || this.blocked || this.offline || this.state.status !== 'recording' || !clip || this.submitted) return;
+      if (speakerOf(clip) !== 'student' || clip.speechStartMs !== null || clip.messageId !== null) return;
+      if (clip.recorder.elapsed() < MAX_IDLE_CLIP_MS) return;
+      const previous = await this.rotate('student');
+      if (previous) await this.close(previous);
+    });
+  }
+
   // ---- lifecycle ---------------------------------------------------------
 
   /** Open (or reuse) the capture segment and start the first student clip. */
@@ -283,6 +418,7 @@ export class InterviewCapture {
         if (this.geometry !== this.geometryNow()) return this.invalidate('capture-geometry-changed');
       }
       this.set({status: 'recording'});
+      this.startIdleRotation();
       if (!this.clip && !this.sealed) {
         // The greeting opens the timeline: its clip exists, bound, before playback can start.
         const reply = inputs.initialPatientMessageId;
@@ -307,6 +443,7 @@ export class InterviewCapture {
 
   /** Close the open clip so the capture can be finalized; idle time up to now is kept. */
   async seal(): Promise<boolean> {
+    this.stopIdleRotation();
     await this.serial;
     this.sealed = true;
     await this.run(async () => {
@@ -331,6 +468,7 @@ export class InterviewCapture {
       this.invalidate('capture-device-changed'); return;
     }
     this.sealed = false;
+    this.startIdleRotation();
     this.set({status: 'recording', syncPending: true});
     await this.run(async () => {
       if (!this.clip) await this.open('student');
@@ -338,39 +476,72 @@ export class InterviewCapture {
     });
   }
 
-  async finalize(preserveOnly = false): Promise<boolean> {
+  /** `onProgress` receives the fraction (0 to 1) of the saving work done: pending uploads first, then verification. */
+  async finalize(preserveOnly = false, onProgress?: (fraction: number) => void): Promise<boolean> {
     try {
       if (!await this.seal()) return false;
+      onProgress?.(0);
       const id = this.inputs().interviewId!;
-      // Drain with a 60-second timeout so participants aren't stuck indefinitely if upload stalls.
-      const drainTimeout = new Promise<void>((_, reject) => 
-        setTimeout(() => reject(new Error('Upload timeout')), 60000)
-      );
-      await Promise.race([
-        turnUploadQueue(id, () => this.writer).drain(),
-        drainTimeout
+      const queue = turnUploadQueue(id, () => this.writer);
+      // A pending original that is still uploading is waited for; only a drain that makes no progress for
+      // UPLOAD_STALL_MS gives up, so a large original on a slow connection does not fail by total time alone.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let restartStallTimer = () => undefined as void;
+      const stalled = new Promise<never>((_, reject) => {
+        restartStallTimer = () => {
+          clearTimeout(timer);
+          timer = setTimeout(() => reject(new Error('Upload timeout')), UPLOAD_STALL_MS);
+        };
+        restartStallTimer();
+      });
+      let reported = 0;
+      const drainUploads = () => Promise.race([
+        queue.drain((settled, total) => {
+          restartStallTimer();
+          reported = Math.max(reported, total ? 0.85 * (settled / total) : 0.85);
+          onProgress?.(reported);
+        }),
+        stalled,
       ]);
+      try {
+        await drainUploads();
+        // An original that failed for a transient reason is still stored locally: try it again before it is declared missing.
+        for (let round = 0; round < FINALIZE_RETRY_ROUNDS && queue.retryTransient() > 0; round += 1) await drainUploads();
+      } finally {
+        clearTimeout(timer);
+      }
       if (preserveOnly) return true;
+      onProgress?.(0.9);
       const inputs = this.inputs();
-      const manifest = await getTurnManifest(id);
+      // Both requests are idempotent on the server, so a timeout is retried by the user without side effects.
+      const manifest = await getTurnManifest(id, AbortSignal.timeout(FINALIZE_REQUEST_TIMEOUT_MS));
       const covered = new Set(manifest.turns.filter((item) => item.student_video_source)
         .map((item) => item.message_id).filter((messageId): messageId is number => typeof messageId === 'number'));
       const missing = [...new Set([...(inputs.missingMessageIds ?? []),
         ...[...(inputs.studentMessageIds ?? []), ...(inputs.patientMessageIds ?? [])].filter((messageId) => !covered.has(messageId))])];
       await turnJson(id, '/recording/turns/finalize', {method: 'POST',
         headers: {'Content-Type': 'application/json', 'X-Capture-Segment': this.writer!},
+        signal: AbortSignal.timeout(FINALIZE_REQUEST_TIMEOUT_MS),
         body: JSON.stringify({turn_media_ids: manifest.turns.map((item) => item.turn_media_id), missing_message_ids: missing})});
+      this.finalized = true;
+      onProgress?.(1);
       return true;
     } catch (error) {
-      this.set({errorCode: error instanceof Error && error.message === 'Upload timeout' 
-        ? 'finalize-timeout' : 'finalize-failed', syncPending: false});
+      const timedOut = (error instanceof Error && error.message === 'Upload timeout') ||
+        (error instanceof DOMException && error.name === 'TimeoutError');
+      this.set({errorCode: timedOut ? 'finalize-timeout' : 'finalize-failed', syncPending: false});
       return false;
     }
   }
 
   /** Stop without closing: open fragments stay local for the recovery upload. */
   async stopForRecovery() {
+    this.stopIdleRotation();
     this.sealed = true;
+    // The resume flow seals this segment on the server; a late reconnection probe must not report that as a failure.
+    this.handedOff = true;
+    if (this.reconnectTimer !== null) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
     this.startAbort?.abort();
     this.set({syncPending: true});
     await this.serial;
@@ -390,6 +561,7 @@ export class InterviewCapture {
 
   dispose() {
     this.disposed = true;
+    this.stopIdleRotation();
     const clip = this.clip;
     queueMicrotask(() => {
       if (this.disposed) void clip?.recorder.stop().catch(() => undefined);

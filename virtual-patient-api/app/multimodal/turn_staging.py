@@ -1,11 +1,4 @@
-"""Per-turn staging: each turn owns its immutable media; jobs read it directly.
-
-Each student turn has
-its own captured video file (``InterviewTurnMediaDB``); the durable
-``TurnVideoAnalysisDB`` job points at that file through ``storage_key``, with no
-a per-turn media window (no on-demand ffmpeg window cut). The patient turn is
-text-to-speech and has no captured media.
-"""
+"""Stage analysis against immutable per-turn media and verified playback windows."""
 import hashlib
 import json
 import subprocess
@@ -34,22 +27,42 @@ def ordered_turn_media(db, recording_id):
 def source_identity(media, segment):
     """Cache key for a per-turn job: its media content plus its calibration.
 
-    Unlike the former block identity, there is no window: the media file IS the
-    turn, so its ``sha256`` fully identifies the analysed content. Calibration is
-    included so recalibrating a segment invalidates cached jobs.
+    The metadata hash covers playback bounds, and calibration is included so
+    recalibrating a segment invalidates cached jobs.
     """
     payload = {"turn_media_id": media.id, "sha256": media.sha256,
                "metadata_hash": media.metadata_hash, "calibration": segment.calibration}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-def stage_turn_media(db, recording, validate_cache=False):
-    """Derive turns and durable per-turn jobs from uploaded per-turn media.
+def is_opening_message(message):
+    """The patient's greeting starts the clock but precedes any student behavior to analyse."""
+    return bool((message.message_metadata or {}).get("opening"))
 
-    One ``InterviewTurnMediaDB`` row produces exactly one student turn. Patient
-    turns are created from their conversation messages with TTS timing and never
-    carry captured media, so they get no video job.
-    """
+
+def opening_message_ids(db, interview_id):
+    messages = db.query(InterviewMessageDB).filter(InterviewMessageDB.interview_id == interview_id).all()
+    return {message.id for message in messages if is_opening_message(message)}
+
+
+def turn_media_window(media):
+    """Return the analyzable interval relative to the immutable clip."""
+    duration = media.duration_ms
+    if not duration or media.encoded_timing.get("window_alignment") == "unavailable":
+        return None
+    metadata = media.turn_metadata
+    if media.speaker == "student":
+        # The clip opens when the floor returns to the student; analysis starts at the speech onset.
+        start = metadata.get("speech_start_ms")
+        return (start, duration) if start is not None and 0 <= start < duration else None
+    start, end = metadata.get("playback_start_ms"), metadata.get("playback_end_ms")
+    if metadata.get("playback_complete") and start is not None and end is not None and 0 <= start < end <= duration:
+        return start, end
+    return None
+
+
+def stage_turn_media(db, recording, validate_cache=False):
+    """Bind media to conversation turns and enqueue analyzable windows."""
     messages = db.query(InterviewMessageDB).filter_by(
         interview_id=recording.medical_interview_id,
     ).order_by(InterviewMessageDB.id).all()
@@ -71,25 +84,30 @@ def stage_turn_media(db, recording, validate_cache=False):
             )
             db.add(turn)
         turn.segment_id = segment.id
-        reliable = media.duration_ms is not None and media.encoded_timing.get("window_alignment") != "unavailable"
-        start = media.session_clock_ms
-        end = start + (media.duration_ms or 0)
-        turn.start_ms, turn.end_ms = start, end
+        window = turn_media_window(media)
         turn.input_source = "camera_microphone" if media.speaker == "student" else "tts"
         turn.timing_source = "turn_media" if media.speaker == "student" else "tts_playback"
-        turn.timing_quality = "measured" if reliable else "provisional"
-        if not reliable:
-            turn.start_ms = turn.end_ms = 0
+        if window is None:
+            # Not analysable, but the transcript still seeks to where the turn is heard.
+            metadata = media.turn_metadata
+            start = metadata.get("playback_start_ms") if media.speaker == "patient" else metadata.get("speech_start_ms")
+            start = start if isinstance(start, int) and start >= 0 else 0
+            end = metadata.get("playback_end_ms") if media.speaker == "patient" else None
+            turn.start_ms = media.session_clock_ms + start
+            turn.end_ms = media.session_clock_ms + (end if isinstance(end, int) and end > start else start)
             turn.timing_quality = "unavailable"
-        db.flush()
-
-        # Only student turns with reliable, non-empty media get a video job.
-        if media.speaker != "student" or turn.timing_quality == "unavailable" or end <= start:
             continue
+        start, end = window
+        turn.start_ms = media.session_clock_ms + start
+        turn.end_ms = media.session_clock_ms + end
+        turn.timing_quality = "measured"
+        if is_opening_message(message):
+            continue
+        db.flush()
         identity = source_identity(media, segment)
         job = db.query(TurnVideoAnalysisDB).filter_by(turn_id=turn.id).first()
         existing = (job.result or {}) if job else {}
-        previous = existing.get("turn_source")
+        previous = existing.get("turn_source") or existing.get("extractor", {}).get("turn_source")
         if job and previous and previous.get("identity") == identity and (
             job.status in {"queued", "processing"}
             or (job.status == "completed" and (not validate_cache or valid_turn_job(job, turn, segment)))
@@ -107,7 +125,8 @@ def stage_turn_media(db, recording, validate_cache=False):
         job.storage_key = media.storage_key
         job.content_type, job.size_bytes, job.sha256 = media.content_type, media.size_bytes, media.sha256
         job.status = "queued"
-        job.result = {"turn_source": {"turn_media_id": media.id, "identity": identity}}
+        job.result = {"turn_source": {"turn_media_id": media.id, "identity": identity,
+                                      "clip_start_ms": start, "clip_duration_ms": media.duration_ms}}
         job.roi_snapshots = media.turn_metadata.get("interaction_area_snapshots", [])
         job.error = job.started_at = job.completed_at = None
         job.queued_at = datetime.now(timezone.utc)
@@ -118,35 +137,39 @@ def valid_turn_job(job, turn, segment):
     from app.multimodal.continuous_turns import runtime_identity
 
     data = (job.result or {}).get("extractor", {})
-    source = (job.result or {}).get("turn_source")
+    source = data.get("turn_source")
     if job.status != "completed" or not source or data.get("turn_runtime") != runtime_identity():
         return False
     from sqlalchemy.orm import object_session
     media = object_session(job).get(InterviewTurnMediaDB, source["turn_media_id"])
-    return bool(media and source["identity"] == source_identity(media, segment))
+    return bool(media and turn_media_window(media) is not None and source["identity"] == source_identity(media, segment))
 
 
-def extract_turn_paraverbal(media_path, turn, interview_id):
-    """Run the isolated student-audio extractor over a turn's own media file.
+def extract_turn_paraverbal(media_path, turn, interview_id, start_ms, end_ms):
+    """Run the isolated student-audio extractor over the speech window of a turn's clip.
 
-    The media file is already scoped to one turn, so the subprocess analyses the
-    whole clip (start 0 .. end duration) rather than a window inside a block.
+    Returns ``None`` silently for any subprocess, encoding, or timeout failure so
+    that a bad audio stream never causes the nonverbal job to fail.
     """
     from app.media.probe import probe_media_timing
 
     try:
-        probe_media_timing(media_path, "a:0")
-    except (ValueError, subprocess.SubprocessError):
+        # A single call without a stream filter returns timing for all streams;
+        # if the file has no audio track it raises ValueError from probe_media_timing.
+        try:
+            probe_media_timing(media_path, "a:0")
+        except (ValueError, subprocess.SubprocessError):
+            return None
+        result = subprocess.run(
+            [sys.executable, "-m", "app.multimodal.continuous_turns"],
+            input=json.dumps({
+                "path": str(media_path), "start": start_ms, "end": end_ms, "id": turn.id,
+                "transcript": turn.transcript, "message_id": turn.message_id,
+                "medical_interview_id": interview_id,
+            }),
+            text=True, capture_output=True, check=True, timeout=120,
+        )
+        return json.loads(result.stdout)
+    except (subprocess.SubprocessError, subprocess.TimeoutExpired,
+            json.JSONDecodeError, OSError, ValueError):
         return None
-    timing = probe_media_timing(media_path, "v:0")
-    duration = int(timing.get("end_pts_ms") or 0)
-    result = subprocess.run(
-        [sys.executable, "-m", "app.multimodal.continuous_turns"],
-        input=json.dumps({
-            "path": str(media_path), "start": 0, "end": duration, "id": turn.id,
-            "transcript": turn.transcript, "message_id": turn.message_id,
-            "medical_interview_id": interview_id,
-        }),
-        text=True, capture_output=True, check=True, timeout=120,
-    )
-    return json.loads(result.stdout)

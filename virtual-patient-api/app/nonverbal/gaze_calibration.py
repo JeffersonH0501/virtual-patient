@@ -49,19 +49,6 @@ def normalized_errors(predictions: np.ndarray, targets: np.ndarray, width: int, 
     return np.linalg.norm(predictions_px - targets_px, axis=1) / hypot(width, height)
 
 
-def leave_one_target_out_error(source: np.ndarray, target: np.ndarray, target_ids: Sequence[str], width: int, height: int) -> dict:
-    errors = []
-    ids = np.asarray(target_ids)
-    for target_id in dict.fromkeys(target_ids):
-        train = ids != target_id
-        test = ~train
-        if train.sum() < 4:
-            continue
-        matrix = fit_affine(source[train], target[train])
-        errors.extend(normalized_errors(apply_affine(source[test], matrix), target[test], width, height))
-    return {"median_normalized_error": float(np.median(errors)), "p90_normalized_error": float(np.percentile(errors, 90))} if errors else {}
-
-
 def _valid_duration(observations: Sequence[GazeObservation], start: int, end: int) -> float:
     times = sorted(item.timestamp_ms for item in observations if item.valid and start <= item.timestamp_ms < end)
     if len(times) < 2:

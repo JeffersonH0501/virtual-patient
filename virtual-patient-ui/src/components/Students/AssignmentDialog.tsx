@@ -8,10 +8,13 @@ import {Badge} from '../common/Badge';
 
 export const AssignmentDialog = ({
   interviewId,
+  ownerId,
   onClose,
   onSaved,
 }: {
   interviewId: number;
+  /** A doctor cannot review their own interview, so the owner is not offered. */
+  ownerId?: number;
   onClose: () => void;
   onSaved?: () => void;
 }) => {
@@ -35,7 +38,7 @@ export const AssignmentDialog = ({
             const page = await gradingRequest<{users: User[]; total: number}>(
               '/users/admin/doctors?offset=' + offset + '&limit=100',
             );
-            all.push(...page.users);
+            all.push(...page.users.filter((person) => person.id !== ownerId));
             offset += page.users.length;
             if (offset >= page.total || !page.users.length) return all;
           }

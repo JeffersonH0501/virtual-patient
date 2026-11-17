@@ -5,7 +5,6 @@ export const setSessionResponseOwner = (next: string | null) => {
   if (owner !== next) responses.clear();
   owner = next;
 };
-export const clearSessionResponses = () => responses.clear();
 
 /** Cache authorized review JSON, never active capture state or media. */
 export const sessionResponse = async (url: string, options: RequestInit, read: (shared?: boolean) => Promise<Response>): Promise<Response> => {
@@ -26,7 +25,8 @@ export const sessionResponse = async (url: string, options: RequestInit, read: (
         ['queued', 'processing'].includes(body.status) ||
         ['recording', 'paused', 'finalizing'].includes(body.recording_status) ||
         ['queued', 'processing'].includes(body.observation_processing?.status) ||
-        ['queued', 'processing'].includes(body.evaluation_processing?.status));
+        ['queued', 'processing'].includes(body.evaluation_processing?.status) ||
+        ['queued', 'processing'].includes(body.replay?.status));
       if ((!response.ok || active) && responses.get(key) === pending) responses.delete(key);
       return response;
     }).catch((error) => {

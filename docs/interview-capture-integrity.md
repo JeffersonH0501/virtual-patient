@@ -1,5 +1,7 @@
 # Client capture and completion contract
 
+New interviews use the [per-turn recording contract](per-turn-recording.md). The continuous recorder and fragment flow below describes the earlier transport.
+
 Fragment, message and turn-timing writes from one browser share an ordered queue
 per interview. This prevents the browser's own requests competing for the same
 transaction lock. Fragment file storage runs outside the interview transaction;
@@ -35,7 +37,7 @@ adds its elapsed time to the preceding sealed segments. Four continuous sources,
 provisional STT timing and measured TTS playback timing remain in use. Completion
 is blocked during STT submission, generation and patient delivery, including
 keyboard events and repeated clicks before React renders. Audio failure keeps
-the patient turn pending until explicit continuation with the written reply.
+the patient turn pending until playback completes; a failure offers only a retry.
 Opening completion discards unsent input, stops all four recorders and seals at
 the last confirmed turn. Server trimming removes their unconfirmed tails.
 
@@ -54,8 +56,8 @@ invalid snapshots before media is persisted. Invalid historical snapshots
 leave alignment evidence unavailable while retaining the original metadata.
 
 The API caps each full recording video at 512 MiB, each full recording audio
-file at 64 MiB, and each turn video at 64 MiB. The production proxy caps the
-corresponding multipart requests at 1156 MiB and 68 MiB. Uploads over the
+file at 64 MiB, and each turn video at 128 MiB. The production proxy caps the
+corresponding multipart requests at 1156 MiB and 132 MiB. Uploads over the
 limit receive HTTP 413. Failed writes discard temporary and uncommitted files.
 When a commit outcome cannot be verified, files remain eligible for the
 recording's server-side retention purge.

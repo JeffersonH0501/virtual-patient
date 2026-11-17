@@ -27,6 +27,12 @@ from app.utils.perf import perf_event, active_gauge, gauge_value
 
 
 logger = logging.getLogger(__name__)
+# A reply is claimed in the interview metadata so a concurrent request cannot
+# start a second generation. The primary guard against a double generation is the
+# client_request_id dedup below (the client always sends it); this window is the
+# fallback for a request without an id, and matches the client's own 120 s send
+# timeout, so the client never retries before an in-flight claim is stale.
+MESSAGE_CLAIM_TTL_SECONDS = 120
 router = APIRouter(
     prefix="/medical-interviews",
     tags=["interview-messages"],
@@ -209,7 +215,7 @@ def _claim_message_request(db, interview_id, message_data, user_id, request_id):
     segment_id = segment.id if segment is not None else None
     metadata = dict(interview.interview_metadata or {})
     previous_claim = metadata.get("message_request") or {}
-    if previous_claim and time.time() - previous_claim.get("started_at", 0) < 120:
+    if previous_claim and time.time() - previous_claim.get("started_at", 0) < MESSAGE_CLAIM_TTL_SECONDS:
         logger.info("message_claim_busy interview_id=%s", interview_id)
         raise HTTPException(503, {"code": "message_in_progress"}, headers={"Retry-After": "1"})
     claim_token = str(uuid4())

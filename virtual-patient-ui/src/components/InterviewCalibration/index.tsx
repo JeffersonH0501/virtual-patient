@@ -15,6 +15,7 @@ import {CompleteInterviewResponse, PersonalBaseline} from '../../types/interview
 import {CalibrationRouteState, InterviewResumeState, interviewPath, ROUTES} from '../../utils/routes';
 import {CalibrationActiveStep, CalibrationCheckpoint, CalibrationPreparation, CalibrationProcessing} from './CalibrationWizard';
 import {GazeTest} from './GazeTest';
+import {CalibrationOutcome, interpretCalibrationFailure, interpretCalibrationResult} from './calibrationOutcome';
 
 const STAGES: CalibrationStage[] = ['gaze', 'camera'];
 type View = 'preparation' | 'checkpoint' | 'capturing' | 'processing' | 'stage-result' | 'live-gaze';
@@ -130,56 +131,20 @@ export const InterviewCalibration = () => {
     const request = calibrationTest
       ? processNonverbalTest(capture.stage, testAttemptRef.current!, capture.blob, capture.durationMs, capture.metadata)
       : resume ? processCalibrationStage(...args, resume.resumeAttemptId) : processCalibrationStage(...args);
-    void request
-      .then((result) => {
-        if (!mountedRef.current) return;
-        if (capture.stage === 'guided') {
-          setGuidedDiagnostics((result.result?.guidedChecks as GuidedCheckDiagnostics | undefined) ?? null);
-          setStageResult(result);
-        } else if (capture.stage === 'unified') {
-          setGuidedDiagnostics((result.result?.guidedChecks as GuidedCheckDiagnostics | undefined) ?? null);
-          const checkpoints = result.result?.checkpoints as Partial<Record<CalibrationStage, CalibrationStageResult>> | undefined;
-          for (const checkpoint of STAGES) {
-            if (checkpoints?.[checkpoint]?.status === 'passed') resultsRef.current[checkpoint] = checkpoints[checkpoint];
-          }
-          const failed = result.result?.failedStage as 'gaze' | 'camera' | undefined;
-          const display = checkpoints?.[failed ?? 'camera'] ?? {...result, stage: 'gaze'};
-          const gazeQuality = checkpoints?.gaze?.result?.quality as Record<string, unknown> | undefined;
-          setStageResult(calibrationTest && gazeQuality ? {...display, result: {...display.result,
-            quality: {...(display.result?.quality as Record<string, unknown> ?? {}), ...gazeQuality},
-            experimentalQualityBypass: result.result?.experimentalQualityBypass ?? display.result?.experimentalQualityBypass}} : display);
-          setStage(failed === 'camera' && result.failureReason !== 'geometry' ? 'camera' : 'unified');
-        } else {
-          setStageResult(result);
-          if (result.status === 'passed') resultsRef.current[result.stage] = result;
-          if (result.failureReason === 'geometry') {
-            resultsRef.current = {}; setStage('unified');
-          }
-        }
-        setView('stage-result');
-      })
-      .catch((failure: unknown) => {
-        if (!mountedRef.current) return;
-        if (failure instanceof Error && 'status' in failure && [404, 410].includes(Number(failure.status))) {
-          draftIdRef.current = null; draftRequestIdRef.current = null;
-          resultsRef.current = {}; calibrationSavedRef.current = false; setStage('unified');
-          setStageResult({stage: 'gaze', status: 'failed', failureReason: 'draft_expired', result: null});
-          setView('stage-result');
-          return;
-        }
-        const retryUpload = failure instanceof TypeError ||
-          (failure instanceof DOMException && failure.name === 'TimeoutError') ||
-          (failure instanceof Error && 'status' in failure && [409, 503].includes(Number(failure.status)));
-        const tooLarge = failure instanceof Error && 'status' in failure && Number(failure.status) === 413;
-        if (capture.stage === 'guided' && failure instanceof Error && 'status' in failure && Number(failure.status) === 422) {
-          resultsRef.current = {}; setStage('unified');
-          setStageResult({stage: 'gaze', status: 'failed', failureReason: 'geometry', result: null});
-          setView('stage-result');
-          return;
-        }
-        setStageResult({stage: capture.stage, status: 'failed', failureReason: tooLarge ? 'upload_too_large' : retryUpload ? 'upload_failed' : 'processing_failed', result: null});
-        setView('stage-result');
-      });
+    const apply = (outcome: CalibrationOutcome) => {
+      if (!mountedRef.current) return;
+      if (outcome.draftExpired) {
+        draftIdRef.current = null; draftRequestIdRef.current = null; calibrationSavedRef.current = false;
+      }
+      if (outcome.reset) resultsRef.current = {};
+      Object.assign(resultsRef.current, outcome.passed);
+      if (outcome.diagnostics !== undefined) setGuidedDiagnostics(outcome.diagnostics);
+      if (outcome.nextStage) setStage(outcome.nextStage);
+      setStageResult(outcome.display);
+      setView('stage-result');
+    };
+    void request.then((result) => apply(interpretCalibrationResult(capture.stage, result, calibrationTest)),
+      (failure: unknown) => apply(interpretCalibrationFailure(capture.stage, failure)));
   }, [calibration.media, calibrationTest, resume, uploadAttempt]);
 
   useEffect(() => {
@@ -187,7 +152,7 @@ export const InterviewCalibration = () => {
       setStageResult({stage, status: 'failed', failureReason: calibration.failureReason ?? 'recording_failed', result: null});
       setView('stage-result');
     }
-  }, [calibration.phase, stage, view]);
+  }, [calibration.phase, calibration.failureReason, stage, view]);
 
   const beginStage = useCallback(async (captureStage: CalibrationStage = stage, environment = guidedEnvironment) => {
     if (captureStartingRef.current || starting) return;

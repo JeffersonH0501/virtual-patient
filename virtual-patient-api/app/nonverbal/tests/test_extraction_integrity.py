@@ -29,6 +29,17 @@ def detector():
         face_landmarks=[points], face_blendshapes=[], facial_transformation_matrixes=[np.eye(4)])), close=Mock())
 
 
+def test_listening_window_excludes_wait_from_face_detector(monkeypatch):
+    capture, landmarker = Capture(25), detector()
+    monkeypatch.setattr(cv2, "VideoCapture", lambda _: capture)
+    observations = list(extractor.extract_video(Path("synthetic.webm"), landmarker=landmarker,
+                                                window_ms=(500, 1000)))
+    detector_timestamps = [call.args[1] for call in landmarker.detect_for_video.call_args_list]
+    assert detector_timestamps == [520, 600, 720, 800, 920]
+    assert [item.timestamp_ms for item in observations] == detector_timestamps
+    assert capture.released
+
+
 @pytest.mark.parametrize("fps", [24, 25, 29.97, 30])
 def test_actual_selector_produces_valid_windows_on_a_fixed_schedule(monkeypatch, fps):
     capture = Capture(fps)

@@ -54,7 +54,7 @@ def render_vocal_instructions(style: VocalStyle) -> str:
         SpeakingRate.BRISK: "a brisk",
     }[style.speaking_rate]
     pauses = {
-        PauseFrequency.SPARSE: "Use few pauses and keep the delivery concise.",
+        PauseFrequency.SPARSE: "Keep the delivery concise, with short pauses only between ideas.",
         PauseFrequency.NATURAL: "Use natural conversational pauses.",
         PauseFrequency.OCCASIONAL: "Use occasional short pauses.",
         PauseFrequency.FREQUENT: "Use frequent short pauses without becoming unnatural.",
@@ -65,12 +65,12 @@ def render_vocal_instructions(style: VocalStyle) -> str:
         VocalEnergy.HIGH: "Use high vocal energy without shouting.",
     }[style.energy]
     intonation = {
-        IntonationVariation.RESTRAINED: "Keep intonation variation restrained.",
-        IntonationVariation.NATURAL: "Use natural intonation variation.",
+        IntonationVariation.RESTRAINED: "Keep intonation fairly even, as people do in everyday speech, without sounding flat.",
+        IntonationVariation.NATURAL: "Use the natural rise and fall of everyday speech.",
         IntonationVariation.EXPRESSIVE: "Use expressive but realistic intonation variation.",
     }[style.intonation_variation]
     hesitation = {
-        HesitationFrequency.NONE: "Avoid vocal hesitation.",
+        HesitationFrequency.NONE: "Speak fluently, with the small natural irregularities of real speech.",
         HesitationFrequency.LIGHT: (
             "Use light vocal hesitation without adding filler words."
         ),
@@ -88,6 +88,21 @@ def render_vocal_instructions(style: VocalStyle) -> str:
     }[style.delivery_tone]
     return " ".join(
         (
+            # Persona first: the model otherwise reads like a narrator or an assistant.
+            "You are a real patient talking with a doctor during a medical consultation. "
+            "Sound like an ordinary person in a conversation, not a narrator, announcer or assistant. "
+            "Speak in the language of the text; for Spanish use a natural, neutral Latin American accent.",
+            # Without this the model reads every reply at one even, uninterrupted pace.
+            "Do not read the whole reply at one even pace: let the rhythm change as a person thinking aloud would. "
+            "Pause briefly at commas, a little longer between sentences and before describing a symptom, "
+            "slow down on the details that matter to you and speed up slightly on familiar parts. "
+            "Breathe naturally between longer sentences.",
+            # Reduce the machine-like sameness between sentences.
+            "Do not deliver two sentences with exactly the same pitch, loudness and timing; vary them slightly as real speech does.",
+            # Let the feeling already in the words shape delivery, without acting
+            # out an emotion that is not in the text.
+            "Let the emotion already present in the words guide your delivery: sound worried where the words express worry, "
+            "relieved where they express relief, hesitant where they express doubt. Keep it subtle and realistic; do not overact.",
             f"Speak at {speaking_rate} pace.",
             pauses,
             energy,
@@ -134,6 +149,8 @@ class AzureOpenAITextToSpeechProvider:
         }
         if request.vocal_style:
             arguments["instructions"] = render_vocal_instructions(request.vocal_style)
+            if request.vocal_style.speed != 1.0:
+                arguments["speed"] = request.vocal_style.speed
         return arguments
 
     def stream(self, request: SpeechSynthesisRequest) -> Iterator[bytes]:

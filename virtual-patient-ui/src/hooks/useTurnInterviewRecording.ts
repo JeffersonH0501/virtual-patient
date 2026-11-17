@@ -8,7 +8,7 @@ import {usePatientAudioRoute} from './usePatientAudioRoute';
 export const useTurnInterviewRecording = (options: UseInterviewRecordingOptions) => {
   const latest = useRef(options);
   latest.current = options;
-  const [state, setState] = useState<CaptureState>({status: 'idle', syncPending: false, errorCode: null, captureId: null});
+  const [state, setState] = useState<CaptureState>({status: 'idle', syncPending: false, errorCode: null, captureId: null, reconnecting: false});
   const captureRef = useRef<InterviewCapture | null>(null);
   captureRef.current ??= new InterviewCapture(() => latest.current, setState, options.initialOffsetMs ?? 0);
   const capture = captureRef.current;
@@ -61,7 +61,7 @@ export const useTurnInterviewRecording = (options: UseInterviewRecordingOptions)
     };
   }, [capture, enabled, cameraStream, microphoneStream]);
 
-  const {status, syncPending, errorCode, captureId} = state;
+  const {status, syncPending, errorCode, captureId, reconnecting} = state;
   const isCapturing = status === 'recording' && !syncPending;
   const [api] = useState(() => ({
     retryStart: () => capture.arm(),
@@ -72,7 +72,7 @@ export const useTurnInterviewRecording = (options: UseInterviewRecordingOptions)
     resume: capture.resume.bind(capture),
     elapsedAt: capture.elapsedAt,
     sealForEnding: () => capture.seal(),
-    finalize: (preserveOnly?: boolean) => capture.finalize(preserveOnly),
+    finalize: (preserveOnly?: boolean, onProgress?: (fraction: number) => void) => capture.finalize(preserveOnly, onProgress),
     stopForRecovery: () => capture.stopForRecovery(),
     markSpeechStart: () => capture.markSpeechStart(),
     submitStudentTurn: capture.submitStudentTurn.bind(capture),
@@ -84,7 +84,7 @@ export const useTurnInterviewRecording = (options: UseInterviewRecordingOptions)
     endPatientTurn: capture.endPatientTurn.bind(capture),
   }));
 
-  return {...api, ...audio, status, errorCode, syncPending, captureSegmentId: captureId,
+  return {...api, ...audio, status, errorCode, syncPending, reconnecting, captureSegmentId: captureId,
     segmentId: isCapturing ? captureId : null, isCapturing,
     canResume: status === 'paused' && !capture.isBlocked, canRestart: capture.isSealed,
     canRetryStart: errorCode === 'capture-start-failed'};

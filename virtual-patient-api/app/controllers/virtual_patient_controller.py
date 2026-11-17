@@ -7,14 +7,12 @@ import logging
 import time
 from typing import List, Dict, Any, Optional
 from sqlalchemy.orm import Session
-from app.core.memory_store import PostgresStore
-from langgraph.checkpoint.postgres import PostgresSaver
 from langchain_core.messages import AIMessage
-from app.core.database import SQLALCHEMY_DATABASE_URL
-from app.core.azure_openai import EMBEDDING_DIMENSIONS, create_embeddings
+from app.core.langgraph_runtime import langgraph_store_and_checkpointer
 from app.models.clinical_case import ClinicalCaseDB
 from app.models.user import User
 from app.agents.virtual_patient_workflow import create_virtual_patient_workflow
+from app.agents.translator_agent import PatientResponseError
 from app.controllers.medical_interview_controller import MedicalInterviewController
 from app.controllers.message_controller import MessageController
 from app.utils.language import (
@@ -27,9 +25,6 @@ from app.utils.perf import perf_event
 
 
 logger = logging.getLogger(__name__)
-
-# Initialize Azure OpenAI v1 embeddings for semantic search.
-embeddings = create_embeddings()
 
 
 
@@ -72,17 +67,8 @@ class VirtualPatientController:
         if not thread_id:
             thread_id = str(interview_id)
         
-        # Use context managers for proper resource management
-        with (
-            PostgresStore.from_conn_string(
-                SQLALCHEMY_DATABASE_URL,
-                index={
-                    "dims": EMBEDDING_DIMENSIONS,
-                    "embed": embeddings,
-                }
-            ) as store,
-            PostgresSaver.from_conn_string(SQLALCHEMY_DATABASE_URL) as checkpointer,
-        ):
+        # Borrow pooled connections instead of opening fresh ones per turn.
+        with langgraph_store_and_checkpointer() as (store, checkpointer):
             try:
                 # Create the workflow with the interview-specific response language.
                 workflow = create_virtual_patient_workflow(
@@ -231,17 +217,13 @@ class VirtualPatientController:
         try:
             # 8. Extract the agent response
             agent_response = interview_controller.extract_agent_response(workflow_result)
-            
+
             if not agent_response:
-                # Fallback: create a default response
-                fallback_responses = {
-                    "en": "I understand your question. Let me think about how to respond based on my medical history and our conversation.",
-                    "es": "Entiendo su pregunta. Déjeme pensar cómo responder según mi historia clínica y nuestra conversación.",
-                }
-                agent_response = fallback_responses[patient_language_code]
-            else:
-                pass
-            
+                # Never fabricate a patient reply: a canned fallback would be
+                # persisted and evaluated as if the model produced it, corrupting
+                # study data. Fail the turn so the client can retry instead.
+                raise PatientResponseError("The virtual patient produced no response")
+
             # 9. Create agent message object for display
             agent_message_object = interview_controller.create_agent_message_object(
                 interview_id, agent_response, thread_id

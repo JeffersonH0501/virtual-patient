@@ -56,10 +56,12 @@ const InterviewRecapContent = ({interviewId, messages, patientName, patientAvata
         const next = await getInterviewRecap(interviewId, controller.signal);
         if (!active) return;
         setRecap(next);
-        if (polls < MAX_POLLS && [next.observationProcessing?.status, next.evaluationProcessing?.status]
-          .some((status) => status === 'queued' || status === 'processing')) {
+        const pending = (status?: string) => status === 'queued' || status === 'processing';
+        // The replay percentage refreshes faster so its progress is visible.
+        const replayPending = pending(next.replay?.status);
+        if (polls < MAX_POLLS && (replayPending || [next.observationProcessing?.status, next.evaluationProcessing?.status].some(pending))) {
           polls += 1;
-          timer = window.setTimeout(() => void load(), 3000);
+          timer = window.setTimeout(() => void load(), replayPending ? 1500 : 3000);
         }
       } catch {
         if (active) setLoadFailed(true);

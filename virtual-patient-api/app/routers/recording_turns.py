@@ -1,15 +1,10 @@
-"""Immutable per-turn media upload; one file per student turn.
-
-Replaces the former per-exchange block router. Each student turn uploads its own
-camera/microphone original; the durable ``TurnVideoAnalysisDB`` job then reads
-that file directly. Transfer and probing never hold conversation locks.
-"""
+"""Immutable per-turn capture and authenticated replay."""
 import hashlib
 import json
 import logging
 import subprocess
 import time
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, Request, UploadFile
@@ -20,7 +15,8 @@ from app.controllers.interview_lifecycle import require_capture_open, require_no
 from app.controllers.recording_segments import latest_segment, lock_recording
 from app.core.database import get_db
 from app.media import LocalMediaStorage, get_media_storage
-from app.media.probe import probe_media_timing
+from app.media.probe import has_audio_stream, probe_media_timing
+from app.media.remux import remux_for_replay
 from app.media.upload_route import RecordingUploadRoute
 from app.models.medical_interview import InterviewMessageDB, InterviewRecordingDB, InterviewRecordingSegmentDB, TurnVideoAnalysisDB
 from app.models.turn_media import InterviewTurnMediaDB
@@ -48,15 +44,28 @@ class TurnMediaMetadata(BaseModel):
     capture_attempt_id: UUID
     order: int = Field(ge=0, le=100000)
     duration_ms: int = Field(gt=0, le=3_600_000)
-    message_id: int = Field(gt=0)
-    speaker: str = Field(pattern="^student$")
+    # None marks an idle clip: replayable time between turns that no message owns.
+    message_id: int | None = Field(default=None, gt=0)
+    speaker: Literal["student", "patient"]
     session_clock_ms: int = Field(ge=0)
     interaction_area_snapshots: list[dict] = Field(default_factory=list, max_length=10000)
+    speech_start_ms: int | None = Field(default=None, ge=0)
+    playback_start_ms: int | None = Field(default=None, ge=0)
+    playback_end_ms: int | None = Field(default=None, gt=0)
+    playback_complete: bool = False
 
     @model_validator(mode="after")
     def coherent(self):
         from app.media.patient_roi import validate_patient_roi as _validate_patient_roi
         _validate_patient_roi(self.interaction_area_snapshots)
+        start, end = self.playback_start_ms, self.playback_end_ms
+        if start is not None or end is not None or self.playback_complete:
+            if (self.speaker != "patient" or self.message_id is None or start is None or end is None
+                    or not start < end <= self.duration_ms):
+                raise ValueError("Playback bounds must form a window inside the patient clip")
+        if self.speech_start_ms is not None and (
+                self.speaker != "student" or self.message_id is None or self.speech_start_ms >= self.duration_ms):
+            raise ValueError("Speech onset must fall inside a student clip")
         return self
 
 
@@ -85,9 +94,12 @@ def _authorize(db, interview_id, user, payload, writer, resume_attempt):
 
 
 def _message(db, interview_id, payload):
+    if payload.message_id is None:
+        return
     message = db.get(InterviewMessageDB, payload.message_id)
-    if message is None or message.interview_id != interview_id or message.sender_type != "user":
-        raise HTTPException(422, "Turn media must belong to this interview and a student message")
+    sender = "user" if payload.speaker == "student" else "patient"
+    if message is None or message.interview_id != interview_id or message.sender_type != sender:
+        raise HTTPException(422, "Turn media must match the message and speaker in this interview")
 
 
 @router.post('/{interview_id}/recording/turns/recovery')
@@ -146,8 +158,8 @@ def finalize_turns(interview_id: int, payload: TurnFinalization,
             available = False
         if available and item.message_id is not None:
             covered.add(item.message_id)
-    # Student messages are the capturable evidence; patient turns are TTS and are
-    # never expected to carry media, so coverage is measured over student messages.
+    # Student originals are required unless explicitly declared missing. Patient
+    # capture can be unavailable, including when delivery fails before playback.
     student_messages = {item[0] for item in db.query(InterviewMessageDB.id).filter_by(
         interview_id=interview_id, sender_type="user").all()}
     declared_missing = set(payload.missing_message_ids) | set((interview.interview_metadata or {}).get('missing_evidence_message_ids', []))
@@ -159,12 +171,17 @@ def finalize_turns(interview_id: int, payload: TurnFinalization,
     ends = [item.session_clock_ms + item.duration_ms for item in media if item.duration_ms is not None]
     recording.duration_ms = max(ends) if ends else None
     recording.ended_at = datetime.now(timezone.utc)
-    recording.status = 'partial' if student_messages - covered or any(
-        item.duration_ms is None or item.encoded_timing.get('window_alignment') == 'unavailable' for item in media) else 'ready'
-    interview.interview_metadata = {**(interview.interview_metadata or {}), 'missing_evidence_message_ids': sorted(student_messages - covered)}
+    from app.multimodal.turn_staging import turn_media_window
+    missing = (student_messages | declared_missing) - covered
+    recording.status = 'partial' if missing or any(
+        item.message_id is not None and (item.message_id not in covered or turn_media_window(item) is None)
+        for item in media) else 'ready'
+    interview.interview_metadata = {**(interview.interview_metadata or {}), 'missing_evidence_message_ids': sorted(missing)}
     recording.capture_config = {**(recording.capture_config or {}), 'turn_finalization': manifest,
-        'observation_processing': {'status': 'queued', 'stage': 'queued'}}
+        'observation_processing': {'status': 'queued', 'stage': 'queued'},
+        'replay_preview': {'status': 'queued', 'progress': 0}}
     stage_turn_media(db, recording)
+    stage_processing_job(db, interview_id, 'replay_preview', {'recording_id': recording.id})
     stage_processing_job(db, interview_id, 'pipeline', {'recording_id': recording.id})
     db.commit()
     return {'duration_ms': recording.duration_ms, 'recording_status': recording.status}
@@ -205,9 +222,12 @@ def list_turn_media(interview_id: int, user: UserDB = Depends(_current_media_use
         turns.append({**_receipt(media), "session_clock_ms": media.session_clock_ms,
             "metadata": metadata, "student_video_source": video})
         duration = max(duration, media.session_clock_ms + (media.duration_ms or 0))
+    preview = dict((recording.capture_config or {}).get("replay_preview") or {"status": "unavailable"})
+    if preview.get("status") == "ready":
+        preview["source"] = f"/medical-interviews/{interview_id}/recording/replay"
     return {"interview_id": interview_id,
             "duration_ms": duration if any(m.duration_ms is not None for m in rows) else None,
-            "turns": turns}
+            "turns": turns, "replay": preview}
 
 
 @router.get("/{interview_id}/recording/turns/{turn_media_id}/media")
@@ -223,6 +243,21 @@ def read_turn_media(interview_id: int, turn_media_id: UUID, request: Request,
     except FileNotFoundError as error:
         raise HTTPException(404, "Turn evidence is unavailable") from error
     return _stream_private_media(storage, path, request, media.content_type)
+
+
+@router.get("/{interview_id}/recording/replay")
+def read_replay_preview(interview_id: int, request: Request,
+        user: UserDB = Depends(_current_media_user), db: Session = Depends(get_db),
+        storage: LocalMediaStorage = Depends(get_media_storage)):
+    from app.media.replay_preview import preview_key
+    recording = _read_recording(db, interview_id, user)
+    if (recording.capture_config or {}).get("replay_preview", {}).get("status") != "ready":
+        raise HTTPException(404, "The interview replay is not ready")
+    try:
+        path = storage.resolve(preview_key(interview_id, recording.id))
+    except FileNotFoundError as error:
+        raise HTTPException(404, "The interview replay is unavailable") from error
+    return _stream_private_media(storage, path, request, "video/mp4")
 
 
 @router.put("/{interview_id}/recording/turns/{turn_id}/video")
@@ -243,7 +278,7 @@ async def upload_turn_media(interview_id: int, turn_id: UUID,
     content_type = (video.content_type or "").split(";", 1)[0].lower()
     extension = ALLOWED_CONTENT_TYPES.get(content_type)
     if not extension or not content_type.startswith("video/"):
-        raise HTTPException(415, "A camera/microphone video original is required")
+        raise HTTPException(415, "A video original is required")
     writer = str(capture_segment_id) if capture_segment_id else None
     resume = str(resume_attempt_id) if resume_attempt_id else None
     recording, segment = _authorize(db, interview_id, user, payload, writer, resume)
@@ -255,54 +290,66 @@ async def upload_turn_media(interview_id: int, turn_id: UUID,
     try:
         if not stored.size_bytes:
             raise HTTPException(422, "Recording turn media cannot be empty")
+        path = storage.resolve(stored.storage_key)
+        # The upload digest identifies what the browser sent; sha256 identifies the stored, seekable file.
+        upload_sha256 = stored.sha256
+        container = remux_for_replay(path)
+        with path.open("rb") as handle:
+            sha256 = hashlib.file_digest(handle, "sha256").hexdigest()
+        size_bytes = path.stat().st_size
+        if payload.speaker == "patient":
+            try:
+                has_audio = has_audio_stream(path)
+            except (KeyError, ValueError, OSError, subprocess.SubprocessError) as error:
+                raise HTTPException(422, "The patient clip could not be verified as camera-only") from error
+            if has_audio:
+                raise HTTPException(422, "Patient clips must not contain an audio track")
         try:
-            timing = probe_media_timing(storage.resolve(stored.storage_key))
+            timing = probe_media_timing(path, "v:0") if payload.speaker == "patient" else probe_media_timing(path)
         except (ValueError, OSError, subprocess.SubprocessError):
             timing = {'duration_ms': None, 'window_alignment': 'unavailable', 'reason': 'encoded_timing_unavailable'}
-        if timing['duration_ms'] is not None and (timing['start_pts_ms'] < -250 or abs(timing['duration_ms'] - payload.duration_ms) > 250):
+        if timing['duration_ms'] is not None and (abs(timing['start_pts_ms']) > 250 or abs(timing['duration_ms'] - payload.duration_ms) > 250):
             timing.update(window_alignment='unavailable', reason='encoded_clock_disagreement')
         if timing.get('max_gap_ms', 0) > 150:
             timing.update(window_alignment='unavailable', reason='encoded_packet_gap')
+        timing['container'] = container
         recording, segment = _authorize(db, interview_id, user, payload, writer, resume)
         _message(db, interview_id, payload)
         existing = db.get(InterviewTurnMediaDB, str(turn_id))
         if existing is not None:
             same_metadata = existing.metadata_hash == digest or TurnMediaMetadata.model_validate(existing.turn_metadata).model_dump(mode='json') == normalized
             if (existing.recording_id != recording.id or not same_metadata or
-                    existing.sha256 != stored.sha256 or existing.content_type != content_type):
+                    existing.upload_sha256 != upload_sha256 or existing.content_type != content_type):
                 raise HTTPException(409, {"code": "turn_media_conflict"})
             try:
                 available = storage.resolve(existing.storage_key).stat().st_size == existing.size_bytes
             except FileNotFoundError:
                 available = False
             if not available:
-                existing.storage_key = stored.storage_key
+                existing.storage_key, existing.sha256, existing.size_bytes = stored.storage_key, sha256, size_bytes
                 db.commit()
                 committed = True
             return _receipt(existing)
         if db.query(InterviewTurnMediaDB.id).filter_by(capture_attempt_id=segment.id, order=payload.order).first():
             raise HTTPException(409, {"code": "turn_media_order_conflict"})
-        if db.query(InterviewTurnMediaDB.id).filter(
+        if payload.message_id is not None and db.query(InterviewTurnMediaDB.id).filter(
                 InterviewTurnMediaDB.recording_id == recording.id,
                 InterviewTurnMediaDB.message_id == payload.message_id).first():
             raise HTTPException(409, {'code': 'turn_media_message_conflict'})
         media = InterviewTurnMediaDB(id=str(turn_id), recording_id=recording.id,
             capture_attempt_id=segment.id, order=payload.order, duration_ms=timing["duration_ms"],
             message_id=payload.message_id, speaker=payload.speaker, session_clock_ms=payload.session_clock_ms,
-            storage_key=stored.storage_key, content_type=content_type, size_bytes=stored.size_bytes,
-            sha256=stored.sha256, metadata_hash=digest, turn_metadata=normalized, encoded_timing=timing)
+            storage_key=stored.storage_key, content_type=content_type, size_bytes=size_bytes,
+            sha256=sha256, upload_sha256=upload_sha256, metadata_hash=digest, turn_metadata=normalized,
+            encoded_timing=timing)
         db.add(media)
         db.flush()
         from sqlalchemy import func
-        offset = 0
-        for item in sorted(recording.segments, key=lambda entry: entry.sequence):
-            duration = db.query(func.max(
+        if segment.sealed_at is not None:
+            end = db.query(func.max(
                 InterviewTurnMediaDB.session_clock_ms + func.coalesce(InterviewTurnMediaDB.duration_ms, 0)
-            )).filter_by(capture_attempt_id=item.id).scalar() or 0
-            item.offset_ms = offset
-            if item.sealed_at is not None:
-                item.duration_ms = duration
-            offset += duration
+            )).filter_by(capture_attempt_id=segment.id).scalar() or 0
+            segment.duration_ms = max(0, end - (segment.offset_ms or 0))
         from app.multimodal.turn_staging import stage_turn_media
         stage_turn_media(db, recording)
         db.commit()

@@ -44,20 +44,20 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-it('explains five-point validation error separately from valid sample coverage', () => {
+it('names only the points that failed and offers the retry, without technical metrics', () => {
   render(<I18nextProvider i18n={i18n}><CalibrationCheckpoint stage="gaze" passed={false} failureReason="p90_error"
-    onStart={vi.fn()} titleRef={{current: null}} diagnostics={{version: 'mediapipe_five_point_quality_v1',
-      targets: {BOTTOM_RIGHT: {eligible: true, validSamples: 12, validRatio: .7, validDurationMs: 1100}},
-      leaveOneTargetOut: {medianNormalizedError: .1, p90NormalizedError: .31, perTarget: {BOTTOM_RIGHT: {p90NormalizedError: .51}}},
+    onStart={vi.fn()} titleRef={{current: null}} diagnostics={{version: 'mediapipe_five_point_quality_v2',
+      targets: {BOTTOM_RIGHT: {eligible: false, validSamples: 2, validRatio: .1}, CENTER: {eligible: true, validSamples: 30, validRatio: .9}},
+      leaveOneTargetOut: {medianNormalizedError: .1, p90NormalizedError: .31},
       qualityLimits: {medianNormalizedError: .15, p90NormalizedError: .3}}} /></I18nextProvider>);
-  fireEvent.click(screen.getByText('Calibration quality by point'));
-  expect(screen.getByText(/median 10.0%.*P90 31.0%/)).toBeDefined();
-  expect(screen.getByText('51.0%')).toBeDefined();
-  expect(screen.getByText('70.0%')).toBeDefined();
-  expect(screen.getByText('1.10 s')).toBeDefined();
+  expect(screen.getByText(/Bottom right/)).toBeDefined();
+  expect(screen.queryByText(/Center/)).toBeNull();
+  expect(screen.queryByText(/%/)).toBeNull();
+  expect(document.querySelector('details, table')).toBeNull();
+  expect(screen.getByRole('button', {name: 'Retry calibration'})).toBeDefined();
 });
 
-it('allows an experimental continuation while clearly retaining failed quality results', () => {
+it('allows an experimental continuation while clearly marking failed quality', () => {
   const onContinue = vi.fn();
   render(<I18nextProvider i18n={i18n}><CalibrationCheckpoint stage="gaze" passed experimentalOverride
     failureReason="median_error" onStart={vi.fn()} onContinue={onContinue} titleRef={{current: null}}
@@ -66,8 +66,6 @@ it('allows an experimental continuation while clearly retaining failed quality r
       qualityLimits:{medianNormalizedError:.25,p90NormalizedError:.35}}} /></I18nextProvider>);
   expect(screen.getByRole('heading',{name:'Continue with out-of-limit calibration'})).toBeDefined();
   expect(screen.getByText(/quality limits were not passed/)).toBeDefined();
-  fireEvent.click(screen.getByText('Calibration quality by point'));
-  expect(screen.getByText(/median 25.9%.*limit 25.0%.*P90 33.8%.*limit 35.0%/)).toBeDefined();
   fireEvent.click(screen.getByRole('button',{name:'Start interview'}));
   expect(onContinue).toHaveBeenCalledOnce();
 });

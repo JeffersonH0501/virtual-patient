@@ -2,11 +2,8 @@ export type LearningMoment = {
   id: string;
   category: 'show_interest' | 'show_empathy' | 'speak_clearly';
   turnIds: string[];
-  observation: string;
-  recommendation?: string;
-  reinforcement?: string;
+  text: string;
   evidenceUsed: string[];
-  momentType: 'improvement' | 'strength';
 };
 
 export type LearningMomentsState = {

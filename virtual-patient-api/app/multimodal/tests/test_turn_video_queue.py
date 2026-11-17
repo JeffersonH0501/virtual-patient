@@ -36,6 +36,9 @@ class _FakeSession:
     def rollback(self):
         return None
 
+    def refresh(self, instance):
+        pass
+
     def close(self):
         return None
 
@@ -118,6 +121,32 @@ def test_job_transitions_from_processing_to_failed_on_error(monkeypatch):
         TurnVideoAnalysisStatus.FAILED.value,
     ]
     assert job.error == "broken video"
+
+
+def test_patient_job_excludes_wait_from_nods_and_feature_assembly(monkeypatch):
+    job = _job()
+    job.speaker = "patient"
+    job.start_ms, job.end_ms = 2700, 3700
+    job.result = {"turn_source": {"clip_start_ms": 700, "clip_duration_ms": 2000}}
+    session = _FakeSession([job])
+    observations = [SimpleNamespace(shared=SimpleNamespace(timestamp_ms=stamp))
+                    for stamp in (0, 699, 700, 1000, 1699, 1700, 1900)]
+    monkeypatch.setattr(turn_video_queue, "SessionLocal", lambda: session)
+    monkeypatch.setattr(turn_video_queue, "get_media_storage", lambda: SimpleNamespace(resolve=lambda key: key))
+    monkeypatch.setattr(turn_video_queue, "read_calibration_profile", lambda interview: None)
+    monkeypatch.setattr(turn_video_queue, "extract_nonverbal_video_observations_parallel", lambda *args, **kwargs: observations)
+    monkeypatch.setattr(turn_video_queue, "analyze_nods", lambda frames: [item.timestamp_ms for item in frames])
+    raw = SimpleNamespace(extractor={})
+    raw.model_dump = lambda **options: {"extractor": raw.extractor}
+
+    def assemble(frames, window, **kwargs):
+        assert [item.shared.timestamp_ms for item in frames] == kwargs["nod_analysis"] == [700, 1000, 1699]
+        assert (window.start_ms, window.end_ms, window.conversation_speaker) == (700, 1700, "patient")
+        assert kwargs["roi_duration_ms"] == 2000
+        return raw
+
+    monkeypatch.setattr(turn_video_queue, "build_turn_raw_features", assemble)
+    assert turn_video_queue._process_job(job.id) == "completed"
 
 
 def _guard_native(monkeypatch):

@@ -50,9 +50,9 @@ def test_deployment_checks_internal_visual_worker(monkeypatch, status):
     get = Mock(return_value=response)
     monkeypatch.setattr("requests.get", get)
     if status == "healthy":
-        verify_deployment.verify_video_worker()
+        verify_deployment.verify_media_worker()
     else:
-        with pytest.raises(RuntimeError, match="Video processing worker"):
-            verify_deployment.verify_video_worker()
-    assert get.call_args.args[0].endswith(":8010/health")
+        with pytest.raises(RuntimeError, match="Media processing worker"):
+            verify_deployment.verify_media_worker()
+    assert get.call_args.args[0].endswith("/health")
     response.raise_for_status.assert_called_once()

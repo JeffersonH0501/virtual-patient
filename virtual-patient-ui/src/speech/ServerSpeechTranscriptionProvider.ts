@@ -105,14 +105,9 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
     const generation = this.captureGeneration;
     try {
       if (!this.stream) {
-        const stream = this.sharedStream ?? await navigator.mediaDevices.getUserMedia({
-          audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true},
-        });
-        if (!this.active || generation !== this.captureGeneration) {
-          if (!this.sharedStream) stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
-        this.stream = stream;
+        // Only the interview's shared microphone is used; a private one would outlive the session.
+        if (!this.sharedStream) return;
+        this.stream = this.sharedStream;
         const AudioContextConstructor = window.AudioContext;
         if (!AudioContextConstructor) throw new Error('AudioContext is unavailable');
         this.audioContext = new AudioContextConstructor();
@@ -266,7 +261,6 @@ export class ServerSpeechTranscriptionProvider implements SpeechInputProvider {
   }
 
   private releaseCapture(): void {
-    if (!this.sharedStream) this.stream?.getTracks().forEach((track) => track.stop());
     this.stream = null;
     void this.audioContext?.close();
     this.audioContext = null;

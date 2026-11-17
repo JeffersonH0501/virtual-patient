@@ -15,7 +15,6 @@ vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key
 vi.mock('./components/common', () => ({AppContainer: Outlet}));
 vi.mock('./components/Auth/AuthLayout', () => ({AuthLayout: () => null}));
 vi.mock('./components/ClinicalCases', () => ({ClinicalCases: () => null}));
-vi.mock('./components/ClinicalCases/PatientPreview', () => ({PatientPreview: () => null}));
 vi.mock('./components/Chats', () => ({Chats: () => null}));
 vi.mock('./components/Users', () => ({Users: () => null}));
 vi.mock('./components/ClinicalChat', () => ({ClinicalChat: () => null}));

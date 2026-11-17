@@ -1,4 +1,4 @@
-import {FC, PropsWithChildren, useCallback, useEffect, useRef, useState} from 'react';
+import {FC, PropsWithChildren, useCallback, useEffect, useLayoutEffect, useRef, useState} from 'react';
 import {InterviewMediaContext, MediaAccessState} from './interviewMedia';
 
 const errorState = (error: unknown): MediaAccessState => {
@@ -8,9 +8,11 @@ const errorState = (error: unknown): MediaAccessState => {
     : 'unavailable';
 };
 
-export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}>> = ({
+/** `capturing` is true only on calibration and session routes; elsewhere the camera and microphone are released. */
+export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string; capturing: boolean}>> = ({
   children,
   interviewId,
+  capturing,
 }) => {
   const activeInterviewRef = useRef(interviewId);
   const cameraRef = useRef<MediaStream | null>(null);
@@ -42,7 +44,8 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
   }, []);
 
   const startCamera = useCallback(async (deviceId = cameraDeviceRef.current) => {
-    if (cameraRequestRef.current) return cameraRequestRef.current;
+    // Reuse an in-flight request only for the same device; a switch must proceed.
+    if (cameraRequestRef.current && deviceId === cameraDeviceRef.current) return cameraRequestRef.current;
     if (deviceId !== cameraDeviceRef.current) {
       cameraDeviceRef.current = deviceId;
       setCameraDeviceId(deviceId);
@@ -91,7 +94,8 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
   }, []);
 
   const startMicrophone = useCallback(async (deviceId = microphoneDeviceRef.current) => {
-    if (microphoneRequestRef.current) return microphoneRequestRef.current;
+    // Reuse an in-flight request only for the same device; a switch must proceed.
+    if (microphoneRequestRef.current && deviceId === microphoneDeviceRef.current) return microphoneRequestRef.current;
     if (deviceId !== microphoneDeviceRef.current) {
       microphoneDeviceRef.current = deviceId;
       setMicrophoneDeviceId(deviceId);
@@ -136,12 +140,19 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string}
     return request;
   }, []);
 
-  useEffect(() => {
+  // Layout effects run before the passive effects of children, so a screen that mounts in the same navigation and
+  // asks for the devices (resuming calibration leaves the session route of the same interview) is not invalidated
+  // by the release that belongs to the previous route.
+  useLayoutEffect(() => {
     if (activeInterviewRef.current !== interviewId) {
       stopAll();
       activeInterviewRef.current = interviewId;
     }
   }, [interviewId, stopAll]);
+
+  useLayoutEffect(() => {
+    if (!capturing) stopAll();
+  }, [capturing, stopAll]);
 
   useEffect(() => () => stopAll(), [stopAll]);
 

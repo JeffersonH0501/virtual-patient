@@ -38,6 +38,7 @@ def persist_patient_audio(
                 "intonation_variation": style.intonation_variation.value,
                 "hesitation_frequency": style.hesitation_frequency.value,
                 "delivery_tone": style.delivery_tone.value,
+                "speed": style.speed,
             }
             if style
             else None

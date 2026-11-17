@@ -8,7 +8,6 @@ import {getActiveInterview} from './services/interviews';
 import {AppContainer} from './components/common';
 
 const ClinicalCases = lazy(() => import('./components/ClinicalCases').then((module) => ({default: module.ClinicalCases})));
-const PatientPreview = lazy(() => import('./components/ClinicalCases/PatientPreview').then((module) => ({default: module.PatientPreview})));
 const Chats = lazy(() => import('./components/Chats').then((module) => ({default: module.Chats})));
 const Users = lazy(() => import('./components/Users').then((module) => ({default: module.Users})));
 const PerceptionSurvey = lazy(() => import('./components/PerceptionSurvey').then((module) => ({default: module.PerceptionSurvey})));
@@ -67,7 +66,6 @@ export const AppRouter: FC = () => (
       <Route path={ROUTES.welcome} element={<AuthLayout />} />
       <Route element={<AppContainer />}>
         <Route path={ROUTES.clinicalCases} element={<ClinicalCases />} />
-        <Route path={ROUTES.patientPreview} element={<PatientPreview />} />
         <Route path={ROUTES.calibration} element={<InterviewCalibration />} />
         <Route path={ROUTES.interviewSession} element={<ClinicalChat key="session" mode="session" />} />
         <Route path={ROUTES.interviewReview} element={<ClinicalChat key="review" mode="review" />} />

@@ -10,7 +10,7 @@ import {
   useState,
 } from 'react';
 import {MotionContext, VisibilityContext, useAppMotion, usePresence, useEntrance} from './hooks';
-import {readDesignNumber, readDesignToken} from '../../../utils/designTokens';
+import {readDesignDuration, readDesignToken} from '../../../utils/designTokens';
 import {ChevronRight} from 'lucide-react';
 
 export const MotionProvider = ({children}: PropsWithChildren) => {
@@ -61,7 +61,7 @@ export const MotionContent = ({
         ]
       : [{opacity: 0}, {opacity: 1}];
     const animation = element.current.animate(frames, {
-      duration: readDesignNumber('--app-motion-enter'),
+      duration: readDesignDuration('--app-motion-enter'),
       easing: readDesignToken('--motion-panel-easing'),
     });
     return () => animation.cancel();
@@ -164,7 +164,7 @@ export const MotionHeight = ({
           {height: target + 'px', ...(fade ? {opacity: expanded ? 1 : 0} : {})},
         ],
         {
-          duration: readDesignNumber('--app-motion-expand'),
+          duration: readDesignDuration('--app-motion-expand'),
           easing: readDesignToken('--motion-panel-easing'),
         },
       );

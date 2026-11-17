@@ -52,14 +52,16 @@ def test_completion_waits_for_media_even_when_queued_first(lifecycle_api, monkey
     assert calls == ["pipeline", "completion"]
 
 
-def test_durable_jobs_wait_for_the_global_background_slot(lifecycle_api, monkeypatch):
+def test_a_running_job_does_not_block_another_process_from_starting_the_next(lifecycle_api, monkeypatch):
+    # The shared slot lock guards only selection; a slow job must not keep other
+    # jobs from starting. Job exclusivity is enforced by the per-job lock in _run.
     factory = sessionmaker(bind=lifecycle_api.engine)
     monkeypatch.setattr(processing_jobs, "engine", lifecycle_api.engine)
     monkeypatch.setattr(processing_jobs, "SessionLocal", factory)
     monkeypatch.setattr(processing_jobs, "CANDIDATE_BATCH_SIZE", 2)
     monkeypatch.setattr(processing_jobs, "_succeeded", lambda *_: True)
     with factory() as db:
-        for kind in ("pipeline", "observations", "evaluation"):
+        for kind in ("pipeline", "observations"):
             stage_processing_job(db, lifecycle_api.id, kind, {"recording_id": "fixture"})
             db.commit()
 
@@ -69,27 +71,52 @@ def test_durable_jobs_wait_for_the_global_background_slot(lifecycle_api, monkeyp
 
         async def dispatch(kind, *_):
             await entered.put(kind)
-            if kind != "evaluation":
-                await release.wait()
+            if kind == "pipeline":
+                await release.wait()  # Hold the first job open.
 
         monkeypatch.setattr(processing_jobs, "_dispatch", dispatch)
         first = asyncio.create_task(processing_jobs._run_next())
         try:
+            # The pipeline job is now running (held open).
             assert await asyncio.wait_for(entered.get(), 5) == "pipeline"
+            # A second runner starts the next job even though the first still runs.
             await asyncio.wait_for(processing_jobs._run_next(), 5)
-            assert entered.empty()
-            with factory() as db:
-                queued = db.query(InterviewProcessingJobDB).filter_by(status="queued").count()
-                assert queued == 2
+            assert await asyncio.wait_for(entered.get(), 5) == "observations"
         finally:
             release.set()
             await first
-        await asyncio.wait_for(processing_jobs._run_next(), 5)
-        assert entered.get_nowait() == "observations"
-        await asyncio.wait_for(processing_jobs._run_next(), 5)
-        assert entered.get_nowait() == "evaluation"
 
     asyncio.run(scenario())
+
+
+def test_transient_failure_is_retried_then_terminally_failed(lifecycle_api, monkeypatch):
+    # A failing job must be requeued up to MAX_JOB_ATTEMPTS before it is marked
+    # failed, so one transient crash does not permanently lose the analysis.
+    factory = sessionmaker(bind=lifecycle_api.engine)
+    monkeypatch.setattr(processing_jobs, "engine", lifecycle_api.engine)
+    monkeypatch.setattr(processing_jobs, "SessionLocal", factory)
+    monkeypatch.setattr(processing_jobs, "MAX_JOB_ATTEMPTS", 3)
+    monkeypatch.setattr(processing_jobs, "_close_failed_phases", lambda *_: None)
+
+    async def always_fail(*_):
+        raise RuntimeError("Mock transient failure")
+
+    monkeypatch.setattr(processing_jobs, "_dispatch", always_fail)
+    with factory() as db:
+        stage_processing_job(db, lifecycle_api.id, "replay_preview", {"recording_id": "fixture"})
+        db.commit()
+
+    def status_and_attempts():
+        with factory() as db:
+            row = db.query(InterviewProcessingJobDB).filter_by(medical_interview_id=lifecycle_api.id).first()
+            return row.status, row.attempts
+
+    asyncio.run(processing_jobs._run_next())
+    assert status_and_attempts() == ("queued", 1)  # Requeued, not lost.
+    asyncio.run(processing_jobs._run_next())
+    assert status_and_attempts() == ("queued", 2)
+    asyncio.run(processing_jobs._run_next())
+    assert status_and_attempts() == ("failed", 3)  # Terminal only after retries.
 
 
 def test_observations_job_requires_both_phases_to_finish():

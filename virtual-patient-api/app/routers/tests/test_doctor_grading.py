@@ -44,7 +44,7 @@ def payload(score=0):
 
 
 @pytest.mark.parametrize("completed", [False, True])
-def test_submission_requires_nonblank_comments_and_preserves_saved_ratings(grading_api, completed):
+def test_submission_requires_scores_but_not_comments_and_preserves_saved_ratings(grading_api, completed):
     client, actor, db, interview_id, _ = grading_api
     assignment_id = assign(client, actor, interview_id)
     actor.role = UserRole.DOCTOR
@@ -55,22 +55,25 @@ def test_submission_requires_nonblank_comments_and_preserves_saved_ratings(gradi
     if completed:
         assert client.post(base + "/submit", json=payload(3)).status_code == 200
     previous = client.get(base).json()
-    for invalid in (None, "", "   ", "\n\t"):
-        changed = payload(5)
-        changed["results"][0]["feedback"] = invalid
-        assert client.post(base + "/submit", json=changed).status_code == 422
-    missing = payload(5)
-    del missing["results"][0]["feedback"]
-    assert client.post(base + "/submit", json=missing).status_code == 422
+    missing_score = payload(5)
+    missing_score["results"][0]["score"] = None
+    assert client.post(base + "/submit", json=missing_score).status_code == 422
+    no_score_key = payload(5)
+    del no_score_key["results"][0]["score"]
+    assert client.post(base + "/submit", json=no_score_key).status_code == 422
     current = client.get(base).json()
     assert current["results"] == previous["results"]
     assert current["overall_score"] == previous["overall_score"]
     assert current["status"] == previous["status"]
-    valid = payload(4)
-    valid["results"][0]["feedback"] = "  Updated rationale  "
-    response = client.post(base + "/submit", json=valid)
+    optional = payload(4)
+    optional["results"][0]["feedback"] = "   "
+    del optional["results"][1]["feedback"]
+    optional["results"][2]["feedback"] = "  Updated rationale  "
+    response = client.post(base + "/submit", json=optional)
     assert response.status_code == 200, response.text
-    assert response.json()["results"][0]["feedback"] == "Updated rationale"
+    saved = response.json()["results"]
+    assert [saved[0]["feedback"], saved[1]["feedback"], saved[2]["feedback"]] == ["", "", "Updated rationale"]
+    assert response.json()["overall_score"] == 4
 
 
 def test_assignment_listing_includes_case_details_duration_and_only_own_submitted_score(grading_api):
@@ -99,6 +102,8 @@ def test_assignment_listing_includes_case_details_duration_and_only_own_submitte
     assert row["total_duration"] == 1
     assert row["personality_name"] == "Paciente amable"
     assert row["case_title"] == interview.clinical_case.title
+    assert row["owner_name"] == interview.user.name
+    assert "student_name" not in row
     assert row["overall_score"] is None
     base = f"/doctor-assignments/{assignment_id}"
     assert client.post(base + "/start").status_code == 200
@@ -233,8 +238,9 @@ def test_assignment_duplicates_scope_and_roles(grading_api):
     assert client.post(f"/medical-interviews/{interview_id}/doctor-assignments", json={"doctor_ids": [second_id, second_id]}).status_code == 422
     owner = db.get(MedicalInterviewDB, interview_id).user_id
     assert client.post(f"/medical-interviews/{interview_id}/doctor-assignments", json={"doctor_ids": [owner]}).status_code == 422
+    # A doctor-owned completed interview can be assigned to another doctor.
     own_practice = db.query(MedicalInterviewDB).filter_by(user_id=actor.id, status="completed").first()
-    assert client.post(f"/medical-interviews/{own_practice.id}/doctor-assignments", json={"doctor_ids": [second_id]}).status_code == 409
+    assert client.post(f"/medical-interviews/{own_practice.id}/doctor-assignments", json={"doctor_ids": [second_id]}).status_code == 201
     actor.id = second_id
     actor.role = UserRole.DOCTOR
     assert client.get(f"/medical-interviews/{interview_id}/complete").status_code == 403
@@ -311,13 +317,39 @@ def test_concurrent_saves_serialize_without_duplicate_or_mixed_ratings():
             cleanup.commit()
 
 
-def test_assignment_capability_is_limited_to_completed_student_reviews(grading_api):
+def test_assignment_capability_excludes_admin_owned_and_unfinished_reviews(grading_api):
     client, actor, db, interview_id, _ = grading_api
     db.get(UserDB, actor.id).role = UserRole.ADMIN
     db.commit()
     assert client.get(f"/medical-interviews/{interview_id}/complete").json()["review_access"]["can_assign_doctors"] is True
     practice = db.query(MedicalInterviewDB).filter_by(user_id=actor.id, status="completed").first()
     assert client.get(f"/medical-interviews/{practice.id}/complete").json()["review_access"]["can_assign_doctors"] is False
+
+
+def test_doctor_owned_interviews_can_be_assigned_to_another_doctor(grading_api):
+    client, actor, db, interview_id, second_id = grading_api
+    owner_id = db.get(MedicalInterviewDB, interview_id).user_id
+    db.get(UserDB, owner_id).role = UserRole.DOCTOR
+    db.get(UserDB, actor.id).role = UserRole.ADMIN
+    db.commit()
+    admin_id = actor.id
+    complete = f"/medical-interviews/{interview_id}/complete"
+    assert client.get(complete).json()["review_access"]["can_assign_doctors"] is True
+    path = f"/medical-interviews/{interview_id}/doctor-assignments"
+    assert client.post(path, json={"doctor_ids": [owner_id]}).status_code == 422
+    assert client.put(path, json={"doctor_ids": [owner_id]}).status_code == 422
+    assert client.get(path).json() == []
+    assignment_id = assign(client, actor, interview_id, second_id)
+    actor.id = second_id
+    actor.role = UserRole.DOCTOR
+    base = f"/doctor-assignments/{assignment_id}"
+    assert client.post(base + "/start").status_code == 200
+    assert client.post(base + "/submit", json=payload(4)).status_code == 200
+    actor.id = admin_id
+    actor.role = UserRole.ADMIN
+    db.get(UserDB, owner_id).role = UserRole.ADMIN
+    db.commit()
+    assert client.post(path, json={"doctor_ids": [second_id]}).status_code == 409
 
 
 def test_bulk_assignment_selection_is_atomic_and_locks_started_ratings(grading_api):

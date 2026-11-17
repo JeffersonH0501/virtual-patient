@@ -149,6 +149,7 @@ async def process_multimodal_interview(
             from app.multimodal.turn_staging import stage_turn_media
             stage_turn_media(db, recording, validate_cache=True)
             db.commit()
+            use_full_video = False
         if not use_full_video or any((segment.capture_config or {}).get('mediaTransport') == 'per_turn_v1'
                                      for segment in getattr(recording, 'segments', ())):
             await _wait_for_turn_video_jobs(db, interview_id, recording_id)
@@ -226,6 +227,7 @@ def _run_pipeline(
     # Step 3: read the personal baseline (may be None -> missing_calibration).
     _set_stage(db, recording, STATUS_PROCESSING, STAGE_CALIBRATION)
     segments = getattr(recording, "segments", ())
+    per_turn = (recording.capture_config or {}).get("mediaTransport") == "per_turn_v1"
     profiles = {
         segment.id: read_calibration_profile(interview, segment=segment)
         for segment in segments
@@ -252,6 +254,11 @@ def _run_pipeline(
         .order_by(InterviewTurnDB.sequence)
         .all()
     )
+    if per_turn:
+        from app.multimodal.turn_staging import opening_message_ids
+        # The greeting stays on the replay timeline but carries no student evidence.
+        opening = opening_message_ids(db, interview_id)
+        turns = [turn for turn in turns if getattr(turn, "message_id", None) not in opening]
     student_turns = [turn for turn in turns if turn.speaker == _STUDENT_SPEAKER]
     timings_ms["calibration_and_turn_load"] = (perf_counter() - phase_started) * 1000
 
@@ -282,6 +289,11 @@ def _run_pipeline(
                 cached_visual.pop(turn.id, None)
     for segment in segments or (None,):
         segment_id = segment.id if segment is not None else None
+        if per_turn:
+            if any(turn.speaker == _STUDENT_SPEAKER and turn.id not in paraverbal_raw
+                   for turn in turns_by_segment.get(segment_id, ())):
+                outcome.note_gap()
+            continue
         paraverbal_raw.update(_extract_paraverbal(
             db=db,
             recording=recording,
@@ -310,7 +322,10 @@ def _run_pipeline(
     phase_started = perf_counter()
     nonverbal_raw: dict[str, NonverbalRawFeatures] = dict(cached_visual)
     nonverbal_context: dict[str, str] = {turn.id: _context_for(turn) for turn in turns if turn.id in cached_visual}
-    if use_full_video:
+    if per_turn:
+        if any(turn.id not in cached_visual for turn in turns):
+            outcome.note_gap()
+    elif use_full_video:
         for segment in segments or (None,):
             segment_id = segment.id if segment is not None else None
             raw, context = _extract_nonverbal(

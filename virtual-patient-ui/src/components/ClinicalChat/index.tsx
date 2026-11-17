@@ -158,7 +158,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     syncPending?: boolean;
     pause: () => void;
     resume: () => void;
-    finalize: () => Promise<boolean>;
+    finalize: (preserveOnly?: boolean, onProgress?: (fraction: number) => void) => Promise<boolean>;
     resumeAudioGraph: () => Promise<void>;
     recordStudentTurn: (messageId: number) => void;
     segmentId: string | null;
@@ -538,7 +538,8 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   // Detect when capture becomes invalidated while a deferred utterance is pending.
   useEffect(() => {
     const deferred = deferredUtteranceRef.current;
-    if (deferred && recording.errorCode && ['capture-geometry-changed', 'capture-device-changed', 'temporary-storage-failed'].includes(recording.errorCode)) {
+    if (deferred && recording.errorCode && ['capture-geometry-changed', 'capture-device-changed', 'temporary-storage-failed',
+      'capture-superseded', 'capture-closed'].includes(recording.errorCode)) {
       setLostDeferredUtterance(deferred.content);
       deferredUtteranceRef.current = null;
     }
@@ -560,6 +561,21 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   useEffect(() => {
     if (!isSimulationActive) speech.stop();
   }, [isSimulationActive, speech.stop]);
+
+  // The server stopped accepting this capture. Another window continued the session: offer the resume flow (the same
+  // as a rejected message does). The interview or recording already ended: reload what the server now says about it.
+  useEffect(() => {
+    if (mode !== 'session') return;
+    if (recording.errorCode === 'capture-superseded') {
+      speech.stop();
+      recording.pause();
+      setSimulationAccepted(false);
+      setResumePromptOpen(true);
+    } else if (recording.errorCode === 'capture-closed') {
+      speech.stop();
+      void fetchInterview();
+    }
+  }, [recording.errorCode]);
 
   useEffect(() => {
     const deferred = deferredUtteranceRef.current;
@@ -703,6 +719,8 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setCaptureSealed(false);
     endingRef.current = false;
     setEnding(false);
+    // Opening the dialog stopped speech recognition; the new capture needs it again for the voice bubble and transcription.
+    speech.start();
   };
   const handleInterviewFinalized = (nextEvaluationData: InterviewEvaluationResponse) => {
     setInterview((current) => current ? {
@@ -881,8 +899,9 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
                 }}>{t('common.retry')}</button>}
               </div>
             )}
-            {recording.syncPending && (recording.errorCode || !navigator.onLine) && <div className="mx-layout mb-layout text-warning-800 secondary-text" role="status">
-              <p>{!navigator.onLine ? t('clinicalChat.syncPausedOffline') : t('clinicalChat.syncPaused')}</p>
+            {recording.syncPending && (recording.errorCode || !navigator.onLine || recording.reconnecting) && <div className="mx-layout mb-layout text-warning-800 secondary-text" role="status">
+              <p>{!navigator.onLine ? t('clinicalChat.syncPausedOffline')
+                : recording.reconnecting && !recording.errorCode ? t('clinicalChat.syncReconnecting') : t('clinicalChat.syncPaused')}</p>
               <button type="button" className="ui-button ui-button--secondary" onClick={() => {
                 speech.stop();
                 recording.pause();
@@ -950,7 +969,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           canCancel={!resumingInterview}
           preparingCapture={sealingCapture || resumingInterview}
           recordingError={recording.errorCode ? t(`clinicalChat.recording.errors.${recording.errorCode}`) : undefined}
-          beforeComplete={async () => (captureSealed || await sealCapture()) && recording.finalize()}
+          beforeComplete={async (onProgress) => (captureSealed || await sealCapture()) && recording.finalize(false, onProgress)}
           waitingForTurn={patientHasFloor}
           onCompleted={handleInterviewFinalized}
         />

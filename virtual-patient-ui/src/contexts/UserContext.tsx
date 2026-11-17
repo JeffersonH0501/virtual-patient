@@ -1,6 +1,7 @@
 import React, {createContext, useCallback, useState, useEffect, ReactNode} from 'react';
 import {User} from '../types';
 import {getUser, updateUser as updateUserService} from '../services/users';
+import {clearSurveyCache} from '../services/perceptionSurvey';
 import i18n from '../i18n';
 import {setStoredLanguage, clearStoredLanguage} from '../utils/languageStorage';
 import {ROUTES} from '../utils/routes';
@@ -87,6 +88,9 @@ export const UserProvider: React.FC<UserProviderProps> = ({children}) => {
   const signOut = () => {
     // Clear user data
     setUserState(null);
+
+    // Drop the cached survey so another account never sees a stale one.
+    clearSurveyCache();
 
     // Clear language preference from localStorage
     clearStoredLanguage();

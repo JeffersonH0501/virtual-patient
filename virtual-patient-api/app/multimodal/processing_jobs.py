@@ -3,15 +3,19 @@ import asyncio
 import hashlib
 import logging
 from datetime import datetime, timezone
-from sqlalchemy import text, tuple_, literal, or_
+from sqlalchemy import case, text, tuple_, or_
 from sqlalchemy.orm import aliased
 from app.core.database import SessionLocal, engine
 from app.models.processing_job import InterviewProcessingJobDB
 
 logger = logging.getLogger(__name__)
-JOB_KINDS = {"completion", "pipeline", "observations", "evaluation", "learning_moments"}
+JOB_KINDS = {"completion", "pipeline", "observations", "evaluation", "learning_moments", "replay_preview"}
 CANDIDATE_BATCH_SIZE = 32
 BACKGROUND_SLOT_LOCK = 846217320
+# A transient failure (OOM-killed child, timeout, dropped DB connection) must not
+# permanently lose a participant's analysis. Reschedule the job until this many
+# attempts have been made, then mark it terminally failed.
+MAX_JOB_ATTEMPTS = 3
 SUCCESSFUL_PHASES = {"complete", "partial", "unavailable"}
 PROCESSING_PHASES = {
     "pipeline": ("observation_processing",),
@@ -51,6 +55,9 @@ async def _dispatch(kind, interview_id, payload):
     elif kind == "pipeline":
         from app.multimodal.process_isolation import process_multimodal_interview_isolated
         await process_multimodal_interview_isolated(interview_id, payload["recording_id"])
+    elif kind == "replay_preview":
+        from app.media.replay_preview import build_replay_preview
+        await asyncio.to_thread(build_replay_preview, interview_id, payload["recording_id"])
     elif kind == "learning_moments":
         from app.multimodal.learning_moments import generate_learning_moments
         await generate_learning_moments(interview_id, payload["recording_id"], payload.get("force", False))
@@ -71,6 +78,8 @@ def _succeeded(db, job):
     capture = recording.capture_config or {}
     if job.kind == "learning_moments":
         return capture.get("learning_moments", {}).get("status") == "completed"
+    if job.kind == "replay_preview":
+        return capture.get("replay_preview", {}).get("status") in {"ready", "unavailable"}
     if job.kind != "evaluation" and capture.get("observation_processing", {}).get("status") not in SUCCESSFUL_PHASES:
         return False
     return job.kind == "pipeline" or capture.get("evaluation_processing", {}).get("status") in SUCCESSFUL_PHASES
@@ -80,12 +89,16 @@ def _close_failed_phases(db, job):
     from app.models.medical_interview import InterviewRecordingDB
 
     phases = PROCESSING_PHASES.get(job.kind)
-    if not phases:
+    if not phases and job.kind != "replay_preview":
         return
     recording = db.get(InterviewRecordingDB, job.payload["recording_id"], with_for_update=True)
     if recording is None:
         return
     capture = dict(recording.capture_config or {})
+    if job.kind == "replay_preview":
+        capture["replay_preview"] = {**capture.get("replay_preview", {}), "status": "failed"}
+        recording.capture_config = capture
+        return
     for phase in phases:
         if capture.get(phase, {}).get("status") in {"queued", "processing"}:
             capture[phase] = {"status": "failed", "stage": "finished", "reason": "technical_processing_failure"}
@@ -112,7 +125,13 @@ async def _run(job_id):
             try:
                 while not operation.done():
                     await asyncio.wait({operation}, timeout=1)
-                    connection.execute(text("SELECT 1"))
+                    try:
+                        connection.execute(text("SELECT 1"))
+                    except Exception:
+                        # A transient keepalive error (recycle, network blip) must
+                        # not fail an otherwise-healthy job; the advisory lock is
+                        # reasserted on the next poll and the work keeps running.
+                        logger.warning("Interview processing keepalive hiccup job_id=%s kind=%s", job_id, kind)
                 await operation
             except asyncio.CancelledError:
                 raise  # Leave recoverable work pending after shutdown.
@@ -126,10 +145,19 @@ async def _run(job_id):
             with SessionLocal() as db:
                 job = db.query(InterviewProcessingJobDB).filter(InterviewProcessingJobDB.id == job_id).first()
                 if job:
-                    job.status = "completed" if not failed and _succeeded(db, job) else "failed"
-                    job.error_code = "technical_processing_failure" if job.status == "failed" else None
-                    job.completed_at = datetime.now(timezone.utc)
-                    if job.status == "failed":
+                    if not failed and _succeeded(db, job):
+                        job.status = "completed"
+                        job.error_code = None
+                        job.completed_at = datetime.now(timezone.utc)
+                    elif job.attempts < MAX_JOB_ATTEMPTS:
+                        # Recoverable: requeue the same row and leave the interview
+                        # phases open so a retry can still complete the analysis.
+                        job.status = "queued"
+                        job.error_code = None
+                    else:
+                        job.status = "failed"
+                        job.error_code = "technical_processing_failure"
+                        job.completed_at = datetime.now(timezone.utc)
                         _close_failed_phases(db, job)
                     db.commit()
         finally:
@@ -137,36 +165,45 @@ async def _run(job_id):
     return True
 
 
-async def _run_next():
-    """Keep one durable background job active across all API processes."""
+def _select_job_batch(cursor):
+    """One page of runnable jobs, taken under the shared slot lock only."""
+    job = InterviewProcessingJobDB
     with engine.connect() as connection:
         params = {"key": BACKGROUND_SLOT_LOCK}
         if not connection.execute(text("SELECT pg_try_advisory_lock(:key)"), params).scalar():
-            return
+            return None
         try:
-            await _run_next_locked()
+            with SessionLocal() as db:
+                # The replay preview goes first: the student watches its progress while self-assessing.
+                priority = case((job.kind == "replay_preview", 0), else_=1)
+                candidates = db.query(priority.label("priority"), job.queued_at, job.id).filter(job.status.in_(["queued", "processing"]))
+                dependency = aliased(InterviewProcessingJobDB)
+                unfinished_media = db.query(dependency.id).filter(
+                    dependency.medical_interview_id == job.medical_interview_id,
+                    dependency.kind == "pipeline",
+                    dependency.status.in_(["queued", "processing"]),
+                ).exists()
+                candidates = candidates.filter(or_(job.kind != "completion", ~unfinished_media))
+                if cursor is not None:
+                    candidates = candidates.filter(tuple_(priority, job.queued_at, job.id) > tuple_(*cursor))
+                return candidates.order_by(priority, job.queued_at, job.id).limit(CANDIDATE_BATCH_SIZE).all()
         finally:
             connection.execute(text("SELECT pg_advisory_unlock(:key)"), params)
 
 
-async def _run_next_locked():
-    """Scan past locked jobs, including recovered jobs marked processing."""
-    job = InterviewProcessingJobDB
+async def _run_next():
+    """Start one runnable job, not blocking other processes while it runs.
+
+    The shared slot lock guards only candidate selection; job exclusivity is
+    enforced by the per-job advisory lock inside ``_run``. Releasing the slot
+    lock before running means a slow job (e.g. a long pipeline) no longer blocks
+    replay-preview, evaluation or learning-moments jobs for other interviews.
+    """
     cursor = None
     while True:
-        with SessionLocal() as db:
-            priority = literal(1)
-            candidates = db.query(priority.label("priority"), job.queued_at, job.id).filter(job.status.in_(["queued", "processing"]))
-            dependency = aliased(InterviewProcessingJobDB)
-            unfinished_media = db.query(dependency.id).filter(
-                dependency.medical_interview_id == job.medical_interview_id,
-                dependency.kind == "pipeline",
-                dependency.status.in_(["queued", "processing"]),
-            ).exists()
-            candidates = candidates.filter(or_(job.kind != "completion", ~unfinished_media))
-            if cursor is not None:
-                candidates = candidates.filter(tuple_(priority, job.queued_at, job.id) > tuple_(*cursor))
-            batch = candidates.order_by(priority, job.queued_at, job.id).limit(CANDIDATE_BATCH_SIZE).all()
+        batch = await asyncio.to_thread(_select_job_batch, cursor)
+        if not batch:
+            return
         for _, _, identifier in batch:
             if await _run(identifier):
                 return

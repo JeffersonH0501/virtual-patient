@@ -1,0 +1,5 @@
+Multimodal evidence: some doctor turns include "DOCTOR SPEECH DELIVERY", observations of how the doctor delivered that turn: temporal speech pattern (pace and pauses), prosodic level (loudness relative to the doctor's other turns) and prosodic modulation (variation in intonation).
+- The transcript remains the main basis of the score: plain language, explanation of terms and checking understanding are judged from what the doctor said. Read the observations only in turns where the doctor explains, gives an opinion or makes a recommendation; in short or routine questions a fast pace or few pauses are ordinary.
+- They describe observable delivery, not clarity. A given pace or pauses do not prove clarity by themselves, and an unusual pattern does not by itself mean the communication was poor.
+- Missing, partial or unavailable evidence must NOT be penalized. Absence of pauses or reduced variation is neutral information.
+- The observations always describe the DOCTOR's own delivery, never the patient.

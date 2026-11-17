@@ -109,9 +109,12 @@ it('places source buttons below the title with automatic modes followed by named
   ).toEqual([
     'grading.automaticTextBased',
     'grading.automaticMultimodalEvidence',
+    'grading.selfAssessmentAdmin',
     'Evaluación Pending teacher',
     'Evaluación Submitted teacher',
   ]);
+  expect(activeSource(select).textContent).toBe('grading.automaticMultimodalEvidence');
+  expect((within(select).getByRole('button', {name: 'grading.selfAssessmentAdmin'}) as HTMLButtonElement).disabled).toBe(true);
   chooseSource(select, 'grading.automaticMultimodalEvidence');
   expect(screen.getByText('Multimodal feedback')).toBeDefined();
   expect(screen.queryByText('Text-based feedback')).toBeNull();
@@ -138,7 +141,7 @@ it('expands own-rating feedback and edits through the pencil beside the score wi
   mocks.role = 'doctor';
   let savedScore = 2.5;
   const aspects = [
-    'coherence',
+    'general_communication',
     'show_interest',
     'show_empathy',
     'speak_clearly',
@@ -223,11 +226,7 @@ it('expands own-rating feedback and edits through the pencil beside the score wi
     (within(editor).getByRole('button', {name: 'common.save'}) as HTMLButtonElement).disabled,
   ).toBe(true);
   const comment = within(editor).getByRole('textbox') as HTMLTextAreaElement;
-  expect(comment.required).toBe(true);
-  fireEvent.change(comment, {target: {value: '   '}});
-  expect(
-    (within(editor).getByRole('button', {name: 'common.save'}) as HTMLButtonElement).disabled,
-  ).toBe(true);
+  expect(comment.required).toBe(false);
   fireEvent.change(comment, {target: {value: 'Revised comment'}});
   fireEvent.change(score, {target: {value: '4'}});
   mocks.request.mockRejectedValueOnce(new Error('Synthetic failure'));
@@ -313,11 +312,11 @@ it('keeps automatic sources and assignment available when no teachers are assign
     within(select)
       .getAllByRole('button')
       .map((option) => option.textContent),
-  ).toEqual(['grading.automaticTextBased', 'grading.automaticMultimodalEvidence']);
-  expect(screen.getByText('Text-based feedback')).toBeDefined();
+  ).toEqual(['grading.automaticTextBased', 'grading.automaticMultimodalEvidence', 'grading.selfAssessmentAdmin']);
+  expect(screen.getByText('Multimodal feedback')).toBeDefined();
   fireEvent.click(screen.getByRole('button', {name: 'grading.assignDoctor'}));
   expect(screen.getByRole('dialog')).toBeDefined();
-  expect(activeSource(select).textContent).toContain('grading.automaticTextBased');
+  expect(activeSource(select).textContent).toContain('grading.automaticMultimodalEvidence');
 });
 
 it('falls back to the text-based assessment when the selected teacher assignment is removed', async () => {
@@ -329,8 +328,8 @@ it('falls back to the text-based assessment when the selected teacher assignment
     path.endsWith('/reviewers') ? [reviewers[0]] : ratings,
   );
   fireEvent.click(screen.getByRole('button', {name: 'Save'}));
-  await waitFor(() => expect(activeSource(select).textContent).toContain('grading.automaticTextBased'));
-  expect(screen.getByText('Text-based feedback')).toBeDefined();
+  await waitFor(() => expect(activeSource(select).textContent).toContain('grading.automaticMultimodalEvidence'));
+  expect(screen.getByText('Multimodal feedback')).toBeDefined();
   expect(screen.queryByText('Teacher feedback')).toBeNull();
 });
 
@@ -339,7 +338,7 @@ it('resets source selection and teacher data when the interview changes', async 
   const select = await sourceButtons();
   chooseSource(select, 'Submitted teacher');
   view.rerender(<AssessmentSelector evaluationData={makeData(43)} />);
-  expect(activeSource(screen.getByRole('group')).textContent).toContain('grading.automaticTextBased');
+  expect(activeSource(screen.getByRole('group')).textContent).toContain('grading.automaticMultimodalEvidence');
   await waitFor(() =>
     expect(mocks.request).toHaveBeenCalledWith('/medical-interviews/43/reviewers'),
   );
@@ -350,7 +349,7 @@ it('retains automatic results and retries when teacher sources fail to load', as
   mocks.request.mockRejectedValueOnce(new Error('Unavailable'));
   render(<AssessmentSelector evaluationData={makeData()} />);
   expect(await screen.findByRole('alert')).toBeDefined();
-  expect(screen.getByText('Text-based feedback')).toBeDefined();
+  expect(screen.getByText('Multimodal feedback')).toBeDefined();
   fireEvent.click(screen.getByRole('button', {name: 'common.retry'}));
   await sourceButtons();
   expect(screen.queryByRole('alert')).toBeNull();

@@ -1,5 +1,5 @@
 {
-  "perception": {"title":"Encuesta de percepción","intro":"Cuéntanos tu experiencia con la aplicación y la evaluación.","sections":"Secciones de la encuesta","SUS":"Usabilidad de la aplicación","EXP":"Experiencia con el paciente virtual","EVA":"Percepción de la evaluación automática","correctness":"Correctitud de la evaluación automática","valueAdded":"Utilidad y valor añadido de la evaluación multimodal","criteria":"Ver criterios","remaining_one":"{{count}} pregunta pendiente en esta sección","remaining_other":"{{count}} preguntas pendientes en esta sección","pendingQuestions":"Pendientes","openQuestion":"Por favor, escriba una retroalimentación que respalde las respuestas anteriores","openQuestionSUS":"¿Qué dificultades de usabilidad encontraste? ¿Qué aspectos mejorarías?","openQuestionEXP":"¿Qué problemas experimentaste durante la conversación hablada? ¿Qué funcionó bien?","openQuestionEVA":"¿Qué aspectos de la evaluación automática te resultaron más o menos útiles? ¿Por qué?","optional":"opcional","save":"Guardar borrador","submit":"Entregar encuesta","update":"Actualizar encuesta","saved":"Respuestas guardadas exitosamente.","error":"No se pudo cargar o guardar la encuesta. Inténtalo de nuevo.","retry":"Reintentar","locked":"Completa una entrevista propia, sus hipótesis y autoevaluación, y espera la evaluación automática para habilitar la encuesta.","pending":"Encuesta pendiente de entrega","stepIndicator":"Sección {{current}} de {{total}}","previousSection":"Sección anterior","nextSection":"Siguiente sección","scale":{"1":"Totalmente en desacuerdo","2":"En desacuerdo","3":"Ni de acuerdo ni en desacuerdo","4":"De acuerdo","5":"Totalmente de acuerdo"}},
+  "perception": {"title":"Encuesta de percepción","intro":"Cuéntanos tu experiencia con la aplicación y la evaluación.","sections":"Secciones de la encuesta","SUS":"Usabilidad de la aplicación","EXP":"Experiencia con el paciente virtual","EVA":"Percepción de la evaluación automática","correctness":"Correctitud de la evaluación automática","valueAdded":"Utilidad y valor añadido de la evaluación multimodal","criteria":"Ver criterios","remaining_one":"{{count}} pregunta pendiente en esta sección","remaining_other":"{{count}} preguntas pendientes en esta sección","pendingQuestions":"Pendientes","openQuestion":"Por favor, escriba una retroalimentación que respalde las respuestas anteriores","openQuestionSUS":"¿Qué dificultades de usabilidad encontraste? ¿Qué aspectos mejorarías?","openQuestionEXP":"¿Qué problemas experimentaste durante la conversación hablada? ¿Qué funcionó bien?","openQuestionEVA":"¿Qué aspectos de la evaluación automática te resultaron más o menos útiles? ¿Por qué?","optional":"opcional","save":"Guardar borrador","submit":"Entregar encuesta","update":"Actualizar encuesta","saved":"Respuestas guardadas exitosamente.","error":"No se pudo cargar o guardar la encuesta. Inténtalo de nuevo.","retry":"Reintentar","locked":"Completa una entrevista propia, sus hipótesis y autoevaluación, y espera la evaluación automática para habilitar la encuesta.","pending":"Encuesta pendiente de entrega","scale":{"1":"Totalmente en desacuerdo","2":"En desacuerdo","3":"Ni de acuerdo ni en desacuerdo","4":"De acuerdo","5":"Totalmente de acuerdo"}},
   "perceptionRoleDenied": "La encuesta está disponible para estudiantes y médicos.",
   "perceptionSusTableTitle": "Usabilidad de la aplicación",
   "perceptionExpTableTitle": "Experiencia con el paciente virtual",
@@ -7,8 +7,10 @@
   "perceptionEyebrow": "Valoración de la experiencia",
   "learningMoments": {
     "title": "Momentos clave de retroalimentación",
-    "strengthsTitle": "Fortalezas",
     "improvementsTitle": "Áreas de mejora",
+    "adminCount_one": "{{count}} momento de aprendizaje",
+    "adminCount_other": "{{count}} momentos de aprendizaje",
+    "adminNone": "Sin momentos de aprendizaje",
     "reviewedTurns": "Turnos revisados:",
     "back": "Volver",
     "linkedTurns": "Turnos vinculados a este momento",
@@ -527,6 +529,7 @@
   "clinicalChat": {
     "syncPaused": "Entrevista en pausa mientras verificamos y sincronizamos los datos pendientes.",
     "syncPausedOffline": "Sin conexión. La conversación se reanudará cuando vuelvas a estar en línea.",
+    "syncReconnecting": "Se interrumpió la conexión con el servidor. La entrevista se reanudará automáticamente al restablecerse; no se pierde lo grabado hasta ahora.",
     "reviewSession": "Revisar sesión",
     "lostDeferredUtterance": "Tu último mensaje no pudo enviarse debido a un cambio en la captura. El mensaje era: \"{{content}}\"",
     "retryLostUtterance": "Reintentar último mensaje",
@@ -577,11 +580,13 @@
         "turn-video-recorder-failed": "Falló el grabador de video de un turno. Esta sesión no puede finalizar como captura válida. Mantén esta página abierta e informa la incidencia.",
         "upload-failed": "No se pudo almacenar la grabación. La entrevista y la transcripción se conservaron.",
         "finalize-failed": "No se pudo cerrar la grabación. Revisa la sesión e inténtalo de nuevo; la transcripción se conservó.",
-        "finalize-timeout": "La subida de la grabación tardó demasiado. Puedes reintentar o guardar solo la transcripción.",
+        "finalize-timeout": "La subida de la grabación no avanzó. Revisa tu conexión y pulsa Reintentar; tus hipótesis y la transcripción se conservaron.",
         "temporary-storage-failed": "El almacenamiento temporal del navegador no está disponible. Puedes intentar recuperar la sesión o recalibrar.",
         "media-recorder-failed": "Falló uno de los grabadores del navegador. La transcripción se conservará.",
         "capture-geometry-changed": "Cambió la geometría de la ventana o de la cámara. Revisa la sesión y repite la calibración para continuar.",
-        "capture-device-changed": "Un dispositivo de captura se desconectó o cambió. Revisa la sesión y repite la calibración para continuar."
+        "capture-device-changed": "Un dispositivo de captura se desconectó o cambió. Revisa la sesión y repite la calibración para continuar.",
+        "capture-superseded": "Esta sesión se continuó desde otra ventana o pestaña, por lo que la grabación se detuvo aquí. Revisa la sesión para reanudarla.",
+        "capture-closed": "Esta entrevista o su grabación ya terminó, por lo que la captura no puede continuar aquí."
       }
     },
     "clickToRecord": "Haz clic para grabar",
@@ -611,6 +616,7 @@
     "finalization": {
       "savingTitle": "Subiendo y guardando la entrevista",
       "savingDescription": "Espera un momento mientras guardamos la grabación y tus hipótesis.",
+      "savingPercent": "{{percent}} %",
       "errorTitle": "No pudimos guardar la entrevista",
       "errorDescription": "Tus hipótesis se conservaron. Revisa tu conexión e intenta nuevamente."
     },
@@ -1062,7 +1068,7 @@
     "promptUnavailable": "No hay un prompt guardado para este resultado.",
     "learningMomentsPromptNotCaptured": "Esta generación de momentos de retroalimentación no guardó los mensajes completos enviados al modelo.",
     "promptRole": {"system": "Instrucción del sistema", "human": "Mensaje enviado al modelo", "ai": "Respuesta intermedia del modelo"},
-    "promptCall": {"category": "Evaluación de {{component}}", "learningMoments": "Momentos clave de retroalimentación", "completeness_summary": "Evaluación del resumen clínico", "completeness_verification": "Verificación con la conversación", "completeness_hypotheses": "Evaluación de las hipótesis"},
+    "promptCall": {"category": "Evaluación de {{component}}", "categoryFeedback": "Comentario de {{component}}", "learningMoments": "Momentos clave de retroalimentación", "completeness_summary": "Evaluación del resumen clínico", "completeness_verification": "Verificación con la conversación", "completeness_hypotheses": "Evaluación de las hipótesis"},
     "evaluationBasedOn": "La categoría «{{component}}» se evaluó con los siguientes criterios:",
     "criteriaBuiltFrom": "Estos criterios se construyeron a partir de los siguientes instrumentos de evaluación:",
     "notes": "Notas:",
@@ -1165,6 +1171,7 @@
     "start": "Comenzar calificación",
     "score": "Puntuación (0–5)",
     "comment": "Comentario",
+    "optional": "opcional",
     "criteriaCount_one": "{{count}} criterio",
     "criteriaCount_other": "{{count}} criterios",
     "saveDraft": "Guardar borrador",

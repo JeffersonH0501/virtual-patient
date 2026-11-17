@@ -2,10 +2,18 @@ import {useEffect, useState} from 'react';
 import {requestLearningMoments} from '../../services/evaluations/learningMoments';
 import {LearningMoment} from '../../types/learningMoments';
 
-export function useLearningMoments(interviewId: number, sourceRevision: string | undefined, enabled: boolean) {
-  const [moments, setMoments] = useState<LearningMoment[]>([]);
+export type LearningMomentsView = {
+  moments: LearningMoment[];
+  /** True only when generation completed for the current evaluation, so an empty list means "none found". */
+  ready: boolean;
+};
+
+const NOT_READY: LearningMomentsView = {moments: [], ready: false};
+
+export function useLearningMoments(interviewId: number, sourceRevision: string | undefined, enabled: boolean): LearningMomentsView {
+  const [view, setView] = useState<LearningMomentsView>(NOT_READY);
   useEffect(() => {
-    setMoments([]);
+    setView(NOT_READY);
     if (!enabled) return;
     let disposed = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -16,7 +24,7 @@ export function useLearningMoments(interviewId: number, sourceRevision: string |
         if (result.status === 'pending' || result.status === 'processing') {
           timer = setTimeout(() => void load(), 2000);
         } else if (result.status === 'completed' && !result.stale) {
-          setMoments(result.moments.slice(0, 3));
+          setView({moments: result.moments, ready: true});
         }
       } catch {
         // Category feedback remains available if supplemental moments cannot load.
@@ -28,5 +36,5 @@ export function useLearningMoments(interviewId: number, sourceRevision: string |
       clearTimeout(timer);
     };
   }, [interviewId, sourceRevision, enabled]);
-  return moments;
+  return view;
 }

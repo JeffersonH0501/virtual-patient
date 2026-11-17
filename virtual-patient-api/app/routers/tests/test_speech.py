@@ -160,7 +160,9 @@ class SpeechEndpointTests(unittest.IsolatedAsyncioTestCase):
         result = await speech_router.transcribe_audio(
             audio=upload,
             language="es",
+            interview_id=None,
             current_user=self.user,
+            db=None,
         )
 
         self.assertEqual(result.text, "Tengo dolor.")

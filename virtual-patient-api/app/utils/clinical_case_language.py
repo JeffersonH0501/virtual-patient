@@ -50,34 +50,6 @@ def get_field_in_language(
     # Return translation if available, otherwise return base field
     return translations.get(language_code, getattr(clinical_case, field_name, "") or "")
 
-def set_field_translation(
-    clinical_case: ClinicalCaseDB, 
-    field_name: str,
-    language_code: str,
-    translated_text: str
-) -> None:
-    """
-    Set a specific field translation
-    
-    Args:
-        clinical_case: Clinical case database object
-        field_name: Name of the field to translate
-        language_code: Language code (e.g., 'es')
-        translated_text: Translated text content
-    """
-    if language_code == "en":
-        # For English, update the base field
-        setattr(clinical_case, field_name, translated_text)
-        return
-    
-    # Get existing translations
-    translation_field = f"{field_name}_translations"
-    existing_translations = getattr(clinical_case, translation_field, {}) or {}
-    
-    # Add new translation
-    existing_translations[language_code] = translated_text
-    setattr(clinical_case, translation_field, existing_translations)
-
 def get_clinical_case_in_language(
     clinical_case: ClinicalCaseDB, 
     language_code: str = "en"

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, defer
 
 from app.core.database import get_db
 from app.controllers.interview_lifecycle import lock_row, require_capture_open
@@ -83,7 +83,14 @@ def get_learning_moments(interview_id: int, user: UserDB = Depends(_current_medi
     _require_replay_access(interview, user)
     require_assessments(db, interview, user)
     _require_completed_for_replay(interview)
-    return read_learning_moments(db, interview_id)
+    result = read_learning_moments(db, interview_id)
+    if user.role != UserRole.ADMIN:
+        result["provider_provenance"] = [
+            {key: value for key, value in entry.items() if key != "prompt_messages"}
+            if isinstance(entry, dict) else entry
+            for entry in result.get("provider_provenance", [])
+        ]
+    return result
 
 
 @router.post("/{interview_id}/learning-moments/regenerate", status_code=202)
@@ -198,14 +205,40 @@ def read_evaluation_runs(
     interview = _get_interview(db, interview_id)
     _require_replay_access(interview, user)
     require_assessments(db, interview, user)
-    runs = db.query(InterviewEvaluationRunDB).filter(
+    candidates = db.query(InterviewEvaluationRunDB.id, InterviewEvaluationRunDB.evaluation_condition).filter(
         InterviewEvaluationRunDB.medical_interview_id == interview_id,
     )
     if user.role != UserRole.ADMIN:
-        runs = runs.filter(InterviewEvaluationRunDB.evaluation_condition == "TEXT_PLUS_MULTIMODAL")
-    runs = runs.order_by(InterviewEvaluationRunDB.created_at, InterviewEvaluationRunDB.id).all()
-    return [{"id": run.id, "condition": run.evaluation_condition,
-             "created_at": run.created_at, "snapshot": run.snapshot} for run in runs]
+        candidates = candidates.filter(InterviewEvaluationRunDB.evaluation_condition == "TEXT_PLUS_MULTIMODAL")
+    # The review shows the prompts of the latest run of each condition. Every regeneration appends a run of about
+    # 19 MB, so the history stays stored for provenance but is not read: pick the latest IDs without touching the
+    # snapshots, then load only those rows.
+    latest: dict[str, str] = {}
+    for run_id, condition in candidates.order_by(InterviewEvaluationRunDB.created_at.desc(), InterviewEvaluationRunDB.id.desc()):
+        latest.setdefault(condition, run_id)
+    runs = db.query(InterviewEvaluationRunDB).filter(
+        InterviewEvaluationRunDB.id.in_(list(latest.values())),
+    ).order_by(InterviewEvaluationRunDB.created_at, InterviewEvaluationRunDB.id).all() if latest else []
+    results = []
+    for run in runs:
+        snapshot = run.snapshot
+        if isinstance(snapshot, dict) and isinstance(snapshot.get("inputs"), dict):
+            # The per-turn evidence copy (~95% of the payload, tens of MB per run) stays stored for
+            # provenance; the review UI only reads prompts, provider calls and outputs.
+            snapshot = {**snapshot, "inputs": {key: value for key, value in snapshot["inputs"].items() if key != "evidence"}}
+        if user.role != UserRole.ADMIN and isinstance(snapshot, dict):
+            inputs = snapshot.get("inputs", {})
+            inputs = inputs if isinstance(inputs, dict) else {}
+            inputs = {key: value for key, value in inputs.items()
+                      if key not in {"prompts", "fallback_prompts", "fallback_prompt_messages"}}
+            providers = snapshot.get("provider_responses", [])
+            if isinstance(providers, list):
+                providers = [{key: value for key, value in entry.items() if key != "prompt_messages"}
+                             if isinstance(entry, dict) else entry for entry in providers]
+            snapshot = {**snapshot, "inputs": inputs, "provider_responses": providers}
+        results.append({"id": run.id, "condition": run.evaluation_condition,
+                        "created_at": run.created_at, "snapshot": snapshot})
+    return results
 
 
 @router.get("/{interview_id}/recap", response_model=InterviewRecapResponse)
@@ -221,9 +254,10 @@ def get_recap(
     recording = db.query(InterviewRecordingDB).filter(
         InterviewRecordingDB.medical_interview_id == interview_id
     ).first()
-    turns = _recap_turns(db, interview)
     visible = can_read_assessments(db, interview, user)
-    if not visible or user.role != UserRole.ADMIN:
+    technical_evidence = visible and user.role == UserRole.ADMIN
+    turns = _recap_turns(db, interview, technical_evidence)
+    if not technical_evidence:
         for turn in turns:
             turn.paraverbal = None
             turn.nonverbal_features = None
@@ -243,7 +277,7 @@ def get_recap(
         from app.routers.recording_turns import list_turn_media
         manifest = list_turn_media(interview_id, user, db, storage)
         return InterviewRecapResponse(interview_id=interview_id, recording_status=recording.status,
-            duration_ms=manifest['duration_ms'], turn_media=manifest['turns'], turns=turns,
+            duration_ms=manifest['duration_ms'], turn_media=manifest['turns'], turns=turns, replay=manifest['replay'],
             observation_processing=(recording.capture_config or {}).get('observation_processing', {}) if visible else {},
             evaluation_processing=(recording.capture_config or {}).get('evaluation_processing', {}) if visible else {})
     return InterviewRecapResponse(interview_id=interview_id, recording_status=RecordingStatus.UNAVAILABLE,
@@ -329,8 +363,17 @@ def get_calibration_captures(interview_id: int, user: UserDB = Depends(_current_
     interview = _get_interview(db, interview_id)
     _require_analysis_admin(interview, user)
     calibration = (interview.interview_metadata or {}).get("calibration", {})
-    selected = calibration.get("capture_ids", {})
     captures = db.query(CalibrationCaptureDB).filter_by(medical_interview_id=interview_id).order_by(CalibrationCaptureDB.created_at).all()
+    recording = db.query(InterviewRecordingDB).filter_by(medical_interview_id=interview_id).first()
+    segments = recording.segments if recording else []
+    segment_calibrations = {segment.id: segment.calibration or {} for segment in segments}
+    used_calibrations = [calibration, *segment_calibrations.values()]
+    turns = db.query(InterviewTurnDB).filter_by(medical_interview_id=interview_id).all()
+    turns_by_capture = {}
+    for turn in turns:
+        turn_calibration = segment_calibrations.get(turn.segment_id, calibration) if turn.segment_id else calibration
+        for capture_id in (turn_calibration.get("capture_ids") or {}).values():
+            turns_by_capture.setdefault(capture_id, []).append(turn.sequence + 1)
     entries = []
     for capture in captures:
         available = _calibration_media_available(capture)
@@ -341,7 +384,10 @@ def get_calibration_captures(interview_id: int, user: UserDB = Depends(_current_
                 available = False
         entries.append({"id": capture.id, "stage": capture.stage, "created_at": capture.created_at,
             "duration_ms": capture.duration_ms, "metadata": capture.capture_metadata, "result": capture.result,
-            "used_for": [stage for stage, identifier in selected.items() if identifier == capture.id],
+            "used_for": list(dict.fromkeys(stage for item in used_calibrations
+                for stage, identifier in (item.get("capture_ids") or {}).items() if identifier == capture.id)),
+            "turn_range": ({"start": min(turns_by_capture[capture.id]), "end": max(turns_by_capture[capture.id])}
+                           if turns_by_capture.get(capture.id) else None),
             "media_url": f"/medical-interviews/{interview_id}/calibration/captures/{capture.id}/video" if available else None,
             "retention_expires_at": min(capture.retention_expires_at, media_retention_deadline(capture.created_at, MEDIA_RETENTION_MONTHS))})
     return {"calibration": calibration or None, "captures": entries}
@@ -365,7 +411,31 @@ def stream_calibration_capture(interview_id: int, capture_id: str, request: Requ
     return _stream_private_media(storage, path, request, capture.content_type)
 
 
-def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
+def _recap_observation(value: Any, keep_raw: tuple[str, ...] = ()) -> Any:
+    """Review view of a stored observation without its per-frame ``raw`` layer.
+
+    The raw layer (F0/loudness samples, per-frame nod, smile and gaze records) is
+    megabytes per interview and the review UI only reads the keys in ``keep_raw``.
+    The complete observation stays in the database.
+    """
+    if not isinstance(value, dict):
+        return _without_none(value)
+    view = {key: item for key, item in value.items() if key != "raw"}
+    raw = value.get("raw")
+    kept = {key: raw[key] for key in keep_raw if isinstance(raw, dict) and key in raw}
+    if kept:
+        view["raw"] = kept
+    return _without_none(view)
+
+
+def _turn_response(turn: InterviewTurnDB, *, recap: bool = False, with_observations: bool = True) -> RecapTurn:
+    if recap:
+        # Callers without technical-evidence access never load or process the observations.
+        paraverbal = _recap_observation(turn.paraverbal) if with_observations else None
+        nonverbal = (_recap_observation(turn.nonverbal_features, keep_raw=("gaze_observations",))
+                     if with_observations else None)
+    else:
+        paraverbal, nonverbal = _without_none(turn.paraverbal), _without_none(turn.nonverbal_features)
     return RecapTurn(
         turn_id=turn.id,
         message_id=turn.message_id,
@@ -383,8 +453,8 @@ def _turn_response(turn: InterviewTurnDB) -> RecapTurn:
         # recap serves that single contract directly. ``_without_none`` only
         # drops unavailable optional measurements from the payload; a patient
         # turn's absent paraverbal layer stays ``None``.
-        paraverbal=_without_none(turn.paraverbal),
-        nonverbal_features=_without_none(turn.nonverbal_features),
+        paraverbal=paraverbal,
+        nonverbal_features=nonverbal,
     )
 
 
@@ -397,10 +467,11 @@ def _without_none(value: Any) -> Any:
     return value
 
 
-def _recap_turns(db: Session, interview: MedicalInterviewDB) -> list[RecapTurn]:
-    turns = db.query(InterviewTurnDB).filter(
-        InterviewTurnDB.medical_interview_id == interview.id
-    ).order_by(InterviewTurnDB.sequence).all()
+def _recap_turns(db: Session, interview: MedicalInterviewDB, with_observations: bool = True) -> list[RecapTurn]:
+    query = db.query(InterviewTurnDB).filter(InterviewTurnDB.medical_interview_id == interview.id)
+    if not with_observations:
+        query = query.options(defer(InterviewTurnDB.paraverbal), defer(InterviewTurnDB.nonverbal_features))
+    turns = query.order_by(InterviewTurnDB.sequence).all()
     messages = db.query(InterviewMessageDB).filter(
         InterviewMessageDB.interview_id == interview.id
     ).order_by(InterviewMessageDB.created_at, InterviewMessageDB.id).all()
@@ -411,7 +482,7 @@ def _recap_turns(db: Session, interview: MedicalInterviewDB) -> list[RecapTurn]:
     for message in messages:
         turn = turns_by_message_id.get(message.id)
         if turn is not None:
-            result.append(_turn_response(turn))
+            result.append(_turn_response(turn, recap=True, with_observations=with_observations))
             continue
         sender_type = getattr(message.sender_type, "value", message.sender_type)
         result.append(
@@ -426,6 +497,7 @@ def _recap_turns(db: Session, interview: MedicalInterviewDB) -> list[RecapTurn]:
             )
         )
     result.extend(
-        _turn_response(turn) for turn in turns if turn.message_id is None
+        _turn_response(turn, recap=True, with_observations=with_observations)
+        for turn in turns if turn.message_id is None
     )
     return result

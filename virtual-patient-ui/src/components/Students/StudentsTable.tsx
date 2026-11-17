@@ -110,7 +110,7 @@ export const StudentsTable = ({filteredItems, onFilteredChange}: {filteredItems?
       ) : (
         <div aria-busy={busy}>
           <div className="ui-table-scroll" tabIndex={0}>
-            <table className="ui-data-table">
+            <table className="ui-data-table ui-data-table--scrollable">
               <caption className="sr-only">{t('students.history')}</caption>
               <TableHeader columns={columnHeaders} hideLastLabel />
               <tbody>

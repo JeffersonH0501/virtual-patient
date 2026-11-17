@@ -19,11 +19,24 @@ it('shows the pending indicator only for an eligible unsubmitted survey', async 
   const i18n = createInstance();
   await i18n.init({lng: 'es', resources: {es: {translation: es}}});
   account.role = 'student';
-  vi.mocked(loadSurvey).mockResolvedValueOnce({eligible: true, status: 'DRAFT', answers: {}, comments: {}, cuq_score: null, created_at: null, submitted_at: null, updated_at: null});
+  vi.mocked(loadSurvey).mockResolvedValueOnce({eligible: true, status: 'DRAFT', answers: {}, comments: {}, sus_score: null, questionnaire_version: null, created_at: null, submitted_at: null, updated_at: null});
   render(<I18nextProvider i18n={i18n}><MemoryRouter><Header /></MemoryRouter></I18nextProvider>);
   const link = await screen.findByRole('link', {name: /Encuesta de percepción/});
   expect(link.getAttribute('href')).toBe('/perception-survey');
   expect(within(link).getByLabelText('Encuesta pendiente de entrega')).toBeTruthy();
+});
+
+it('refreshes survey eligibility after a self-assessment is submitted', async () => {
+  const i18n = createInstance();
+  await i18n.init({lng: 'es', resources: {es: {translation: es}}});
+  account.role = 'student';
+  vi.mocked(loadSurvey)
+    .mockResolvedValueOnce({eligible: false, status: 'DRAFT', answers: {}, comments: {}, sus_score: null, questionnaire_version: null, created_at: null, submitted_at: null, updated_at: null})
+    .mockResolvedValueOnce({eligible: true, status: 'DRAFT', answers: {}, comments: {}, sus_score: null, questionnaire_version: null, created_at: null, submitted_at: null, updated_at: null});
+  render(<I18nextProvider i18n={i18n}><MemoryRouter><Header /></MemoryRouter></I18nextProvider>);
+  expect(await screen.findByRole('button', {name: 'Encuesta de percepción'})).toHaveProperty('disabled', true);
+  window.dispatchEvent(new Event('perception-survey-updated'));
+  expect((await screen.findByRole('link', {name: /Encuesta de percepción/})).getAttribute('href')).toBe('/perception-survey');
 });
 
 it.each(['es', 'en'])('keeps role-specific navigation order and permissions in %s', async (language) => {
@@ -53,7 +66,6 @@ it.each([
   ['admin', '/cases', '/cases'],
   ['student', '/interviews/calibration', '/cases'],
   ['doctor', '/interviews/calibration', '/cases'],
-  ['admin', '/interviews/session-preview', '/cases'],
   ['admin', '/cases/7', '/cases'],
   ['student', '/interviews', '/interviews'],
   ['doctor', '/interviews', '/interviews'],

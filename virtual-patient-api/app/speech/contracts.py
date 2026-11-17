@@ -81,6 +81,9 @@ class VocalStyle:
     intonation_variation: IntonationVariation
     hesitation_frequency: HesitationFrequency
     delivery_tone: DeliveryTone
+    # Playback speed multiplier for the provider (1.0 = unchanged). Slightly
+    # below 1.0 sounds less rushed and more human.
+    speed: float = 1.0
 
 
 @dataclass(frozen=True)

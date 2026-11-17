@@ -20,6 +20,7 @@ from app.models.clinical_case import ClinicalCaseDB
 from app.models.medical_interview import MedicalInterviewDB, InterviewStatus
 from app.routers import interview_messages
 from app.controllers import virtual_patient_controller
+from app.core import langgraph_runtime
 
 
 @pytest.fixture
@@ -47,9 +48,12 @@ def route_api(database, monkeypatch):
         for identifier in (1, 12, 123):
             store.put(('semantic_memory_store', str(identifier)), 'fixture', {'text': 'synthetic '+str(identifier)})
     dsn = make_conninfo(settings.database_url, options=f'-c search_path={database.schema},public')
-    monkeypatch.setattr(virtual_patient_controller, 'SQLALCHEMY_DATABASE_URL', dsn)
-    monkeypatch.setattr(virtual_patient_controller, 'embeddings', embeddings)
-    monkeypatch.setattr(virtual_patient_controller, 'EMBEDDING_DIMENSIONS', 2)
+    # The patient flow builds its store/checkpointer through the shared pooled
+    # runtime; redirect that pool to the schema-scoped database for this test.
+    monkeypatch.setattr(langgraph_runtime, 'DATABASE_URL', dsn)
+    monkeypatch.setattr(langgraph_runtime, 'EMBEDDING_DIMENSIONS', 2)
+    monkeypatch.setattr(langgraph_runtime, '_embeddings', embeddings)
+    monkeypatch.setattr(langgraph_runtime, '_pool', None)
     calls = []
     def workflow_factory(*, store, interview_id, **kwargs):
         async def process(**kwargs):

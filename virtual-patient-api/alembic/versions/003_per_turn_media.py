@@ -19,7 +19,8 @@ depends_on = None
 def upgrade() -> None:
     bind = op.get_bind()
     Base.metadata.tables["interview_turn_media"].create(bind=bind, checkfirst=True)
-    op.drop_table("interview_recording_blocks")
+    # A clean install builds 001 from the current models, which no longer define blocks.
+    op.execute("DROP TABLE IF EXISTS interview_recording_blocks")
 
 
 def downgrade() -> None:

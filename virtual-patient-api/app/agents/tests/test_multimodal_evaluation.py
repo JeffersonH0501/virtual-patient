@@ -55,13 +55,18 @@ def test_registry_and_metadata_preserve_four_criteria():
     prompt = MULTIMODAL_EVALUATION_CONFIG["show_interest"]["prompt"]("Spanish")
     for criterion in EVALUATION_ASPECTS["show_interest"]:
         assert criterion in prompt
-    assert "must not be penalized" in prompt
-    assert "Do not infer interest, empathy, attention, emotion" in prompt
+    assert "must NOT be penalized" in prompt
     assert "Spanish" in prompt
-    assert "Prioritize these observations during patient-speaking turns" in prompt
-    assert "Do not equate smiling with interest or empathy" in prompt
-    assert "Smile behavior" in prompt
-    assert "Prosodic" not in prompt and "Paraverbal" not in prompt
+    assert "Score: X/5" in prompt
+    assert "smile behavior" in prompt.lower()
+    # show_interest is a visual-only category: no paraverbal evidence described.
+    assert "Prosodic" not in prompt
+
+
+def test_evaluation_prompts_do_not_append_redundant_score_rule():
+    for prompt in get_evaluation_prompts("English").values():
+        assert "Feedback rule:" not in prompt
+        assert "Feedback: [Your feedback here]" in prompt
 
 
 def test_glossary_covers_every_label_rule_including_temporal():
@@ -88,15 +93,19 @@ def test_formatter_filters_layers_and_student_voice_during_patient_turn():
                                                        "smile_activity": outcome("moderate_smile_activity")}}
     formatted = format_turns([doctor, patient], "show_interest")
     patient_block, doctor_block = formatted.text.split("\n\n")
-    assert patient_block.startswith(f"[TURN id={patient.id} speaker=PATIENT]")
+    # Patient speaks first (start_ms=0), so it is aliased T1 and the doctor T2.
+    assert patient_block.startswith("[TURN T1 speaker=PATIENT]")
+    assert doctor_block.startswith("[TURN T2 speaker=DOCTOR]")
+    assert formatted.alias_to_turn_id == {"T1": str(patient.id), "T2": str(doctor.id)}
     assert "DOCTOR BEHAVIOR WHILE LISTENING" in patient_block
     assert "prosodic" not in patient_block
-    assert "DOCTOR BEHAVIOR WHILE SPEAKING" in doctor_block
+    assert "DOCTOR BEHAVIOR" not in doctor_block
     assert "Smile behavior: Smile activity was detected during a moderate proportion of the turn." in patient_block
-    assert "prosodic" not in doctor_block and "intonation" not in doctor_block
     assert 'PATIENT: I am worried.' in patient_block
     assert 'DOCTOR: I am worried.' in doctor_block
     assert formatted.turn_ids == {doctor.id, patient.id}
+    # show_interest reads nonverbal evidence only while the patient speaks.
+    assert set(formatted.evidence_by_turn) == {"T1"}
     for excluded in ("secret_raw_feature", "secret_processed", "secret_base_label", "secret_base_feature", "high_pause_load", "typical_prosodic_level", "expressive_intonation", "threshold", "smile_activity", "smile_activity_ratio", "mean_smile_activation"):
         assert excluded not in formatted.text
 
@@ -146,26 +155,27 @@ def test_agent_runs_only_registry_aspect_and_keeps_scoring_separate_from_feedbac
     item = turn()
     item.nonverbal_features = {"quality": {"expected_frames": 10, "valid_gaze_frames": 10, "valid_smile_frames": 10, "valid_nod_predictions": 10}, "integrated_labels": {"gaze_orientation": outcome("sustained_gaze_orientation")}}
     conversation = format_turns([item], "show_interest")
-    payload = {"aspect": "show_empathy", "score": 3.5, "feedback": "Test",
-               "critical_turns": [{"turn_id": "invented", "annotation": "Test"},
-                                  {"turn_id": item.id, "annotation": "Observed issue"}]}
-    model = SimpleNamespace(ainvoke=AsyncMock(return_value={"parsed": None, "raw": SimpleNamespace(tool_calls=[{"args": payload}])}))
+    scoring = SimpleNamespace(ainvoke=AsyncMock(return_value=EvaluationResult(aspect="show_empathy", score=3.5, feedback="Short")))
+    commenting = SimpleNamespace(ainvoke=AsyncMock(return_value=SimpleNamespace(feedback="Test")))
+    agent.structured_model = scoring
     agent.llm = MagicMock()
-    agent.llm.with_structured_output.return_value = model
+    agent.llm.with_structured_output.return_value = commenting
     result = asyncio.run(agent.evaluate_multimodal({"show_interest": conversation}))
     assert len(result) == 1 and result[0].aspect == "show_interest"
+    # The score comes from the scoring call; the comment comes from the second call and cannot alter it.
     assert result[0].score == 3.5 and result[0].feedback == "Test"
     assert "critical_turns" not in result[0].model_dump()
-    agent.llm.with_structured_output.assert_called_once_with(
-        EvaluationResult, method="function_calling", include_raw=True,
-    )
-    assert model.ainvoke.await_count == 1
-    human_message = model.ainvoke.await_args.args[0][1].content
+    assert scoring.ainvoke.await_count == 1 and commenting.ainvoke.await_count == 1
+    human_message = scoring.ainvoke.await_args.args[0][1].content
     assert conversation.text in human_message
-    assert item.id in human_message
+    # The turn is cited by its T# alias; the database UUID never reaches the model.
+    assert "[TURN T1 " in human_message
+    assert item.id not in human_message
     assert "Smile behavior:" not in human_message
     assert "smile_activity" not in human_message
     assert "prosodic" not in human_message
+    comment_message = commenting.ainvoke.await_args.args[0][1].content
+    assert "Score already assigned for show_interest: 3.5/5" in comment_message and conversation.text in comment_message
 
 
 @pytest.fixture
@@ -220,28 +230,42 @@ def test_two_conditions_coexist_and_multimodal_update_preserves_control(database
     database.rollback()
 
 
-def test_regeneration_keeps_stored_text_only_control():
-    import sys
+def test_regeneration_recomputes_both_automatic_conditions():
     import app.multimodal.reprocess as module
     import app.routers.medical_interviews as routes
     db = MagicMock()
     db.query.return_value.filter.return_value.first.return_value = SimpleNamespace(
         user=SimpleNamespace(preferred_language="es"), patient_gender="female")
-    controller = MagicMock()
-    controller.get_interview_evaluation_data.return_value = {"messages": []}
+    source = MagicMock()
+    source_data = {"messages": [], "clinical_case": object(), "progress_summary": object(), "hypotheses": []}
+    source.get_interview_evaluation_data.return_value = source_data
+    source.format_messages_for_evaluation.return_value = []
     evaluation_controller = MagicMock()
-    evaluation_controller.get_evaluation_by_interview_id.return_value = object()
+    evaluation_controller.calculate_overall_score.return_value = 4
+    evaluation_controller.update_evaluation.return_value = None
     agent = MagicMock()
-    agent.evaluate_all_aspects = AsyncMock()
-    pipeline = SimpleNamespace(process_multimodal_interview=AsyncMock())
+    agent.evaluation_prompts = {"general_communication": "prompt"}
+    agent.evaluate_all_aspects = AsyncMock(return_value=[
+        EvaluationResult(aspect=aspect, score=4, feedback="Updated") for aspect in (
+            "general_communication", "completeness", "show_interest", "show_empathy",
+            "speak_clearly", "open_communication",
+        )
+    ])
     multimodal = AsyncMock(return_value=[object()])
-    with patch.dict(sys.modules, {"app.multimodal.pipeline": pipeline}), patch.object(module, "SessionLocal", return_value=db), patch.object(module, "EvaluationAgent", return_value=agent), patch.object(module, "_set_evaluation_status") as status, patch.object(routes, "_wait_for_multimodal_analysis", new=AsyncMock(return_value="complete")), patch.object(module, "evaluate_and_store_multimodal", new=multimodal):
+    with patch.object(module, "SessionLocal", return_value=db), \
+        patch.object(module, "EvaluationAgent", return_value=agent), \
+        patch.object(module, "MedicalInterviewController", return_value=source), \
+        patch.object(module, "InterviewEvaluationController", return_value=evaluation_controller), \
+        patch.object(module, "stage_evaluation_run") as stage_run, \
+        patch.object(module, "_set_evaluation_status") as status, \
+        patch.object(routes, "_ensure_final_summary", new=AsyncMock(return_value=source_data["progress_summary"])), \
+        patch.object(module, "evaluate_and_store_multimodal", new=multimodal):
         asyncio.run(module.reprocess_interview_evaluation(7, "recording-id"))
-    agent.evaluate_all_aspects.assert_not_awaited()
-    pipeline.process_multimodal_interview.assert_not_awaited()
-    evaluation_controller.update_evaluation.assert_not_called()
-    evaluation_controller.create_evaluation.assert_not_called()
-    multimodal.assert_awaited_once_with(db, 7, agent)
+    agent.evaluate_all_aspects.assert_awaited_once()
+    evaluation_controller.create_evaluation.assert_called_once()
+    assert evaluation_controller.create_evaluation.call_args.args[1].evaluation_condition == EvaluationCondition.TEXT_ONLY
+    stage_run.assert_called_once()
+    multimodal.assert_awaited_once_with(db, 7, agent, canonical_messages=[])
     assert status.call_args.args[-1] == "complete"
 
 
@@ -288,3 +312,13 @@ def test_completion_waits_then_persists_separate_multimodal_result():
         asyncio.run(routes._evaluate_and_complete_interview(7, "en", None))
     assert events == ["text", "wait", "multimodal", "complete"]
     assert evaluation_controller.create_evaluation.call_args.args[1].evaluation_condition == EvaluationCondition.TEXT_ONLY
+
+
+@pytest.mark.parametrize("family,label", [("head_nods", "no_nodding"), ("smile_activity", "absent_smile_activity")])
+def test_absence_of_a_behavior_is_not_rendered_as_evidence(family, label):
+    from app.multimodal.evidence_text import render_family_evidence
+    payload = {"status": "ok", "quality": {"expected_frames": 10, "valid_nod_predictions": 10, "valid_smile_frames": 10},
+               "raw": {"turn_duration_ms": 5000},
+               "processed": {"nod_count": 0, "smile_activity_ratio": 0.0},
+               "integrated_labels": {family: {"status": "ok", "value": label}}}
+    assert render_family_evidence(payload, family) is None

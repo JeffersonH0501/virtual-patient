@@ -186,6 +186,15 @@ export const useHandsFreeSpeech = ({
     providerRef.current?.submitUtterance();
   }, [disabled, hasPendingUtterance, paused]);
 
+  // Turns recognition back on after an explicit stop(), for example when the closing dialog is cancelled.
+  const start = useCallback(() => {
+    // Callers often invoke this in the same tick that clears `disabled`, so only record the intent here;
+    // the provider effect starts recognition once `disabled` is false.
+    if (!isSupported) return;
+    setErrorCode(null);
+    setIsEnabled(true);
+  }, [isSupported]);
+
   const stop = useCallback(() => {
     awaitingCommittedTranscriptRef.current = false;
     bufferRef.current = '';
@@ -209,6 +218,7 @@ export const useHandsFreeSpeech = ({
     isSubmittingUtterance,
     errorCode,
     submitUtterance,
+    start,
     stop,
     toggle,
   };

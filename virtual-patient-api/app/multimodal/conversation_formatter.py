@@ -14,6 +14,9 @@ class EnrichedConversation:
     has_valid_evidence: bool = False
     canonical_text: str = ""
     evidence_by_turn: dict = field(default_factory=dict)
+    # Stable, human-readable turn labels (T1, T2, ...) mapped to their database UUIDs.
+    # Both the evaluation and learning-moments flows cite turns by these aliases.
+    alias_to_turn_id: dict = field(default_factory=dict)
 
 
 class MultimodalConversationFormatter:
@@ -34,6 +37,7 @@ class MultimodalConversationFormatter:
         identifiers = set()
         has_valid_evidence = False
         evidence_by_turn = {}
+        alias_to_turn_id = {}
         for message in messages:
             role = message.get("role", "unknown")
             content = message.get("content", "")
@@ -49,7 +53,11 @@ class MultimodalConversationFormatter:
                 blocks.append(text)
                 continue
             identifiers.add(turn.id)
-            lines = [f"[TURN id={turn.id} speaker={speaker}]", text]
+            # Assign a short, stable alias in conversation order; the UUID never
+            # reaches the model, only the alias used for citation and validation.
+            alias = f"T{len(alias_to_turn_id) + 1}"
+            alias_to_turn_id[alias] = str(turn.id)
+            lines = [f"[TURN {alias} speaker={speaker}]", text]
             if patient and getattr(turn, "timing_quality", None) == "provisional":
                 lines.append("[PLAYBACK: completion was not confirmed; do not assume the entire patient message was heard.]")
             modalities = []
@@ -68,10 +76,10 @@ class MultimodalConversationFormatter:
                         evidence_lines.append(f"- {name}: {description}")
                         valid_evidence[family] = f"{name}: {description}"
             if valid_evidence:
-                evidence_by_turn[str(turn.id)] = valid_evidence
+                evidence_by_turn[alias] = valid_evidence
             if evidence_lines and render_evidence:
                 heading = "DOCTOR SPEECH DELIVERY" if aspect == "speak_clearly" else f"DOCTOR BEHAVIOR WHILE {'SPEAKING' if doctor else 'LISTENING'}"
                 lines.extend([f"{heading}:", *evidence_lines])
             blocks.append("\n".join(lines))
         return EnrichedConversation("\n\n".join(blocks), frozenset(identifiers),
-                                    has_valid_evidence, "\n\n".join(canonical), evidence_by_turn)
+                                    has_valid_evidence, "\n\n".join(canonical), evidence_by_turn, alias_to_turn_id)

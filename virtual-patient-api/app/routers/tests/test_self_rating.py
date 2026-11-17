@@ -44,7 +44,7 @@ def test_owner_is_blinded_until_complete_self_submission(owner_api):
     assert client.get(workspace).json()["overall_score"] == 0
 
 
-@pytest.mark.parametrize("invalid", ["partial", "empty_feedback", "duplicate", "out_of_range"])
+@pytest.mark.parametrize("invalid", ["partial", "duplicate", "out_of_range"])
 def test_self_submission_preserves_six_category_validation(owner_api, invalid):
     client, _, _, interview = owner_api
     base = f"/medical-interviews/{interview.id}/self-rating"
@@ -52,8 +52,6 @@ def test_self_submission_preserves_six_category_validation(owner_api, invalid):
     body = payload()
     if invalid == "partial":
         body["results"].pop()
-    elif invalid == "empty_feedback":
-        body["results"][0]["feedback"] = "  "
     elif invalid == "duplicate":
         body["results"][1]["aspect"] = body["results"][0]["aspect"]
     else:

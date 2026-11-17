@@ -12,9 +12,9 @@ Both conditions contain six categories, on the inherited 0–5 scale:
 | --- | --- | --- |
 | general_communication | Exact stored TEXT_ONLY result | None |
 | completeness | Exact stored TEXT_ONLY result, including its special clinical-case/progress/hypothesis/verification flow | None |
-| show_interest | Multimodal call when evidence is valid | Visual orientation, head feedback, Smile behavior; listening prioritized, speaking supplementary |
-| show_empathy | Multimodal call when evidence is valid | Visual orientation, head feedback, Smile behavior only while listening; prosodic level/modulation only while speaking |
-| speak_clearly | Multimodal call when evidence is valid | Temporal speech pattern and prosodic modulation only while speaking |
+| show_interest | Multimodal call when evidence is valid | Visual orientation, head feedback, Smile behavior, only while the patient speaks (doctor listening) |
+| show_empathy | Multimodal call when evidence is valid | All six families (visual orientation, head feedback, smile behavior, temporal pattern, prosodic level and modulation), read in the emotional context of the conversation |
+| speak_clearly | Multimodal call when evidence is valid | Temporal speech pattern, prosodic level and modulation, only while speaking |
 | open_communication | Exact stored TEXT_ONLY result | None |
 
 No additional calls are made for the three copied categories. All inherited
@@ -54,15 +54,32 @@ of integrated labels only, never raw/processed features, base labels, thresholds
 or numeric values. Internal `smile_activity` is displayed to the evaluator
 as **Smile behavior**.
 
-Each multimodal prompt starts with the exact inherited category prompt,
-including criteria, examples, score anchors and feedback instructions. An
-additional evidence block and contextual interpretation rules are appended.
-Scoring does not request Critical Turns or Learning Moments. The original evaluator schema and TEXT_ONLY prompts
-are unchanged. The globally selected LLM and temperature 0.7 are retained.
+The scoring prompt of each multimodal category is the inherited TEXT_ONLY prompt
+(criteria, examples, score anchors and feedback instruction) with ONE block inserted
+before its `Instructions:` line (`config/prompts/multimodal_evaluation_prompts/evidence_<category>.txt`).
+The block describes the evidence and how to read it; removing it returns the text-only
+prompt exactly, which a test verifies. The score call also uses the same user message and
+the same structured output as the TEXT_ONLY call, so the two conditions differ only in the
+evidence. Scoring does not request Critical Turns or Learning Moments. The evaluation
+model is `gpt-4.1` for both conditions and the temperature is 0.7.
 
-Each enriched result validates its 0–5 score through the inherited EvaluationResult.
-Independent pedagogical feedback is generated after persistence; see
-[Learning Moments](learning-moments.md). Reference validity does not prove semantic grounding.
+### Category comment (second call, does not score)
+
+The comment shown for each multimodal category is written by a second call
+(`category_feedback.txt`, recorded as `<category>_feedback` in the run snapshot) that receives
+the conversation with its evidence and the score already assigned, and cannot change it. This keeps
+the longer, more structured comment from moving the score: in controlled runs on interview 6837
+(gpt-4.1, three repetitions), putting that comment structure and rewritten examples inside the scoring
+prompt lowered the clarity score from a text-only median of 4.0 to 2.5, while the evidence alone left it
+at 4.0. The comment is 3 to 5 sentences, ordered positive first and improvement last, and never returns to
+a positive point after an improvement. It includes ONE broad sentence on the predominant paraverbal or
+nonverbal pattern across the whole interaction: when favorable it follows the verbal strength, when
+unfavorable it goes with the improvement, and when mixed it is split between both parts.
+
+- The pattern sentence is controlled only by the prompt, with no validation in code.
+- It uses plain qualifiers ("mostly", "at times", "rarely") and no numbers or units.
+- It is framed as observable behavior that accompanies or nuances the verbal assessment ("is consistent with"). The prompt forbids verbs that credit the behavior with an effect, words for internal states ("warmth", "attention") and presenting the absence of nods or smiles as a shortfall. The signals remain complementary evidence and not measures of interest, empathy or clarity.
+- Details about one specific moment stay out of this sentence: they belong to the learning moments (`learning-moments.md`).
 
 ## Persistence, overall performance and refresh
 
@@ -89,15 +106,16 @@ communication categories/24 criteria. General communication and open
 communication have zero condition differences by construction; do not interpret
 them as independently rerun multimodal evaluators.
 
-`/recording/reprocess` regenerates observations and then reevaluates the
-resulting evidence. Both phases must reach a successful terminal state for the
-durable job to be marked complete. `/evaluation/regenerate` reevaluates using
-the saved observations. Evaluation covers available interest/empathy/clarity, copies current
-TEXT_ONLY general/completeness/open (and any evidence-unavailable category),
-recalculates the overall, and replaces only TEXT_PLUS_MULTIMODAL. It never
-recreates or modifies TEXT_ONLY. Superuser-only access within the same organization and mutual exclusion of refresh
-operations remain. Completion evaluates TEXT_ONLY once, waits for observations,
-then assembles the full multimodal condition.
+`/recording/reprocess` regenerates observations and then reevaluates both
+automatic conditions. `/evaluation/regenerate` reevaluates both conditions using
+the saved observations. Each operation regenerates and stages a new TEXT_ONLY
+run, then builds TEXT_PLUS_MULTIMODAL from that refreshed control and available
+interest/empathy/clarity evidence, copying the other categories (and categories
+without valid evidence) from the control. Both current evaluation rows update in
+one transaction; append-only run snapshots preserve prior automatic results.
+Superuser-only access within the same organization and mutual exclusion of
+refresh operations remain. Completion still evaluates TEXT_ONLY once, waits for
+observations, then assembles the full multimodal condition.
 
 Technical per-turn paraverbal/nonverbal details are restricted to superusers.
 The recap retains transcript, timing and media replay for other authorized roles,
@@ -141,7 +159,7 @@ docker compose -f docker-compose.local.yml run --rm --no-deps ui yarn exec vites
 docker compose -f docker-compose.local.yml run --rm --no-deps ui yarn exec tsc -b
 ```
 
-Tests cover exact inherited prompt prefixes, full canonical transcripts with
+Tests cover the inherited text prompt plus one evidence block, full canonical transcripts with
 unmatched messages, family/role allowlists, validated IDs, three LLM calls when
 all evidence is available, no calls on full unavailability, six-category
 persistence/mean, copying unchanged textual results, preservation during
@@ -161,7 +179,7 @@ timestamps during multimodal regeneration.
 
 API (paths relative to `virtual-patient-api/`):
 
-- `app/agents/prompts/multimodal_evaluation.py`: registry, inherited prompt extensions and localized evidence metadata.
+- `app/agents/prompts/multimodal_evaluation.py`: registry, text prompt plus evidence block, comment prompt and localized evidence metadata.
 - `app/agents/evaluation_agent.py`: skip unavailable/unregistered multimodal calls; inherited textual methods unchanged.
 - `app/controllers/medical_interview_controller.py`: retain message IDs in formatted data without changing textual rendering.
 - `app/multimodal/conversation_formatter.py`: canonical messages and category/speaker filtering.

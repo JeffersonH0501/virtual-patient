@@ -8,6 +8,7 @@ export type CalibrationCaptureReference = {
   stage: 'unified' | 'gaze' | 'camera' | 'guided';
   createdAt: string;
   durationMs: number;
+  turnRange: {start: number; end: number} | null;
   mediaUrl: string | null;
   usedFor: string[];
   metadata: Record<string, unknown>;

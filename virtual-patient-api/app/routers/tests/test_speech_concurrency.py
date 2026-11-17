@@ -30,7 +30,7 @@ def test_pending_speech_provider_keeps_the_event_loop_available(monkeypatch, ope
     if operation == "transcription":
         service.transcribe.side_effect = provider
         request = lambda: speech.transcribe_audio(
-            audio=UploadFile(BytesIO(b"synthetic"), filename="synthetic.wav"), language="en", current_user=user,
+            audio=UploadFile(BytesIO(b"synthetic"), filename="synthetic.wav"), language="en", interview_id=None, current_user=user, db=None,
         )
     else:
         service.synthesize_patient_message.side_effect = provider
@@ -81,7 +81,7 @@ def test_patient_mp3_sends_first_chunk_before_reading_next(monkeypatch, disconne
     # instead of touching the database.
     async def _no_block(*_):
         return None
-    monkeypatch.setattr(speech, "_block_patient_audio", _no_block)
+    monkeypatch.setattr(speech, "_preserved_patient_audio", _no_block)
 
     async def scenario():
         response = await speech.stream_patient_message(7, 9, db=None, current_user=SimpleNamespace(id=1))

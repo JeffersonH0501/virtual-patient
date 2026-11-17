@@ -5,7 +5,7 @@ import {useOnOutsideClick} from '../../../hooks/useOnOutsideClick';
 import {CSSProperties, FC, PropsWithChildren, useLayoutEffect, useId, useRef, useState} from 'react';
 import {useAppMotion, useMotionVisibility, usePresence} from '../Motion/hooks';
 
-export type ModalSize = 'small' | 'medium' | 'large';
+export type ModalSize = 'small' | 'medium' | 'large' | 'wide';
 
 export type ModalProps = {
   open: boolean;

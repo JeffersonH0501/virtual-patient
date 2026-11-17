@@ -1,5 +1,5 @@
 /* eslint-disable max-classes-per-file */
-import {cleanup, render, act, fireEvent, screen} from '@testing-library/react';
+import {cleanup, render, act, fireEvent, screen, waitFor} from '@testing-library/react';
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {PropsWithChildren, StrictMode} from 'react';
 import {ConversationTranscript} from './ConversationTranscript';
@@ -23,6 +23,9 @@ class Audio {
   onplaying?: () => void;
   onended?: () => void;
   onerror?: () => void;
+  onwaiting?: () => void;
+  onpause?: () => void;
+  onseeking?: () => void;
   pause = vi.fn();
   removeAttribute = vi.fn();
   load = vi.fn();
@@ -58,6 +61,7 @@ const props = () => ({
 });
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(loadPatientSpeechBlob).mockResolvedValue('blob:patient-audio');
   Audio.instances = [];
   vi.stubGlobal('Audio', Audio);
   vi.stubGlobal(
@@ -153,6 +157,15 @@ it('reactivates audio output before playing each patient response', async () => 
   expect(resume.mock.invocationCallOrder[0]).toBeLessThan(Audio.instances[0].play.mock.invocationCallOrder[0]);
 });
 
+it('keeps patient playback when the optional audio graph fails', async () => {
+  const callbacks = {...props(), routePatientAudio: () => {
+    throw new Error('Audio graph unavailable');
+  }};
+  render(<ConversationTranscript {...callbacks} resumeAudioGraph={() => Promise.reject(new Error('Audio context suspended'))} />);
+  await waitFor(() => expect(Audio.instances[0].play).toHaveBeenCalledOnce());
+  expect(screen.queryByText('clinicalChat.call.audioUnavailable')).toBeNull();
+});
+
 it('does not expire patient audio while synchronization intentionally pauses playback', async () => {
   vi.useFakeTimers();
   const callbacks = props();
@@ -184,13 +197,14 @@ it('keeps the patient turn locked without offering sound reactivation', async ()
   expect((screen.getByLabelText('clinicalChat.call.sendAudio') as HTMLButtonElement).disabled).toBe(true);
 });
 
-it('keeps the patient turn pending after audio failure until explicitly choosing the written reply', () => {
+it('keeps the patient turn pending after audio failure and only offers a retry', () => {
   const callbacks = props();
   render(<ConversationTranscript {...callbacks} />);
   act(() => Audio.instances[0].onerror?.());
+  expect(screen.getByRole('alert').textContent).toContain('clinicalChat.call.audioUnavailable');
+  expect(screen.getByRole('button', {name: 'common.retry'})).toBeTruthy();
+  expect(screen.queryByRole('button', {name: /continueWithoutPatientAudio/})).toBeNull();
   expect(callbacks.onPatientTurnComplete).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.call.continueWithoutPatientAudio'}));
-  expect(callbacks.onPatientTurnComplete).toHaveBeenCalledExactlyOnceWith(12, 'written');
 });
 
 it('retries policy-blocked audio directly on the already loaded player', async () => {
@@ -219,29 +233,33 @@ it('does not show the send instruction when the interview already has student me
   expect(screen.queryByText('clinicalChat.call.sendAudioHint')).toBeNull();
 });
 
-it('collapses the send indicator once the patient starts preparing a response', () => {
+it('keeps the student turn on screen until its transcript arrives, then waits for the patient', () => {
   const callbacks = {...props(), messages: [], isSubmittingUtterance: true};
   const {rerender} = render(<ConversationTranscript {...callbacks} />);
   const send = screen.getByLabelText('clinicalChat.call.sendAudio');
-  expect(send.closest('[inert]')).toBeNull();
+  expect(send.closest('.transcript-status')?.hasAttribute('hidden')).toBe(false);
+  expect(send.querySelector('.animate-spin, [class*="animate-spin"]')).not.toBeNull();
+  expect(screen.getByText('clinicalChat.call.patientThinking').closest('[hidden]')).not.toBeNull();
 
-  rerender(<ConversationTranscript {...callbacks} isLoading />);
-  expect(send.closest('[inert]')?.hasAttribute('hidden')).toBe(true);
-  expect(screen.getByText('clinicalChat.call.patientThinking').closest('[aria-hidden]')).toBeNull();
+  const transcript = {id: 30, content: 'Synthetic question', senderType: 'user', createdAt: '', interviewId: 1} as Message;
+  rerender(<ConversationTranscript {...callbacks} messages={[transcript]} isLoading />);
+  expect(send.closest('.transcript-status')?.hasAttribute('hidden')).toBe(true);
+  expect(screen.getByText('Synthetic question')).toBeTruthy();
+  expect(screen.getByRole('status').textContent).toContain('clinicalChat.call.patientThinking');
 });
 
-it('distinguishes preparing patient audio from actual playback', () => {
+it('distinguishes preparing patient audio from actual playback', async () => {
   const callbacks = props();
   const current = callbacks.messages[0];
   render(<ConversationTranscript {...callbacks}
     messages={[{...current, id: 11, content: 'Earlier patient response'}, current]} />);
   expect(screen.getByText('Earlier patient response')).toBeTruthy();
   expect(screen.queryByText(current.content)).toBeNull();
-  expect(document.querySelector('[data-speaker="patient"]')).toBeNull();
-  expect(screen.getByText('clinicalChat.call.patientThinking')).toBeTruthy();
+  // The reply shows the patient audio indicator (heads-up while loading, live wave when playing), never plain text.
+  await waitFor(() => expect(document.querySelector('[data-speaker="patient"]')).not.toBeNull());
   const audio = Audio.instances[0];
   act(() => audio.onplaying?.());
-  expect(screen.queryByRole('status')).toBeNull();
+  expect(document.querySelector('.transcript-voice-bubble--pending')).toBeNull();
   expect(document.querySelector('[data-speaker="patient"]')).not.toBeNull();
   expect(screen.queryByText(current.content)).toBeNull();
   act(() => {
@@ -266,12 +284,20 @@ it('shows the queued greeting as preparation and waits for capture before reques
   expect(callbacks.onPatientTurnStart).toHaveBeenCalledOnce();
 });
 
-it('cancels the native download and ignores late playback after unmount', () => {
+it('loads patient audio through the authenticated fetch without capture', async () => {
+  const callbacks = {...props(), captureEnabled: false};
+  render(<ConversationTranscript {...callbacks} playbackReady={false} />);
+  await waitFor(() => expect(loadPatientSpeechBlob).toHaveBeenCalledOnce());
+  expect(Audio.instances).toHaveLength(1);
+  expect(Audio.instances[0].src).toBe('blob:patient-audio');
+});
+
+it('cancels the fetched audio and ignores late playback after unmount', async () => {
   const callbacks = props();
   const {unmount} = render(<ConversationTranscript {...callbacks} />);
+  await waitFor(() => expect(Audio.instances).toHaveLength(1));
   const audio = Audio.instances[0];
-  expect(audio.src).toContain('/medical-interviews/7/messages/12/speech');
-  expect(audio.crossOrigin).toBe('use-credentials');
+  expect(audio.src).toBe('blob:patient-audio');
   expect(callbacks.onPatientTurnStart).not.toHaveBeenCalled();
   unmount();
   expect(audio.removeAttribute).toHaveBeenCalledWith('src');
@@ -307,6 +333,48 @@ it('preserves actual playback completion and its message association', () => {
   expect(callbacks.onPatientTurnComplete).toHaveBeenCalledOnce();
 });
 
+it('does not report an audio error when releasing the completed player', () => {
+  const callbacks = props();
+  render(<ConversationTranscript {...callbacks} />);
+  const audio = Audio.instances[0];
+  audio.load.mockImplementation(() => audio.onerror?.());
+  act(() => {
+    audio.onplaying?.();
+    audio.ended = true;
+    audio.onended?.();
+  });
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(callbacks.onPatientTurnComplete).toHaveBeenCalledOnce();
+});
+
+it('treats a buffering stall as continuous when playback still reaches its end', () => {
+  // iOS Safari fires `waiting` during normal streamed playback; it must not mark
+  // the completed turn interrupted, which would discard its playback timing window.
+  const callbacks = props();
+  render(<ConversationTranscript {...callbacks} />);
+  const audio = Audio.instances[0];
+  act(() => {
+    audio.onplaying?.();
+    audio.onwaiting?.();
+    audio.ended = true;
+    audio.onended?.();
+  });
+  expect(callbacks.onPatientTurnEnd).toHaveBeenCalledWith(12, true);
+});
+
+it('marks playback interrupted when the user pauses it before the end', () => {
+  const callbacks = props();
+  render(<ConversationTranscript {...callbacks} />);
+  const audio = Audio.instances[0];
+  act(() => {
+    audio.onplaying?.();
+    audio.onpause?.();
+    audio.ended = true;
+    audio.onended?.();
+  });
+  expect(callbacks.onPatientTurnEnd).toHaveBeenCalledWith(12, true, false);
+});
+
 it('plays the current message once after StrictMode effect cleanup and setup', () => {
   const callbacks = props();
   render(
@@ -318,22 +386,25 @@ it('plays the current message once after StrictMode effect cleanup and setup', (
   expect(callbacks.onPatientTurnStart).toHaveBeenCalledOnce();
 });
 
-it('keeps one waiting indicator across response generation and audio loading until actual playback', () => {
+it('shows the thinking indicator only while the reply is still being generated', () => {
   const callbacks = props();
-  const {rerender} = render(<ConversationTranscript {...callbacks} messages={[]} isLoading />);
-  expect(screen.getAllByRole('status')).toHaveLength(1);
-  const waiting = screen.getByRole('status');
-  expect(waiting.textContent).toBe('clinicalChat.call.patientThinking');
-  rerender(<ConversationTranscript {...callbacks} isLoading={false} />);
-  expect(screen.getAllByRole('status')).toHaveLength(1);
-  expect(screen.getByRole('status')).toBe(waiting);
-  expect(document.querySelector('[data-speaker="patient"]')).toBeNull();
-  act(() => Audio.instances[0].onplaying?.());
-  expect(screen.queryByRole('status')).toBeNull();
-  expect(document.querySelector('[data-speaker="patient"]')).toBeTruthy();
+  // With no reply yet and generation in flight, the "thinking" indicator is the only status.
+  render(<ConversationTranscript {...callbacks} messages={[]} isLoading />);
+  expect(screen.getByRole('status').textContent).toBe('clinicalChat.call.patientThinking');
+  // The heads-up and live-wave stages once a reply exists are covered by
+  // "distinguishes preparing patient audio from actual playback".
 });
 
 it('does not expose an actionable student wave while capture is paused', () => {
   render(<ConversationTranscript {...props()} messages={[]} isListening hasPendingUtterance capturePaused />);
   expect(screen.queryByRole('button', {name: 'clinicalChat.call.sendAudio'})).toBeNull();
+});
+
+it('shows bubble times from the interview clock and none until a time is known', () => {
+  const callbacks = props();
+  const question = {id: 40, content: 'Clock question', senderType: 'user', createdAt: '2026-11-13T15:00:00Z', interviewId: 1} as Message;
+  const later = {id: 41, content: 'Untimed question', senderType: 'user', createdAt: '2026-11-13T15:09:00Z', interviewId: 1} as Message;
+  render(<ConversationTranscript {...callbacks} messages={[question, later]} messageTimes={{40: 33_400}} />);
+  expect(screen.getByText('Clock question').parentElement?.textContent).toContain('0:33');
+  expect(screen.getByText('Untimed question').parentElement?.querySelector('.recap-turn-meta')).toBeNull();
 });
