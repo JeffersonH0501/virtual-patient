@@ -20,7 +20,9 @@ export const sessionResponse = async (url: string, options: RequestInit, read: (
   let pending = responses.get(key);
   if (!pending) {
     pending = read(true).then(async (response) => {
-      const body = response.ok ? await response.clone().json() : null;
+      // Cached data must outlive the fetch signal: its deadline may fire after this read completed.
+      const payload = await response.text();
+      const body = response.ok && payload ? JSON.parse(payload) : null;
       const active = body && ((body.status && /\/complete(?:\?|$)/.test(url) && body.status !== 'completed') ||
         ['queued', 'processing'].includes(body.status) ||
         ['recording', 'paused', 'finalizing'].includes(body.recording_status) ||
@@ -28,7 +30,9 @@ export const sessionResponse = async (url: string, options: RequestInit, read: (
         ['queued', 'processing'].includes(body.evaluation_processing?.status) ||
         ['queued', 'processing'].includes(body.replay?.status));
       if ((!response.ok || active) && responses.get(key) === pending) responses.delete(key);
-      return response;
+      return new Response([204, 205, 304].includes(response.status) ? null : payload, {
+        status: response.status, statusText: response.statusText, headers: response.headers,
+      });
     }).catch((error) => {
       if (responses.get(key) === pending) responses.delete(key);
       throw error;

@@ -20,6 +20,7 @@ from app.models.medical_interview import InterviewRecordingDB, InterviewRecordin
 from app.models.user import UserDB
 from app.media.access import _current_media_user
 from app.media.patient_roi import validate_patient_roi as _validate_patient_roi
+from app.multimodal.calibration import calibration_allows_capture
 from app.core.config import settings
 MEDIA_RETENTION_MONTHS = settings.media_retention_months
 
@@ -155,7 +156,7 @@ def start_segment(
         medical_interview_id=interview_id
     ).first()):
         raise HTTPException(status_code=409, detail="An existing capture must be resumed")
-    if not calibration or calibration.get("status") != "passed":
+    if not calibration_allows_capture(calibration):
         raise HTTPException(status_code=409, detail="A verified calibration is required")
     if previous is not None and previous.sealed_at is None:
         raise HTTPException(status_code=409, detail="An active recording segment already exists")

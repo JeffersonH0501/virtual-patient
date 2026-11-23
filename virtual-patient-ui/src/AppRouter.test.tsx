@@ -26,9 +26,9 @@ afterEach(() => {
 
 it.each([
   ['admin', '/', null, '/cases'],
-  ['student', '/', null, '/cases'],
-  ['doctor', '/unknown', null, '/cases'],
-  ['student', '/interviews/42/calibration', null, '/cases'],
+  ['student', '/', null, '/interviews'],
+  ['doctor', '/unknown', null, '/interviews'],
+  ['student', '/interviews/42/calibration', null, '/interviews'],
   ['student', '/cases/123', {id: 42}, '/interviews/42/session'],
   ['doctor', '/', {id: 42}, '/interviews/42/session'],
   [null, '/unknown', null, '/welcome'],

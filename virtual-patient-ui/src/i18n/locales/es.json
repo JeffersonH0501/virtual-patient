@@ -185,6 +185,7 @@
     "male": "Masculino",
     "female": "Femenino",
     "patientResponseLanguage": "Idioma de respuesta",
+    "selectLanguage": "Selecciona el idioma",
     "selectPatientResponseLanguage": "Selecciona el idioma",
     "english": "Inglés",
     "spanish": "Español",
@@ -207,6 +208,7 @@
     "startFailed": "No se pudo iniciar la entrevista. Inténtalo de nuevo."
   },
   "calibration": {
+    "continueWithoutGaze": "Continuar sin evidencia de mirada",
     "gazeTest": {"title": "Prueba de mirada", "start": "Iniciar prueba de mirada", "inside": "Mirada estimada dentro del área o hacia la cámara", "outside": "Mirada estimada fuera del área", "area": "Área de interacción de prueba", "indeterminate": "Mirada indeterminada", "notice": "El color es una estimación técnica, no una medición validada de atención. El área de esta prueba puede ser distinta a la de la entrevista. Mantén la pantalla y la cámara en la misma posición.", "recalibrate": "La captura cambió o la calibración venció. Repite la calibración para continuar.", "camera": "Cámara de la prueba de mirada"},
     "finishTest": "Finalizar prueba",
     "uploadTooLarge": "El video superó el tamaño permitido. Repite la captura: la grabación se pausa mientras lees cada indicación para evitar que vuelva a ocurrir.",
@@ -531,6 +533,7 @@
     "syncPausedOffline": "Sin conexión. La conversación se reanudará cuando vuelvas a estar en línea.",
     "syncReconnecting": "Se interrumpió la conexión con el servidor. La entrevista se reanudará automáticamente al restablecerse; no se pierde lo grabado hasta ahora.",
     "reviewSession": "Revisar sesión",
+    "retryConnection": "Reintentar conexión",
     "lostDeferredUtterance": "Tu último mensaje no pudo enviarse debido a un cambio en la captura. El mensaje era: \"{{content}}\"",
     "retryLostUtterance": "Reintentar último mensaje",
     "title": "Chat clínico",
@@ -1193,6 +1196,7 @@
     "noSubmittedHypotheses": "No hay hipótesis entregadas para esta entrevista.",
     "selfAssessmentInstructions": "Revisa tu entrevista y evalúa las seis categorías.",
     "completeBeforeAutomaticEvaluation": "Completa y entrega la calificación de las seis categorías para poder consultar la evaluación automática del sistema.",
+    "completeSelfAssessment": "Completa y entrega la autoevaluación sobre tu desempeño en la entrevista.",
     "you": "Tú",
     "assignDoctor": "Asignar médico",
     "original": "Original",

@@ -185,6 +185,7 @@
     "male": "Male",
     "female": "Female",
     "patientResponseLanguage": "Response language",
+    "selectLanguage": "Select the language",
     "selectPatientResponseLanguage": "Select the language",
     "english": "English",
     "spanish": "Spanish",
@@ -207,6 +208,7 @@
     "startFailed": "The interview could not be started. Please try again."
   },
   "calibration": {
+    "continueWithoutGaze": "Continue without gaze evidence",
     "gazeTest": {"title": "Gaze test", "start": "Start gaze test", "inside": "Estimated gaze inside the area or toward the camera", "outside": "Estimated gaze outside the area", "area": "Test interaction area", "indeterminate": "Gaze indeterminate", "notice": "The color is a technical estimate, not a validated measure of attention. This test area may differ from the interview area. Keep the screen and camera in the same position.", "recalibrate": "The capture changed or calibration expired. Repeat calibration to continue.", "camera": "Gaze test camera"},
     "finishTest": "Finish test",
     "uploadTooLarge": "The video exceeded the allowed size. Record it again: recording pauses while you read each instruction to prevent this from happening again.",
@@ -531,6 +533,7 @@
     "syncPausedOffline": "You are offline. The conversation will resume when connectivity returns.",
     "syncReconnecting": "The connection to the server was interrupted. The interview resumes automatically as soon as it is restored; nothing recorded so far is lost.",
     "reviewSession": "Review session",
+    "retryConnection": "Retry connection",
     "lostDeferredUtterance": "Your last message could not be sent due to a capture change. The message was: \"{{content}}\"",
     "retryLostUtterance": "Retry last message",
     "title": "Clinical chat",
@@ -1193,6 +1196,7 @@
     "noSubmittedHypotheses": "There are no submitted hypotheses for this interview.",
     "selfAssessmentInstructions": "Review your interview and assess all six categories.",
     "completeBeforeAutomaticEvaluation": "Complete and submit your ratings for all six categories to view the system's automated evaluation.",
+    "completeSelfAssessment": "Complete and submit the self-assessment of your performance in the interview.",
     "you": "You",
     "assignDoctor": "Assign doctor",
     "original": "Original",

@@ -7,7 +7,7 @@ import {getAuthHeaders} from '../auth/authHeaders';
 // The payload persisted into an interview before it starts (camelCased; the
 // service snake-cases it for the API). It omits the client-only completion time,
 // which the backend stamps on save.
-export type CalibrationResultPayload = Omit<CalibrationResult, 'completedAt'> & {attestations?: Record<string, string>};
+export type CalibrationResultPayload = Omit<CalibrationResult, 'completedAt' | 'status'> & {status: 'passed' | 'failed'; attestations?: Record<string, string>};
 
 export type CalibrationStage = 'gaze' | 'camera' | 'unified' | 'guided';
 export type GuidedCheckDiagnostics = {
@@ -27,8 +27,17 @@ export type CalibrationStageResult = {
   stage: CalibrationStage;
   status: 'passed' | 'failed';
   failureReason: string | null;
+  canContinueWithoutGaze?: boolean;
   result: Record<string, unknown> | null;
   attestation?: string | null;
+};
+
+export const continueWithoutGaze = async (interviewId: number, geometry: object, resumeAttemptId?: string): Promise<void> => {
+  const response = await apiFetch(`${API_URL}/calibration/without-gaze/${interviewId}`, {
+    method: 'POST', headers: {...getAuthHeaders(), 'Content-Type': 'application/json'},
+    body: JSON.stringify(transformToSnakeCase({geometry, resumeAttemptId})), signal: AbortSignal.timeout(30_000),
+  });
+  if (!response.ok) throw Object.assign(new Error('Could not authorize interview without gaze'), {status: response.status});
 };
 
 export const warmUpCalibration = async (): Promise<void> => {

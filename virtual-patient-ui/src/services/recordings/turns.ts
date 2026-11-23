@@ -1,4 +1,5 @@
 import {getAuthHeaders} from '../auth/authHeaders';
+import {handleUnauthorized} from '../../utils/apiFetch';
 import {API_URL} from '../../utils/request';
 import {InterviewTurnStore, type LocalInterviewTurn} from '../../recording/InterviewTurnStore';
 import {InterviewTurnQueue, type TurnReceipt} from '../../recording/InterviewTurnQueue';
@@ -81,6 +82,10 @@ export const turnFetch = async (interviewId: number, path: string, init: Request
       const response = await fetch(`${API_URL}/medical-interviews/${interviewId}${path}`, {
         ...init, headers: {...getAuthHeaders(), ...init.headers}, signal: init.signal ?? AbortSignal.timeout(120_000),
       });
+      if (response.status === 401) {
+        await response.body?.cancel();
+        handleUnauthorized();
+      }
       if (![408, 429, 502, 503, 504].includes(response.status)) {
         const body = await response.arrayBuffer();
         reportConnection(scope, true);
@@ -98,7 +103,7 @@ export const turnFetch = async (interviewId: number, path: string, init: Request
 };
 
 export const turnJson = async <T>(interviewId: number, path: string, init: RequestInit = {}): Promise<T> => {
-  const response = await turnFetch(interviewId, path, init);
+  const response = await turnFetch(interviewId, path, {...init, signal: init.signal ?? AbortSignal.timeout(120_000)});
   const body = await response.json();
   if (!response.ok) throw new CaptureSyncError(response.status, rejectionCode(body, response.status));
   return body as T;

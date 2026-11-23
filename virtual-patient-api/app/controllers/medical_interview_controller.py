@@ -371,14 +371,11 @@ class MedicalInterviewController:
         if other_active is not None:
             raise HTTPException(status_code=409, detail="You already have an interview in progress")
 
-        # The calibration draft is persisted into ``interview_metadata.calibration``
-        # before start. The central ``calibration_passed`` accessor checks the
-        # stored block is ``passed`` and carries a valid personal baseline, so
-        # the gate never reaches into the metadata dict directly.
+        # Start requires a verified baseline or the server-authorized no-gaze mode.
         if not calibration_passed(interview):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="A passed multimodal calibration must be saved before the interview starts",
+                detail="A verified calibration or no-gaze authorization must be saved before the interview starts",
             )
 
         interview.start_time = datetime.now(timezone.utc)

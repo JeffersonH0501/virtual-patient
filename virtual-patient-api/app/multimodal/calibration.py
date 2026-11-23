@@ -22,6 +22,8 @@ def read_personal_baseline(interview: _MetadataCarrier | None, *, segment=None) 
     without scattering nested-dict access across the codebase.
     """
     calibration = read_calibration(interview, segment=segment) or {}
+    if calibration.get("status") == "without_gaze":
+        return None
     stored = calibration.get("personal_baseline")
     if not isinstance(stored, dict):
         return None
@@ -40,9 +42,11 @@ def read_calibration_profile(interview: _MetadataCarrier | None, *, segment=None
     multimodal pipeline needs to reconstruct the participant-specific gaze
     tracker. It lives alongside the personal baseline under
     ``interview_metadata.calibration``. Returns ``None`` when no profile is
-    stored so the pipeline can fall back to an uncalibrated tracker.
+    stored so the pipeline marks gaze unavailable while retaining other signals.
     """
     calibration = read_calibration(interview, segment=segment) or {}
+    if calibration.get("status") == "without_gaze":
+        return None
     profile = calibration.get("profile")
     if not isinstance(profile, dict) or profile.get("gaze_source") != "mediapipe_five_point_v1":
         return None
@@ -76,18 +80,21 @@ def read_calibration(interview: _MetadataCarrier | None, *, segment=None) -> dic
     return calibration if isinstance(calibration, dict) else None
 
 
-def calibration_passed(interview: _MetadataCarrier | None) -> bool:
-    """Report whether the interview carries a passed calibration usable to start.
-
-    A calibration is usable when its persisted block is marked ``passed`` and a
-    valid :class:`PersonalBaseline` can be read back. This mirrors the guarantee
-    made at save time (a passed calibration always carries a valid baseline) and
-    centralizes the interview-start gate so it does not reach into the metadata
-    dict directly.
-    """
-    calibration = read_calibration(interview)
-    if not calibration or calibration.get("status") != "passed":
+def calibration_allows_capture(calibration: dict | None) -> bool:
+    """Accept a verified profile or the server-authorized preparation without gaze."""
+    if not calibration:
         return False
-    return read_personal_baseline(interview) is not None
+    if calibration.get("status") == "without_gaze":
+        return (calibration.get("version") == "multimodal_without_gaze_v1"
+                and len(set(calibration.get("failed_capture_ids") or [])) >= 2
+                and bool((calibration.get("profile") or {}).get("capture_geometry")))
+    return calibration.get("status") == "passed"
+
+
+def calibration_passed(interview: _MetadataCarrier | None) -> bool:
+    """Report whether calibration or an explicit no-gaze authorization allows start."""
+    calibration = read_calibration(interview)
+    return calibration_allows_capture(calibration) and (
+        calibration.get("status") == "without_gaze" or read_personal_baseline(interview) is not None)
 
 

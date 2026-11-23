@@ -18,7 +18,7 @@ from app.core.functional_config import load_prompt
 from .evaluation_aspects import format_aspects_for_prompt, get_all_aspects
 from .evaluation_prompts import get_show_empathy_prompt, get_show_interest_prompt, get_speak_clearly_prompt
 
-POLICY_VERSION = "multimodal_categories_v7_text_prompt_plus_evidence_block"
+POLICY_VERSION = "multimodal_categories_v9_labels_with_minimal_counts"
 
 OBSERVATION_NOTE = {
     "en": "Multimodal observations describe observable behavior and are used as complementary evidence. They are not direct measurements of psychological states or communication quality. Missing or unavailable evidence must not be penalized.",

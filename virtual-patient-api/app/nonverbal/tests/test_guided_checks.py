@@ -27,7 +27,7 @@ def test_speech_activity_is_reported_without_changing_the_smile_classifier():
     assert result["diagnostic_only"] is True
     assert result["prompt_labels_verified"] is False
     phase = result["phases"][0]
-    assert phase["smile_activity_ratio"] == 1
+    assert phase["smile_activity_ratio"] == 0
     assert phase["mean_smile_activation"] == pytest.approx(.35)
     assert phase["samples"][0]["mouth_smile_left"] == .6
     assert phase["gaze_error_median"] is None

@@ -136,3 +136,17 @@ it('shows the replay progress while it is prepared and the video once it is read
   });
   expect(container.querySelector('video')?.getAttribute('src')).toBe('/replay.mp4');
 });
+
+it('offers retry when processing remains pending beyond the polling limit', async () => {
+  vi.useFakeTimers();
+  vi.mocked(getInterviewRecap).mockImplementation(async () => ({interviewId: 7, recordingStatus: 'ready',
+    turns: [], observationProcessing: {status: 'processing'}}));
+  await act(async () => {
+ render(<InterviewRecap interviewId={7} />);
+});
+  await act(async () => {
+ await vi.advanceTimersByTimeAsync(1_200_000);
+});
+  expect(screen.getByRole('alert').textContent).toContain('clinicalChat.recap.loadFailed');
+  expect(screen.getByRole('button', {name: 'common.retry'})).toBeTruthy();
+});

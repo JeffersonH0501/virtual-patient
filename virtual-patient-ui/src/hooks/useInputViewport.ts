@@ -13,6 +13,13 @@ export const useInputViewport = () => {
       frame = 0;
       const shouldReveal = reveal;
       reveal = false;
+      const field = document.activeElement;
+      if (!(field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement && textInputTypes.has(field.type)) ||
+          field.disabled || field.readOnly || field.closest('[hidden], [inert], [aria-hidden="true"]')) {
+        root.style.removeProperty('--app-viewport-height');
+        root.style.removeProperty('--app-viewport-top');
+        return;
+      }
       // Pinch zoom must retain native panning rather than reflow the application.
       if (viewport && Math.abs(viewport.scale - 1) > 0.01) return;
       const height = viewport?.height ?? window.innerHeight;
@@ -21,9 +28,6 @@ export const useInputViewport = () => {
       root.style.setProperty('--app-viewport-height', `${height}px`);
       root.style.setProperty('--app-viewport-top', `${top}px`);
       if (!shouldReveal) return;
-      const field = document.activeElement;
-      if (!(field instanceof HTMLTextAreaElement || field instanceof HTMLInputElement && textInputTypes.has(field.type)) ||
-          field.disabled || field.readOnly || field.closest('[hidden], [inert], [aria-hidden="true"]')) return;
       let visibleTop = top;
       let visibleBottom = top + height;
       for (let parent = field.parentElement; parent; parent = parent.parentElement) {
@@ -47,6 +51,7 @@ export const useInputViewport = () => {
     viewport?.addEventListener('resize', revealField);
     viewport?.addEventListener('scroll', followViewport);
     document.addEventListener('focusin', revealField);
+    document.addEventListener('focusout', followViewport);
     document.addEventListener('input', revealField);
     schedule(true);
     return () => {
@@ -55,6 +60,7 @@ export const useInputViewport = () => {
       viewport?.removeEventListener('resize', revealField);
       viewport?.removeEventListener('scroll', followViewport);
       document.removeEventListener('focusin', revealField);
+      document.removeEventListener('focusout', followViewport);
       document.removeEventListener('input', revealField);
       root.style.removeProperty('--app-viewport-height');
       root.style.removeProperty('--app-viewport-top');

@@ -42,6 +42,9 @@ const flow = vi.hoisted(() => ({
   },
   recording: {
     syncPending: false,
+    reconnecting: false,
+    errorCode: null as string | null,
+    retryConnection: vi.fn(),
     stopForRecovery: vi.fn(),
     status: 'recording',
     segmentId: 'synthetic-segment',
@@ -244,6 +247,8 @@ beforeEach(() => {
   flow.recording.prepareStudentTurn = undefined;
   flow.recording.isCapturing = true;
   flow.recording.syncPending = false;
+  flow.recording.reconnecting = false;
+  flow.recording.errorCode = null;
   flow.recording.stopForRecovery.mockResolvedValue(undefined);
   flow.recording.segmentId = 'synthetic-segment';
   flow.recording.sealForEnding.mockResolvedValue(true);
@@ -275,6 +280,42 @@ const open = async () => {
   }
   return view;
 };
+
+it('does not navigate to calibration after a pending resume finishes on an abandoned screen', async () => {
+  flow.route.state.justStarted = false;
+  let finish!: (value: unknown) => void;
+  flow.resumeTurn.mockReturnValueOnce(new Promise((resolve) => {
+ finish = resolve;
+}));
+  const view = render(<ClinicalChat mode="session" />);
+  fireEvent.click(await screen.findByText('clinicalChat.resumeSession.resume'));
+  await waitFor(() => expect(flow.resumeTurn).toHaveBeenCalledOnce());
+  view.unmount();
+  flow.navigate.mockClear();
+  await act(async () => {
+ finish({resumeAttemptId: 'late', offsetMs: 0});
+});
+  expect(flow.navigate).not.toHaveBeenCalled();
+});
+
+it('does not attach a late message response to a capture after leaving the session', async () => {
+  let finish!: (value: unknown) => void;
+  flow.send.mockReturnValueOnce(new Promise((resolve) => {
+ finish = resolve;
+}));
+  const view = await open();
+  let pending!: void | Promise<void>;
+  act(() => {
+ pending = flow.speechOptions.onUtterance('Synthetic pending message');
+});
+  await waitFor(() => expect(flow.send).toHaveBeenCalledOnce());
+  view.unmount();
+  await act(async () => {
+    finish({messages: [{id: 22, content: 'Synthetic pending message', senderType: 'user'}], newMessageIds: [22]});
+    await pending;
+  });
+  expect(flow.recording.recordStudentTurn).not.toHaveBeenCalled();
+});
 
 it('redirects a processing session to review without offering capture resumption', async () => {
   flow.interview.status = 'processing';
@@ -427,6 +468,14 @@ it('shows replay and the private self-rating form while automatic processing con
   expect(screen.queryByRole('region', {name: 'Private rating form'})).toBeNull();
 });
 
+it('returns to the interview list when the requested interview was deleted', async () => {
+  flow.load.mockRejectedValueOnce(Object.assign(new Error('Interview not found'), {status: 404}));
+  render(<ClinicalChat mode="session" />);
+  await waitFor(() => expect(flow.navigate).toHaveBeenCalledWith('/interviews', {replace: true}));
+  expect(screen.queryByText('clinicalChat.resumeSession.resume')).toBeNull();
+  expect(flow.captureOptions.enabled).toBe(false);
+});
+
 it('shows a recoverable initial load error instead of a blank view', async () => {
   flow.loadError = true;
   render(<ClinicalChat mode="session" />);
@@ -436,8 +485,9 @@ it('shows a recoverable initial load error instead of a blank view', async () =>
   await screen.findByText('End');
 });
 
-it('keeps the same request key and speech timing after a lost message acknowledgement', async () => {
-  flow.send.mockRejectedValueOnce(new Error('Synthetic lost acknowledgement'));
+it.each([new Error('Synthetic lost acknowledgement'), new DOMException('Synthetic message deadline', 'TimeoutError')])(
+  'keeps the same request key and speech timing after a send failure: %s', async (error) => {
+  flow.send.mockRejectedValueOnce(error);
   await open();
   const timing = {startMs: 100, endMs: 500};
   await act(async () => flow.speechOptions.onUtterance('Synthetic retry', timing));
@@ -553,18 +603,14 @@ it('blocks finalization during generation', async () => {
   expect(flow.recording.sealForEnding).not.toHaveBeenCalled();
 });
 
-it('accepts only one send while asynchronous audio setup is pending', async () => {
-  let ready!: () => void;
+it('sends the student turn once even if audio reactivation never resolves', async () => {
   flow.recording.resumeAudioGraph.mockReturnValue(
-    new Promise<void>((resolve) => {
-      ready = resolve;
-    }),
+    new Promise<void>(() => undefined),
   );
   await open();
   await act(async () => {
     void flow.speechOptions.onUtterance('First synthetic message');
     void flow.speechOptions.onUtterance('Duplicate event');
-    ready();
   });
   expect(flow.send).toHaveBeenCalledOnce();
 });
@@ -801,5 +847,24 @@ it('pauses speech and submission in the first render of a capture pause', async 
   view.rerender(<ClinicalChat mode="session" />);
   expect(flow.speechFrames.every((frame) => !frame.pending || frame.paused)).toBe(true);
   expect(flow.toolbar.endDisabled).toBe(true);
+});
+
+it('retries a temporary disconnect in place and offers session recovery for a stale segment', async () => {
+  const view = await open();
+  flow.recording.syncPending = true;
+  flow.recording.reconnecting = true;
+  view.rerender(<ClinicalChat mode="session" />);
+
+  fireEvent.click(screen.getByRole('button', {name: 'clinicalChat.retryConnection'}));
+  expect(flow.recording.retryConnection).toHaveBeenCalledOnce();
+  expect(flow.recording.pause).not.toHaveBeenCalled();
+  expect(flow.resumeTurn).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', {name: 'clinicalChat.reviewSession'})).toBeNull();
+
+  flow.recording.reconnecting = false;
+  flow.recording.errorCode = 'stale_capture';
+  view.rerender(<ClinicalChat mode="session" />);
+  expect(screen.getByRole('button', {name: 'clinicalChat.reviewSession'})).toBeTruthy();
+  expect(screen.queryByRole('button', {name: 'clinicalChat.retryConnection'})).toBeNull();
 });
 

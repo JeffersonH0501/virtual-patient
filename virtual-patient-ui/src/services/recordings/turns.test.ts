@@ -1,6 +1,9 @@
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {turnFetch, turnJson, subscribeTurnConnection, resumeTurnInterview, turnUploadQueue, forgetTurnQueue} from './turns';
 import {sendMessage} from '../interviews/sendMessage';
+import {completeInterview} from '../interviews/completeInterview';
+import {createHypothesis} from '../hypotheses/createHypothesis';
+import * as authRequests from '../../utils/apiFetch';
 import type {LocalInterviewTurn} from '../../recording/InterviewTurnStore';
 import type {StudentCaptureTiming} from '../../types/recording';
 
@@ -51,11 +54,37 @@ it('keeps the original request and consumer across a lost response', async () =>
   expect(fetch.mock.calls.map((call) => call[1].body)).toEqual([body, body]);
 });
 
+it.each(['hypotheses', 'completion', 'resume'] as const)('bounds interactive %s retries with one shared deadline', async (operation) => {
+  const controller = new AbortController();
+  const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(controller.signal);
+  const fetch = vi.fn().mockRejectedValue(new TypeError('Synthetic network failure'));
+  vi.stubGlobal('fetch', fetch);
+  const pending = operation === 'resume' ? resumeTurnInterview(7, 'stable-resume')
+    : operation === 'completion' ? completeInterview('7') : createHypothesis('7', [{hypothesisText: 'Synthetic', hypothesisOrder: 1}]);
+  const failure = expect(pending).rejects.toHaveProperty('name', 'TimeoutError');
+  await vi.advanceTimersByTimeAsync(300);
+  controller.abort(new DOMException('Synthetic deadline', 'TimeoutError'));
+  await failure;
+  expect(timeout).toHaveBeenCalledWith(120_000);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
 it('does not automatically repeat a content conflict', async () => {
   const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({detail: {code: 'turn_media_conflict'}}), {status: 409}));
   vi.stubGlobal('fetch', fetch);
   await expect(turnJson(1, '/recording/turns/id/video')).rejects.toThrow('turn_media_conflict');
   expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+it('uses the shared expired-session recovery when capture requests receive HTTP 401', async () => {
+  const unauthorized = vi.spyOn(authRequests, 'handleUnauthorized').mockImplementation(() => {
+    throw Object.assign(new Error('Unauthorized'), {status: 401});
+  });
+  const fetch = vi.fn().mockResolvedValue(new Response('{}', {status: 401}));
+  vi.stubGlobal('fetch', fetch);
+  await expect(turnJson(1, '/recording/segments')).rejects.toHaveProperty('status', 401);
+  expect(unauthorized).toHaveBeenCalledOnce();
+  expect(fetch).toHaveBeenCalledOnce();
 });
 
 it('recovers a truncated response body and pauses only the affected interview', async () => {
@@ -100,6 +129,36 @@ it('persists the message key before sending and binds the response to that turn'
   expect(state.rows.get('turn')?.pendingContent).toBeUndefined();
 });
 
+it('bounds message retries and preserves the local turn and request key for an explicit retry', async () => {
+  vi.spyOn(AbortSignal, 'timeout').mockImplementation((milliseconds) => {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(new DOMException('Message deadline exceeded', 'TimeoutError')), milliseconds);
+    return controller.signal;
+  });
+  state.rows.set('turn', {id: 'turn', state: 'capturing', scope: 'one:1', chunks: 2, metadata: {}} as LocalInterviewTurn);
+  const fetch = vi.fn(async () => new Response('{}', {status: 503}));
+  vi.stubGlobal('fetch', fetch);
+  const timing = {turn_media_id: 'turn', capture_scope: 'one:1', start_ms: 0, end_ms: 600} as StudentCaptureTiming;
+  let failure: unknown;
+  const pending = sendMessage('1', 'Synthetic question', 'stable-message', 'capture', timing).catch((error) => {
+ failure = error;
+});
+  await vi.advanceTimersByTimeAsync(119_999);
+  expect(failure).toBeUndefined();
+  await vi.advanceTimersByTimeAsync(1);
+  expect(failure).toMatchObject({name: 'TimeoutError'});
+  await pending;
+  const attempts = fetch.mock.calls.length;
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(fetch).toHaveBeenCalledTimes(attempts);
+  expect(state.rows.get('turn')).toMatchObject({state: 'capturing', requestId: 'stable-message', pendingContent: 'Synthetic question', chunks: 2});
+  fetch.mockImplementation(async () => new Response(JSON.stringify({messages: [{id: 1, sender_type: 'user'}, {id: 2, sender_type: 'patient'}], new_message_ids: [1, 2]})));
+  await sendMessage('1', 'Synthetic question', 'stable-message', 'capture', timing);
+  expect(fetch.mock.calls.every((call) => JSON.parse((call as unknown as [string, RequestInit])[1].body as string).client_request_id === 'stable-message')).toBe(true);
+  expect(state.rows.get('turn')?.metadata.message_id).toBe(1);
+  expect(state.rows.get('turn')?.pendingContent).toBeUndefined();
+});
+
 const recoveryRoutes = (known = false, patient = false) => {
   const turn: LocalInterviewTurn = {id: 'local', scope: 'one:1', requestId: 'stable', state: 'closed', mimeType: 'video/webm',
     chunks: 2, confirmedEndMs: 2000, expiresAt: new Date(Date.now() + 86400_000).toISOString(),
@@ -115,18 +174,21 @@ const recoveryRoutes = (known = false, patient = false) => {
   const fetch = vi.fn(async (url: string, init: RequestInit) => {
     let body: unknown;
     if (url.endsWith('/recording/resume')) body = {resume_attempt_id: 'resume', previous_segment_id: 'capture', offset_ms: 0, pending_patient_message_id: 10};
-    else if (url.endsWith('/messages')) body = {messages: [{id: 5, sender_type: 'user'},
+    else if (url.endsWith('/messages')) {
+body = {messages: [{id: 5, sender_type: 'user'},
       {id: 10, sender_type: 'patient', message_metadata: {client_request_id: 'stable'}}]};
-    else if (url.endsWith('/recording/turns')) {
+} else if (url.endsWith('/recording/turns')) {
       body = {duration_ms: uploaded ? 2000 : null, turns: uploaded ? [{
         turn_media_id: 'local', message_id: patient ? 10 : 5, session_clock_ms: 0, metadata: turn.metadata,
         student_video_source: '/original', sha256: 'a'.repeat(64), duration_ms: 2000}] : []};
     } else if (url.endsWith('/recording/turns/local/video')) {
       uploaded = true;
       expect(new Headers(init.headers).get('X-Resume-Attempt')).toBe('resume');
-      if (patient) expect(JSON.parse(String((init.body as FormData).get('metadata')))).toMatchObject({
+      if (patient) {
+expect(JSON.parse(String((init.body as FormData).get('metadata')))).toMatchObject({
         speaker: 'patient', message_id: 10, playback_complete: false, playback_start_ms: null, playback_end_ms: null,
       });
+}
       body = {turn_media_id: 'local', preserved: true, sha256: 'a'.repeat(64), metadata_hash: 'b'.repeat(64)};
     } else if (url.endsWith('/recording/turns/recovery')) {
       gaps.push(...JSON.parse(String(init.body)).missing_message_ids); body = {recorded: true};

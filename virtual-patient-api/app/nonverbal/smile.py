@@ -36,7 +36,7 @@ def extract_smile(observation: SharedFrameObservation) -> SmileObservation | Non
         mouth_smile_left=left,
         mouth_smile_right=right,
         smile_activation=activation,
-        smile_detected=left >= SMILE_THRESHOLD or right >= SMILE_THRESHOLD,
+        smile_detected=activation > SMILE_THRESHOLD,
     )
 
 

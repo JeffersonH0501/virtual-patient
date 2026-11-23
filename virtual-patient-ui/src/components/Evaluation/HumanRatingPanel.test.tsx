@@ -73,13 +73,23 @@ it('shows the private rubric table immediately and starts grading from its penci
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
 });
 
+it('shows a disabled submit button in the empty self-assessment table', async () => {
+  const interview = {id: 7, reviewAccess: {canViewAssessments: false}} as CompleteInterviewResponse;
+  render(<HumanRatingPanel interview={interview} selfInterviewId={7} onSubmitted={vi.fn()} />);
+  const submit = await screen.findByRole<HTMLButtonElement>('button', {name: 'grading.submit'});
+  expect(submit.disabled).toBe(true);
+  expect(screen.getByText('grading.completeSelfAssessment')).toBeTruthy();
+  expect(request).toHaveBeenCalledOnce();
+});
+
 it.each(['assigned', 'self'])('requires all six scores but not comments for %s submission, including valid zero', async (mode) => {
   const submitted = vi.fn();
   const eligibilityUpdated = vi.fn();
   window.addEventListener('perception-survey-updated', eligibilityUpdated);
   render(<HumanRatingPanel assignmentId={mode === 'assigned' ? 1 : undefined} selfInterviewId={mode === 'self' ? 7 : undefined} onSubmitted={submitted} />);
   await screen.findByRole('button', {name: 'grading.start'});
-  expect(screen.getByText('grading.completeBeforeAutomaticEvaluation').classList.contains('ui-notice')).toBe(true);
+  const message = mode === 'self' ? 'grading.completeSelfAssessment' : 'grading.completeBeforeAutomaticEvaluation';
+  expect(screen.getByText(message).classList.contains('ui-notice')).toBe(true);
   expect(request).toHaveBeenCalledTimes(1);
   request.mockResolvedValue({...workspace, status: 'in_progress'});
   fireEvent.click(screen.getByRole('button', {name: 'grading.start'}));

@@ -30,6 +30,9 @@ export const HumanRatingPanel = ({
   onSubmitted: () => void | Promise<void>;
 }) => {
   const {t} = useTranslation();
+  const completionMessage = t(selfInterviewId === undefined
+    ? 'grading.completeBeforeAutomaticEvaluation'
+    : 'grading.completeSelfAssessment');
   const workspacePath = selfInterviewId === undefined ? '/doctor-assignments/' + assignmentId
     : '/medical-interviews/' + selfInterviewId + '/self-rating';
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
@@ -316,7 +319,7 @@ export const HumanRatingPanel = ({
           className="xl:col-start-3 xl:row-start-1"
           evaluationData={{interview, evaluationResults: []}}
           hideConditionSelector
-          assessmentControls={!aspectToEdit && workspace?.status !== 'submitted' ? <div className="assessment-controls"><p className="ui-notice text-left">{t('grading.completeBeforeAutomaticEvaluation')}</p></div> : undefined}
+          assessmentControls={!aspectToEdit && workspace?.status !== 'submitted' ? <div className="assessment-controls"><p className="ui-notice text-left">{completionMessage}</p></div> : undefined}
           draftResults={Object.keys(workspace?.rubric ?? {}).map((aspect) => ({
             aspect,
             score: values[aspect]?.score ? Number(values[aspect].score) : null,
@@ -337,7 +340,7 @@ export const HumanRatingPanel = ({
               {!workspace && !loading && (
                 <Button variant="secondary" onClick={() => void load()}>{t('common.retry')}</Button>
               )}
-              {workspace?.status === 'in_progress' && (
+              {(workspace?.status === 'in_progress' || (selfInterviewId !== undefined && workspace?.status === 'pending')) && (
                 <div className="ui-button-group ui-button-group--large mt-inset justify-center">
                   <Button disabled={busy || !valid} onClick={() => void act('submit')}>
                     {t('grading.submit')}
@@ -353,7 +356,7 @@ export const HumanRatingPanel = ({
           <h2 className="default-title">{t('evaluation.interviewEvaluationResults')}</h2>
           </header>
           <div className="ui-panel-body overflow-y-auto">
-            {workspace?.status !== 'submitted' && <p className="ui-notice">{t('grading.completeBeforeAutomaticEvaluation')}</p>}
+            {workspace?.status !== 'submitted' && <p className="ui-notice">{completionMessage}</p>}
             <MotionHeight fade={false} className="space-y-layout">{ratingContent}</MotionHeight>
           </div>
         </section>

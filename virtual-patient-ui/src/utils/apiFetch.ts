@@ -42,7 +42,8 @@ export const apiFetch = async (
 ): Promise<Response> => {
   // Attach the trace id to every request without touching individual callers.
   options = {...options, headers: {...(options.headers as Record<string, string> | undefined), 'X-Trace-Id': traceId}};
-  const response = await sessionResponse(url, options, (shared) => fetch(url, shared ? {...options, signal: undefined} : options));
+  // Shared reads outlive individual views, but must still expire so a hung read cannot poison the cache.
+  const response = await sessionResponse(url, options, (shared) => fetch(url, shared ? {...options, signal: AbortSignal.timeout(30_000)} : options));
 
   // Handle 401 Unauthorized globally
   if (response.status === 401) handleUnauthorized();

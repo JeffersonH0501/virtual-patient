@@ -22,6 +22,25 @@ const enter = () =>
     target: {value: 'Synthetic hypothesis'},
   });
 
+it('does not finalize after a hypothesis save completes on an abandoned screen', async () => {
+  let finish!: () => void;
+  api.create.mockReturnValueOnce(new Promise<void>((resolve) => {
+ finish = resolve;
+}));
+  const beforeComplete = vi.fn().mockResolvedValue(true);
+  const onCompleted = vi.fn();
+  const view = render(<ClinicalHypotheses onCancel={vi.fn()} beforeComplete={beforeComplete} onCompleted={onCompleted} />);
+  enter();
+  fireEvent.click(screen.getByText('clinicalChat.submit'));
+  view.unmount();
+  await act(async () => {
+ finish();
+});
+  expect(beforeComplete).not.toHaveBeenCalled();
+  expect(api.complete).not.toHaveBeenCalled();
+  expect(onCompleted).not.toHaveBeenCalled();
+});
+
 it('submits demo hypotheses locally without saving or completing an interview', () => {
   const onDemoSubmit = vi.fn();
   render(<ClinicalHypotheses onCancel={vi.fn()} onDemoSubmit={onDemoSubmit} />);

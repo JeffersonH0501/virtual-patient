@@ -14,8 +14,8 @@ from app.nonverbal.guided_eye_geometry import mediapipe_eye_observation, build_e
 
 CAMERA_RAW_RADIUS_LIMIT = .04
 CAMERA_RAW_RADIUS_MIN = .01
-MAX_MEDIAN_ERROR = .25
-MAX_P90_ERROR = .35
+MAX_MEDIAN_ERROR = .35
+MAX_P90_ERROR = .50
 
 
 def image_usable(shared):
@@ -39,7 +39,7 @@ def build_profile(observations, metadata):
         targets[target.target_id] = {"valid_ratio":ratio,"valid_duration_ms":duration,"valid_samples":len(valid),
             "eligible":ratio>=MIN_TARGET_VALID_RATIO and duration>=MIN_TARGET_VALID_MS,
             "invalid_reasons":dict(Counter(eye.state for eye in eyes if not eye.valid))}
-    quality = {"version":"mediapipe_five_point_quality_v2","face_valid_ratio":faces,"image_usable_ratio":usable,
+    quality = {"version":"mediapipe_five_point_quality_v3","face_valid_ratio":faces,"image_usable_ratio":usable,
         "targets":targets,"covered_targets":sum(t["eligible"] for t in targets.values()),"geometry_stable":metadata.geometry_stable}
     reason = ("geometry" if not metadata.geometry_stable else "face" if faces<MIN_FACE_VALID_RATIO
         else "capture_quality" if usable<MIN_FACE_VALID_RATIO else "targets" if quality["covered_targets"]!=5 else None)

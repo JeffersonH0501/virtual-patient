@@ -145,8 +145,8 @@ it('preserves the student bubble when the server confirms its provisional messag
   expect(screen.getByText('My question').parentElement).toBe(bubble);
 });
 
-it('reactivates audio output before playing each patient response', async () => {
-  const resume = vi.fn().mockResolvedValue(undefined);
+it('requests audio reactivation without blocking patient playback', async () => {
+  const resume = vi.fn(() => new Promise<void>(() => undefined));
   render(<ConversationTranscript {...props()} resumeAudioGraph={resume} />);
   await act(async () => {
  await Promise.resolve();
@@ -214,7 +214,8 @@ it('retries policy-blocked audio directly on the already loaded player', async (
   const revoke = vi.fn();
   vi.stubGlobal('URL', {revokeObjectURL: revoke});
   vi.mocked(loadPatientSpeechBlob).mockResolvedValue('blob:greeting');
-  const view = render(<ConversationTranscript {...callbacks} preparedAudio={player as unknown as HTMLAudioElement} />);
+  const view = render(<ConversationTranscript {...callbacks} preparedAudio={player as unknown as HTMLAudioElement}
+    resumeAudioGraph={() => new Promise<void>(() => undefined)} />);
   const retry = await screen.findByRole('button', {name: 'clinicalChat.call.playPatientAudio'});
   expect(loadPatientSpeechBlob).toHaveBeenCalledOnce();
   expect(callbacks.onPatientTurnComplete).not.toHaveBeenCalled();

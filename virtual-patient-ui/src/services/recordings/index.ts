@@ -26,7 +26,7 @@ const requireOk = async (response: Response): Promise<Response> => {
 export const getInterviewRecap = async (interviewId: number, signal?: AbortSignal): Promise<InterviewRecap> => {
   const response = await requireOk(await apiFetch(
     `${API_URL}/medical-interviews/${interviewId}/recap`,
-    {headers: getAuthHeaders(), signal},
+    {headers: getAuthHeaders(), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)},
   ));
   // The recap endpoint serves the single canonical layered observation schema;
   // the camelCase transform is the only read-time adaptation the UI needs.
@@ -42,10 +42,11 @@ export const getInterviewRecap = async (interviewId: number, signal?: AbortSigna
  */
 export const reprocessInterviewRecording = async (
   interviewId: number,
+  signal?: AbortSignal,
 ): Promise<RecordingState> => {
   const response = await requireOk(await apiFetch(
     `${API_URL}/medical-interviews/${interviewId}/recording/reprocess`,
-    {method: 'POST', headers: getAuthHeaders()},
+    {method: 'POST', headers: getAuthHeaders(), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)},
   ));
   return transformToCamelCase(await response.json()) as RecordingState;
 };
@@ -56,10 +57,10 @@ export const resolveRecordingSource = (source?: string | null): string | null =>
 };
 
 /** Evaluate existing integrated labels without extracting media features. */
-export const regenerateInterviewEvaluation = async (interviewId: number): Promise<RecordingState> => {
+export const regenerateInterviewEvaluation = async (interviewId: number, signal?: AbortSignal): Promise<RecordingState> => {
   const response = await requireOk(await apiFetch(
     `${API_URL}/medical-interviews/${interviewId}/evaluation/regenerate`,
-    {method: 'POST', headers: getAuthHeaders()},
+    {method: 'POST', headers: getAuthHeaders(), signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000)},
   ));
   return transformToCamelCase(await response.json()) as RecordingState;
 };

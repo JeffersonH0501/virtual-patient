@@ -10,6 +10,7 @@ export {sendMessage} from './sendMessage';
 export {deleteInterview} from './deleteInterview';
 export {
   saveCalibrationResult,
+  continueWithoutGaze,
   startInterview,
   processCalibrationStage,
   warmUpCalibration,

@@ -44,6 +44,30 @@ def test_closed_eyes_are_distinct_from_missing_landmarks():
     assert gaze_observation(replace(shared, landmarks=[]), {}).state == 'eyes_unobservable'
 
 
+@pytest.mark.parametrize("left,right,valid,state", [
+    (.15, .15, True, None),
+    (.11, .11, True, None),
+    (.09, .09, False, "eyes_closed"),
+    (.09, .15, False, "eyes_unobservable"),
+])
+def test_eye_openness_accepts_both_eyes_above_point_one(left, right, valid, state):
+    from app.nonverbal.guided_eye_geometry import mediapipe_eye_observation
+    shared = frame(0).shared
+    landmarks = list(shared.landmarks)
+    for openness, upper, lower in (
+        (left, (160, 158), (144, 153)),
+        (right, (385, 387), (380, 373)),
+    ):
+        for indices, sign in ((upper, -1), (lower, 1)):
+            for index in indices:
+                point = landmarks[index]
+                landmarks[index] = type(point)(x=point.x, y=.4 + sign * openness * .1 / 2, z=point.z)
+    result = mediapipe_eye_observation(replace(shared, landmarks=landmarks))
+    assert result.valid is valid
+    if state is not None:
+        assert result.state == state
+
+
 def calibration():
     targets, observations = [], []
     for i, (name, x, y) in enumerate(GAZE_TARGETS[:5]):
@@ -133,22 +157,23 @@ def test_obsolete_gaze_source_is_rejected():
     with pytest.raises(ValidationError): GazeCalibrationMetadata.model_validate(payload)
 
 
-@pytest.mark.parametrize("median,p90,passed,reason",[(.25,.35,True,None),(.25001,.35,False,"median_error"),(.25,.35001,False,"p90_error")])
-def test_official_mediapipe_quality_limits_are_25_and_35_percent(monkeypatch,median,p90,passed,reason):
+@pytest.mark.parametrize("median,p90,passed,reason",[(.35,.50,True,None),(.35001,.50,False,"median_error"),(.35,.50001,False,"p90_error")])
+def test_official_mediapipe_quality_limits_are_35_and_50_percent(monkeypatch,median,p90,passed,reason):
     from app.nonverbal import mediapipe_calibration as module
     observations,metadata=calibration()
     reference=module.build_eye_geometry_reference
     def controlled(*args,**kwargs):
-        assert kwargs["max_median_error"]==.25 and kwargs["max_p90_error"]==.35
+        assert kwargs["max_median_error"]==.35 and kwargs["max_p90_error"]==.50
         result=reference(*args,**kwargs)
         result["quality"].update(median_normalized_error=median,p90_normalized_error=p90)
-        result["quality_passed"]=median<=.25 and p90<=.35
+        result["quality_passed"]=median<=.35 and p90<=.50
         result["status"]="ready" if result["quality_passed"] else "unavailable"
         return result
     monkeypatch.setattr(module,"build_eye_geometry_reference",controlled)
     result=build_profile(observations,metadata)
     assert result["passed"] is passed and result["failure_reason"]==reason
-    assert result["quality"]["quality_limits"]=={"median_normalized_error":.25,"p90_normalized_error":.35}
+    assert result["quality"]["quality_limits"]=={"median_normalized_error":.35,"p90_normalized_error":.50}
+    assert result["quality"]["version"] == "mediapipe_five_point_quality_v3"
 
 
 def test_profile_approval_is_independent_of_blazegaze_and_reports_each_target(monkeypatch):

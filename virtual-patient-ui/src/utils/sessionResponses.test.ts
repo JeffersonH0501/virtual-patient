@@ -1,8 +1,30 @@
+// @vitest-environment node
+import {createServer} from 'node:http';
 import {afterEach, expect, it, vi} from 'vitest';
 import {sessionResponse, setSessionResponseOwner} from './sessionResponses';
 
 afterEach(() => setSessionResponseOwner(null));
 const url = '/medical-interviews/12/complete?language=es';
+
+it('keeps a completed response readable after its network deadline expires', async () => {
+  setSessionResponseOwner('student:1');
+  const server = createServer((_request, response) => response.end(JSON.stringify({status: 'completed', messages: []})));
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (!address || typeof address === 'string') throw new Error('Synthetic server did not bind');
+  const controller = new AbortController();
+  const read = vi.fn(() => fetch(`http://127.0.0.1:${address.port}`, {signal: controller.signal}));
+  try {
+    expect(await (await sessionResponse(url, {}, read)).json()).toHaveProperty('status', 'completed');
+    controller.abort(new DOMException('Synthetic read deadline', 'TimeoutError'));
+    const cached = await sessionResponse(url, {}, read);
+    expect(await cached.json()).toEqual({status: 'completed', messages: []});
+    expect(read).toHaveBeenCalledOnce();
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+});
 
 it('deduplicates authorized reads and keeps cached response bodies reusable', async () => {
   setSessionResponseOwner('student:1');

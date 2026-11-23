@@ -49,6 +49,66 @@ def test_attempt_start_is_idempotent_and_rejects_changed_request_content(capture
     assert state.client.post(state.root + '/segments', json=changed).status_code == 409
 
 
+def test_without_gaze_authorization_allows_start_and_retains_geometry_checks(lifecycle_api):
+    from app.multimodal.calibration import read_calibration_profile
+    state = lifecycle_api
+    state.client.app.include_router(segments.router)
+    geometry = {'viewport_width': 1000, 'viewport_height': 700}
+    calibration = {'status': 'without_gaze', 'version': 'multimodal_without_gaze_v1',
+                   'failed_capture_ids': ['first', 'second'], 'profile': {'capture_geometry': geometry}}
+    with Session(state.engine) as db:
+        interview = db.get(MedicalInterviewDB, state.id)
+        interview.interview_metadata = {'recording_transport': 'per_turn_v1', 'calibration': calibration}
+        db.commit()
+    assert state.client.post(f'/medical-interviews/{state.id}/start').status_code == 200
+    endpoint = f'/medical-interviews/{state.id}/recording/segments'
+    payload = {'request_id': str(uuid4()), 'capture_config': {'geometry': {'viewport_width': 900}}}
+    assert state.client.post(endpoint, json=payload).status_code == 409
+    payload['capture_config']['geometry'] = geometry
+    response = state.client.post(endpoint, json=payload)
+    assert response.status_code == 200, response.text
+    with Session(state.engine) as db:
+        segment = db.query(InterviewRecordingSegmentDB).one()
+        assert segment.calibration == calibration
+        assert read_calibration_profile(db.get(MedicalInterviewDB, state.id), segment=segment) is None
+
+
+def test_resume_without_gaze_requires_its_own_failures_and_does_not_reuse_old_profile(capture, monkeypatch):
+    from unittest.mock import AsyncMock
+    from app.routers import calibration
+    from app.routers.tests.test_calibration_reference import upload
+    from app.multimodal.tests.test_calibration import _valid_metadata_json
+    from app.multimodal.calibration import read_calibration_profile
+    state = capture
+    state.client.app.include_router(calibration.router)
+    monkeypatch.setattr('app.media.calibration.get_media_storage', lambda: state.storage)
+    monkeypatch.setattr(calibration, '_run_timed_worker', AsyncMock(return_value=(
+        {'passed': False, 'failed_stage': 'gaze', 'gaze': {'passed': False, 'failure_reason': 'median_error'}}, .01)))
+    key = str(uuid4())
+    assert state.client.post(state.root + '/resume', json={'request_id': key}).status_code == 200
+    geometry = json.loads(_valid_metadata_json())['geometry']
+    endpoint = f'/calibration/without-gaze/{state.id}'
+    payload = {'geometry': geometry, 'resume_attempt_id': key}
+    assert state.client.post(endpoint, json=payload).status_code == 409
+    for index in range(2):
+        response = upload(state.client, state.id, content=f'synthetic resume {index}'.encode(),
+                          stage='unified', resume_attempt_id=key)
+        assert response.status_code == 200, response.text
+        assert response.json()['can_continue_without_gaze'] is (index == 1)
+    assert state.client.post(endpoint, json={**payload, 'resume_attempt_id': str(uuid4())}).status_code == 409
+    assert state.client.post(endpoint, json=payload).status_code == 200
+    response = state.client.post(state.root + '/segments', json={
+        'request_id': str(uuid4()), 'resume_attempt_id': key, 'capture_config': {'geometry': geometry}})
+    assert response.status_code == 200, response.text
+    with Session(state.engine) as db:
+        interview = db.get(MedicalInterviewDB, state.id)
+        assert interview.interview_metadata['calibration']['status'] == 'passed'
+        saved = db.query(InterviewRecordingSegmentDB).order_by(InterviewRecordingSegmentDB.sequence).all()
+        assert saved[0].calibration['status'] == 'passed'
+        assert saved[1].calibration['status'] == 'without_gaze'
+        assert read_calibration_profile(interview, segment=saved[1]) is None
+
+
 def _segment_count(state):
     with Session(state.engine) as db:
         return db.query(InterviewRecordingSegmentDB).count()

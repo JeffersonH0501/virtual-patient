@@ -3,3 +3,4 @@ Multimodal evidence: some turns include observations of the doctor's behavior. U
 - They describe observable behavior, not empathy, warmth or any internal state. Looking, nodding, smiling or a given tone do not prove empathy by themselves, and a behavior must be read against what was being said.
 - Missing, partial or unavailable evidence must NOT be penalized. The absence of nods or smiles is neutral information.
 - The observations always describe the DOCTOR, never the patient.
+- A turn header may show duration=: the analysed window of that turn (the doctor's speech from its onset, or the patient's confirmed spoken reply). The gaze percentage is the proportion of analysed time oriented toward the interaction area or calibrated camera. Counts and low, middle or high bands are provisional descriptions, not clinical norms or targets. Loudness compares the doctor with the doctor's own other turns in this interview.

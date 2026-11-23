@@ -1,5 +1,5 @@
 import {DialogShell} from '../common/Dialog';
-import {CSSProperties, FC, FormEvent, useRef, useState} from 'react';
+import {CSSProperties, FC, FormEvent, useEffect, useRef, useState} from 'react';
 import {FormInput} from '../common/FormInput';
 import {useTranslation} from 'react-i18next';
 import {LoaderCircle} from 'lucide-react';
@@ -43,6 +43,13 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
   const [phase, setPhase] = useState<SubmissionPhase>('editing');
   const [percent, setPercent] = useState(0);
   const submittingRef = useRef(false);
+  const activeRef = useRef(false);
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+ activeRef.current = false;
+};
+  }, []);
   const hypothesesSavedRef = useRef(false);
   const [hypotheses, setHypotheses] = useState({hypothesis1: '', hypothesis2: '', hypothesis3: ''});
   const {interviewId: interviewIdParam} = useParams<{interviewId: string}>();
@@ -77,17 +84,21 @@ export const ClinicalHypotheses: FC<ClinicalHypothesesProps> = ({
     try {
       if (!hypothesesSavedRef.current) {
         await createHypothesis(interviewId.toString(), request, captureSegmentId);
+        if (!activeRef.current) return;
         hypothesesSavedRef.current = true;
       }
       advance(HYPOTHESES_END);
       const recordingSaved = await beforeComplete?.(
         (fraction) => advance(HYPOTHESES_END + fraction * (RECORDING_END - HYPOTHESES_END)));
+      if (!activeRef.current) return;
       if (recordingSaved === false) throw new Error('Interview recording was not saved');
       advance(RECORDING_END);
       const nextEvaluationData = await completeInterview(interviewId.toString(), 'user_completed', captureSegmentId);
+      if (!activeRef.current) return;
       advance(100);
       await onCompleted(nextEvaluationData);
     } catch (error) {
+      if (!activeRef.current) return;
       console.error('Failed to finish interview:', error);
       setPhase('error');
     } finally {

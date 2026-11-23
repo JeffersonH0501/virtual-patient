@@ -3,3 +3,4 @@ Multimodal evidence: some doctor turns include "DOCTOR SPEECH DELIVERY", observa
 - They describe observable delivery, not clarity. A given pace or pauses do not prove clarity by themselves, and an unusual pattern does not by itself mean the communication was poor.
 - Missing, partial or unavailable evidence must NOT be penalized. Absence of pauses or reduced variation is neutral information.
 - The observations always describe the DOCTOR's own delivery, never the patient.
+- A turn header may show duration=: the analysed window of that turn, from the start of the doctor's speech. Counts describe internal pauses of at least 500 ms and are included only when pauses were detected. Counts and low, middle or high bands are provisional descriptions, not clinical norms or targets. Loudness compares the doctor with the doctor's own other turns in this interview.

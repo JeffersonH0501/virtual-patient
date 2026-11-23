@@ -7,7 +7,7 @@ from app.nonverbal.gaze_calibration import (
 )
 from app.nonverbal.iris import iris_observation
 from app.nonverbal.gaze import GazeObservation
-MEDIAPIPE_EYE_OPENNESS = .20
+MEDIAPIPE_EYE_OPENNESS = .10
 
 
 def mediapipe_eye_observation(shared):

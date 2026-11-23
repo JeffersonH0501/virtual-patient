@@ -59,6 +59,51 @@ def upload(api, interview_id, content=b'synthetic calibration reference', **over
     return api.post('/calibration/process-stage', data=fields, files={'media': ('capture.webm', content, 'video/webm')})
 
 
+def test_continue_without_gaze_requires_two_distinct_failures_and_preserves_captures(reference_api):
+    from app.multimodal.calibration import calibration_passed, read_calibration_profile, read_personal_baseline
+    api, db, interview, _, _, storage, worker = reference_api
+    worker.return_value = ({'passed': False, 'failure_reason': 'insufficient_target_samples'}, .01)
+    geometry = json.loads(_valid_metadata_json())['geometry']
+    endpoint = f'/calibration/without-gaze/{interview.id}'
+    first = upload(api, interview.id)
+    assert first.json()['can_continue_without_gaze'] is False
+    assert api.post(endpoint, json={'geometry': geometry}).status_code == 409
+    assert upload(api, interview.id).json()['can_continue_without_gaze'] is False
+    second = upload(api, interview.id, content=b'second synthetic attempt')
+    assert second.json()['can_continue_without_gaze'] is True
+    assert api.post(endpoint, json={'geometry': {**geometry, 'viewport_width': 900}}).status_code == 409
+    captures = db.query(CalibrationCaptureDB).filter_by(medical_interview_id=interview.id).all()
+    originals = [(item.id, item.result.copy(), storage.resolve(item.storage_key).read_bytes()) for item in captures]
+    response = api.post(endpoint, json={'geometry': geometry})
+    assert response.status_code == 200, response.text
+    db.refresh(interview)
+    assert calibration_passed(interview)
+    assert read_calibration_profile(interview) is None
+    assert read_personal_baseline(interview) is None
+    saved = interview.interview_metadata['calibration']
+    assert saved['status'] == 'without_gaze'
+    assert set(saved['failed_capture_ids']) == {item.id for item in captures}
+    assert saved['profile']['capture_geometry'] == geometry | {'screen_width': None, 'screen_height': None}
+    for identifier, result, content in originals:
+        capture = db.get(CalibrationCaptureDB, identifier)
+        assert capture.result == result
+        assert storage.resolve(capture.storage_key).read_bytes() == content
+    assert api.post(endpoint, json={'geometry': geometry}).status_code == 200
+    listed = api.get(f'/medical-interviews/{interview.id}/calibration/captures')
+    assert listed.status_code == 200, listed.text
+    assert {item['id'] for item in listed.json()['captures']} == {item.id for item in captures}
+    assert all(item['media_url'] for item in listed.json()['captures'])
+
+
+def test_processing_errors_do_not_unlock_without_gaze(reference_api):
+    api, _, interview, _, _, _, worker = reference_api
+    worker.return_value = ({'passed': False, 'failure_reason': 'processing_failed'}, .01)
+    for content in (b'first broken input', b'second broken input'):
+        assert upload(api, interview.id, content=content).json()['can_continue_without_gaze'] is False
+    assert api.post(f'/calibration/without-gaze/{interview.id}',
+                    json={'geometry': json.loads(_valid_metadata_json())['geometry']}).status_code == 409
+
+
 @pytest.mark.parametrize("role,test_mode,allowed",[(UserRole.STUDENT,True,False),(UserRole.ADMIN,False,False),(UserRole.ADMIN,True,True)])
 def test_quality_bypass_is_server_scoped_to_owned_superuser_tests(reference_api,role,test_mode,allowed):
     from app.nonverbal.tests.test_independent_mediapipe import poor_calibration,frame

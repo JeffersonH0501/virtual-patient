@@ -187,9 +187,10 @@ DialogShell), manual scores and comments (HumanRatingPanel), and teacher feedbac
 are excluded from automatic text-field scrolling.
 
 The viewport meta tag requests `interactive-widget=resizes-content` where supported.
-The shared hook also publishes VisualViewport height/offset to CSS, with window resize
-as fallback. App shell, authentication minimum height, modal overlay and dialog
-maximum heights consume the same visible-height token. Modal bodies remain scrollable
+The shared hook publishes VisualViewport height and offset while an editable text
+field has focus, using window height as fallback. Otherwise CSS uses `100dvh` and
+a zero offset. The app shell, authentication, modal overlay and dialog maximum
+heights share the visible-height token. Modal bodies remain scrollable
 between their header and action footer. On focus, input and viewport resize, an
 occluded field scrolls by the nearest distance; visible fields are left alone.
 Visual viewport panning updates overlay position without forcing a scroll. Events

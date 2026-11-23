@@ -188,7 +188,10 @@ export const ConversationTranscript = ({
     }
     if (resuming && audio && pausedPlaybackRef.current === audio) {
       pausedPlaybackRef.current = null;
-      void Promise.resolve(resumeAudioGraph?.()).then(() => audio.play()).catch(() => {
+      const generation = playbackGenerationRef.current;
+      void resumeAudioGraph?.().catch(() => undefined);
+      void audio.play().catch(() => {
+        if (generation !== playbackGenerationRef.current) return;
         setAudioError(t('clinicalChat.call.audioUnavailable'));
         setFailedPatientMessage(messages?.find((message) => message.id === playingMessageRef.current) ?? null);
         stopAudio();
@@ -285,13 +288,8 @@ export const ConversationTranscript = ({
               pausedPlaybackRef.current = audio;
               return;
             }
-            if (resumeAudioGraph) {
-              try {
-                await resumeAudioGraph();
-              } catch {
-                // Keep browser-native playback available when metering cannot resume.
-              }
-            }
+            // WebKit can leave resume pending and needs play() in the retry gesture.
+            void resumeAudioGraph?.().catch(() => undefined);
             await audio.play();
           } catch (error) {
             if (generation !== playbackGenerationRef.current) return;

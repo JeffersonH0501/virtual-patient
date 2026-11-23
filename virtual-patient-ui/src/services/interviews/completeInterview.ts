@@ -13,6 +13,7 @@ export const completeInterview = async (
   const authHeaders = getAuthHeaders();
   const init: RequestInit = {
     method: 'POST',
+    signal: AbortSignal.timeout(120_000),
     body: JSON.stringify({completion_reason: completionReason}),
     headers: {
       'Content-Type': 'application/json',

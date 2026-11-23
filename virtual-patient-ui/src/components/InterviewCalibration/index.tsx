@@ -8,7 +8,7 @@ import {Dialog} from '../common/Dialog';
 import {useInterviewMedia} from '../../contexts/interviewMedia';
 import {useUser} from '../../hooks/useUser';
 import {CalibrationStage, GuidedCheckEnvironment, readGeometry, useTechnicalCalibration} from '../../hooks/useTechnicalCalibration';
-import {discardCalibrationDraft, discardResumeCalibration, getInterview, processCalibrationStage, saveCalibrationResult, warmUpCalibration} from '../../services/interviews';
+import {continueWithoutGaze, discardCalibrationDraft, discardResumeCalibration, getInterview, processCalibrationStage, saveCalibrationResult, warmUpCalibration} from '../../services/interviews';
 import {CalibrationStageResult, CalibrationResultPayload, GuidedCheckDiagnostics, processNonverbalTest} from '../../services/interviews/calibration';
 import {createInterview} from '../../services/interviews/createInterview';
 import {CompleteInterviewResponse, PersonalBaseline} from '../../types/interview';
@@ -131,8 +131,9 @@ export const InterviewCalibration = () => {
     const request = calibrationTest
       ? processNonverbalTest(capture.stage, testAttemptRef.current!, capture.blob, capture.durationMs, capture.metadata)
       : resume ? processCalibrationStage(...args, resume.resumeAttemptId) : processCalibrationStage(...args);
+    const attempt = startAttemptRef.current;
     const apply = (outcome: CalibrationOutcome) => {
-      if (!mountedRef.current) return;
+      if (!mountedRef.current || exitConfirmedRef.current || attempt !== startAttemptRef.current) return;
       if (outcome.draftExpired) {
         draftIdRef.current = null; draftRequestIdRef.current = null; calibrationSavedRef.current = false;
       }
@@ -148,14 +149,31 @@ export const InterviewCalibration = () => {
   }, [calibration.media, calibrationTest, resume, uploadAttempt]);
 
   useEffect(() => {
-    if (calibration.phase === 'error' && view === 'capturing') {
+    if (calibration.phase === 'error' && (view === 'capturing' || view === 'processing' || (view === 'stage-result' && stageResult?.status === 'passed'))) {
+      startAttemptRef.current += 1;
+      captureStartingRef.current = false;
+      setCaptureStarting(false);
+      if (calibration.failureReason === 'recording_failed') {
+        resultsRef.current = {};
+        calibrationSavedRef.current = false;
+        setStage('unified');
+      }
       setStageResult({stage, status: 'failed', failureReason: calibration.failureReason ?? 'recording_failed', result: null});
       setView('stage-result');
     }
-  }, [calibration.phase, calibration.failureReason, stage, view]);
+  }, [calibration.phase, calibration.failureReason, stage, stageResult?.status, view]);
 
   const beginStage = useCallback(async (captureStage: CalibrationStage = stage, environment = guidedEnvironment) => {
     if (captureStartingRef.current || starting) return;
+    if (!devicesReady) {
+      calibration.reset();
+      resultsRef.current = {};
+      calibrationSavedRef.current = false;
+      setStage('unified');
+      setStageResult(null);
+      setView('preparation');
+      return;
+    }
     if (draftIdRef.current === null && !routeConfig) {
       navigate(ROUTES.clinicalCases, {replace: true}); return;
     }
@@ -207,7 +225,7 @@ export const InterviewCalibration = () => {
         if (mountedRef.current) setCaptureStarting(false);
       }
     }
-  }, [calibration, navigate, routeConfig, stage, starting, guidedEnvironment, calibrationTest, nonverbalTest]);
+  }, [calibration, navigate, routeConfig, stage, starting, guidedEnvironment, calibrationTest, nonverbalTest, devicesReady]);
 
   const buildPayload = (): CalibrationResultPayload | null => {
     const gaze = resultsRef.current.gaze?.result;
@@ -239,22 +257,29 @@ export const InterviewCalibration = () => {
     };
   };
 
-  const continueToInterview = async () => {
-    const payload = buildPayload();
-    if (!payload || starting) return;
+  const continueToInterview = async (withoutGaze = false) => {
+    const payload = withoutGaze ? null : buildPayload();
+    if ((!withoutGaze && !payload) || starting || !devicesReady) return;
+    if (withoutGaze && (!stageResult?.canContinueWithoutGaze || !media.cameraStream || calibrationTest)) return;
+    const attempt = startAttemptRef.current;
     setStarting(true); setError(null);
     try {
       const id = draftIdRef.current;
       if (id === null) throw new Error('Missing calibration draft');
       if (!calibrationSavedRef.current) {
-        if (resume) await saveCalibrationResult(id, payload, resume.resumeAttemptId);
-        else await saveCalibrationResult(id, payload);
+        if (withoutGaze) await continueWithoutGaze(id, readGeometry(media.cameraStream!), resume?.resumeAttemptId);
+        else if (payload) {
+          if (resume) await saveCalibrationResult(id, payload, resume.resumeAttemptId);
+          else await saveCalibrationResult(id, payload);
+        }
+        if (!mountedRef.current || attempt !== startAttemptRef.current) return;
         calibrationSavedRef.current = true;
       }
       handedOffRef.current = true;
       media.bindInterview(String(id));
       navigate(interviewPath(id, 'session'), {replace: true, state: {justStarted: true, ...(resume ? {resume} : {})}});
     } catch (failure) {
+      if (!mountedRef.current || attempt !== startAttemptRef.current) return;
       if (failure instanceof Error && 'status' in failure && [404, 410].includes(Number(failure.status))) {
         draftIdRef.current = null; draftRequestIdRef.current = null;
         resultsRef.current = {};
@@ -266,7 +291,8 @@ export const InterviewCalibration = () => {
       } else {
         setError('startInterview');
       }
-      setStarting(false);
+    } finally {
+      if (mountedRef.current) setStarting(false);
     }
   };
 
@@ -275,8 +301,10 @@ export const InterviewCalibration = () => {
     setExiting(true); setError(null); exitConfirmedRef.current = true;
     try {
       await discardDraft();
+      if (!mountedRef.current) return;
       navigate(resume && existingId !== null ? interviewPath(existingId, 'session') : ROUTES.clinicalCases, {replace: true});
     } catch {
+      if (!mountedRef.current) return;
       exitConfirmedRef.current = false;
       setExiting(false); setExitOpen(true); setError('discard');
     }
@@ -359,7 +387,7 @@ export const InterviewCalibration = () => {
       {view === 'checkpoint' && <CalibrationCheckpoint stage={stageResult?.stage === 'camera' ? 'camera' : 'gaze'} onStart={() => void beginStage()} busy={captureStarting} titleRef={titleRef} />}
       {view === 'capturing' && activeCapture && <CalibrationActiveStep phase={displayPhase} activeCheck={calibration.activeCheck} waitingForStep={calibration.waitingForStep} onStartStep={calibration.startGuidedStep} remainingMs={calibration.remainingMs} seconds={Math.max(1, Math.ceil(calibration.remainingMs / 1000))} titleRef={titleRef} />}
       {(view === 'processing' || (view === 'capturing' && phase === 'complete')) && <CalibrationProcessing titleRef={titleRef} />}
-      {view === 'stage-result' && stageResult && <CalibrationCheckpoint experimentalOverride={stageResult.result?.experimentalQualityBypass === true} guidedDiagnostics={guidedDiagnostics} guidedVideoUrl={calibrationTest ? testVideoUrl : null} stage={stageResult?.stage === 'camera' ? 'camera' : 'gaze'} diagnostics={stageResult.result?.quality} passed={stageResult.status === 'passed'} failureReason={stageResult.failureReason} onStart={() => {
+      {view === 'stage-result' && stageResult && <CalibrationCheckpoint onContinueWithoutGaze={!calibrationTest && stageResult.status === 'failed' && stageResult.canContinueWithoutGaze && devicesReady ? () => void continueToInterview(true) : undefined} experimentalOverride={stageResult.result?.experimentalQualityBypass === true} guidedDiagnostics={guidedDiagnostics} guidedVideoUrl={calibrationTest ? testVideoUrl : null} stage={stageResult?.stage === 'camera' ? 'camera' : 'gaze'} diagnostics={stageResult.result?.quality} passed={stageResult.status === 'passed'} failureReason={stageResult.failureReason} onStart={() => {
         if (stageResult.failureReason === 'upload_failed') {
           processedMediaRef.current = null;
           setUploadAttempt((attempt) => attempt + 1);

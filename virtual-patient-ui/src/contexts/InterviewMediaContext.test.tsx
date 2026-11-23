@@ -110,3 +110,25 @@ it('grants camera and microphone when resuming calibration from the session rout
   await waitFor(() => expect(screen.getByTestId('devices').textContent).toBe('ready/ready'));
   expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(2);
 });
+
+it.each(['camera', 'microphone'] as const)('ignores late %s access after selecting another device', async (device) => {
+  let finishOld!: (value: MediaStream) => void;
+  const stopOld = vi.fn();
+  const oldStream = {...(device === 'camera' ? camera : microphone), getTracks: () => [{stop: stopOld}]} as unknown as MediaStream;
+  vi.mocked(navigator.mediaDevices.getUserMedia).mockImplementationOnce(() => new Promise((resolve) => {
+    finishOld = resolve;
+  }));
+  const {result} = renderHook(useInterviewMedia, {wrapper});
+  let oldRequest!: Promise<void>;
+  act(() => {
+    oldRequest = device === 'camera' ? result.current.startCamera() : result.current.startMicrophone();
+  });
+  await act(async () => {
+    await (device === 'camera' ? result.current.startCamera('external') : result.current.startMicrophone('external'));
+    finishOld(oldStream);
+    await oldRequest;
+  });
+  expect(result.current[`${device}Stream`]).toBe(device === 'camera' ? camera : microphone);
+  expect(result.current[`${device}DeviceId`]).toBe('external');
+  expect(stopOld).toHaveBeenCalledOnce();
+});

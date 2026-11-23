@@ -31,6 +31,43 @@ def test_half_open_segmentation_preserves_absolute_timestamps():
     assert [item.shared.timestamp_ms for item in segmented["b"]] == [1000, 1999]
 
 
+def test_without_gaze_keeps_all_orientation_unavailable_but_preserves_smile_and_nods():
+    from dataclasses import replace
+    from app.nonverbal.ccdbhg import NodAnalysis, NodEvent
+    from app.nonverbal.preprocessing import preprocess_nonverbal_turn
+    from app.multimodal.calibration import read_calibration_profile
+    from app.multimodal.config_loader import load_methodology_config
+    from app.multimodal.threshold_engine import compute_nonverbal_base_labels
+    from app.multimodal.label_engine import integrate_nonverbal_labels
+    interview = SimpleNamespace(interview_metadata={'calibration': {
+        'status': 'without_gaze', 'profile': {'gaze_source': 'mediapipe_five_point_v1', 'affine_matrix': [[1, 0, 0], [0, 1, 0]]}}})
+    samples = [enriched(timestamp) for timestamp in range(0, 1000, 100)]
+    samples[1] = replace(samples[1], gaze=GazeObservation(100, False, 'eyes_closed', None, None, None, None))
+    samples[2] = replace(samples[2], gaze=GazeObservation(200, False, 'face_not_detected', None, None, None, None))
+    raw = build_turn_raw_features(samples, TurnWindow('a', 0, 1000, 'patient'),
+        calibration_profile=read_calibration_profile(interview),
+        nod_analysis=NodAnalysis((NodEvent(200, 400, 300, .9),), True, evaluated_timestamps_ms=(100, 300)))
+    assert raw.gaze_semantic_observations == []
+    result = preprocess_nonverbal_turn(raw, 'listening', baseline=None)
+    assert result.processed.interaction_gaze_ratio is None
+    assert result.processed.interaction_gaze_duration_ms is None
+    assert result.processed.outside_gaze_duration_ms is None
+    assert result.processed.median_interaction_dwell_ms is None
+    assert result.processed.nod_count == 1
+    assert result.processed.smile_activity_ratio == 1
+    config = load_methodology_config()
+    base = compute_nonverbal_base_labels(result.processed, config, baseline_available=False, session_refs=None)
+    integrated = integrate_nonverbal_labels(base, config)
+    assert integrated.gaze_orientation.status.value == 'unavailable'
+    assert integrated.gaze_orientation.value is None
+    assert integrated.head_nods.status.value == 'ok'
+    assert integrated.smile_activity.status.value == 'ok'
+    from app.multimodal.evidence_text import render_family_evidence
+    payload = {'integrated_labels': integrated.model_dump(mode='json'),
+               'processed': result.processed.model_dump(mode='json'), 'raw': raw.model_dump(mode='json')}
+    assert render_family_evidence(payload, 'gaze_orientation') is None
+
+
 def test_partial_feature_availability_is_preserved_per_turn():
     window = TurnWindow("a", 0, 1000, "student")
     raw = build_turn_raw_features(

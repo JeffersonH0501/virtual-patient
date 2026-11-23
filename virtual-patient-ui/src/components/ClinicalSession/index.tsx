@@ -2,7 +2,7 @@ import {FC, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import {ActionButtons} from './ActionButtons';
-import {ROUTES, type CalibrationRouteState} from '../../utils/routes';
+import {ROUTES} from '../../utils/routes';
 import type {ClinicalCaseSimplified} from '../../services/clinicalCases';
 import {useSessionList} from '../../hooks/useSessionList';
 import {CustomSelect} from '../common';
@@ -13,49 +13,33 @@ type Props = {
   onCancel?: () => void;
 };
 
-type ReadOnlyFieldProps = {
-  label: string;
-  value: string;
-};
-
-const ReadOnlyField: FC<ReadOnlyFieldProps> = ({label, value}) => (
-  <div className="ui-field">
-    <span className="ui-field-label">{label}</span>
-    <div className="ui-field-value truncate">
-      {value}
-    </div>
-  </div>
-);
-
 export const ClinicalSession: FC<Props> = ({clinicalCase, onView, onCancel}) => {
   const {t} = useTranslation();
   const [personalityId, setPersonalityId] = useState<number | null>(null);
   const [gender, setGender] = useState<string>('');
-  // The patient response language is fixed to Spanish and cannot be changed.
-  const patientResponseLanguage = 'es';
+  const [patientResponseLanguage, setPatientResponseLanguage] = useState<'es' | 'en' | ''>('');
   const {items: personalities = [], loading: isLoadingPersonalities} = useSessionList('personalities');
   const navigate = useNavigate();
 
   const personalityOptions = personalities.map((personality) => personality.name);
   const genderOptions = [t('clinicalSession.male'), t('clinicalSession.female')];
-  const isFormValid = personalityId !== null && gender !== '';
-  const configuration: CalibrationRouteState = {
+  const isFormValid = personalityId !== null && gender !== '' && patientResponseLanguage !== '';
+  const configuration = {
     clinicalCaseId: clinicalCase.id,
     clinicalCaseTitle: clinicalCase.title,
     gender: gender || undefined,
     personalityId: personalityId ?? undefined,
-    patientResponseLanguage,
   };
 
   const onStartSession = () => {
-    if (!isFormValid) {
+    if (!isFormValid || !patientResponseLanguage) {
       return;
     }
 
     // The interview is not created here: it is only persisted once the
     // simulation actually starts, after calibration. Carry the configuration to
     // the calibration screen via location.state.
-    navigate(ROUTES.calibration, {state: configuration});
+    navigate(ROUTES.calibration, {state: {...configuration, patientResponseLanguage}});
   };
 
   return (
@@ -65,10 +49,16 @@ export const ClinicalSession: FC<Props> = ({clinicalCase, onView, onCancel}) => 
           the case and runs calibration tests, which do not use them. */}
       {!onView && (
         <div className="grid min-w-0 gap-x-layout gap-y-layout sm:grid-cols-3">
-          <ReadOnlyField
-            label={t('clinicalSession.patientResponseLanguage')}
-            value={t('clinicalSession.spanish')}
-          />
+          <div className="min-w-0">
+            <CustomSelect
+              label={t('clinicalSession.patientResponseLanguage')}
+              id={`patient-language-${clinicalCase.id}`}
+              placeholder={t('clinicalSession.selectLanguage')}
+              value={patientResponseLanguage ? t(`clinicalSession.${patientResponseLanguage === 'es' ? 'spanish' : 'english'}`) : ''}
+              options={[t('clinicalSession.spanish'), t('clinicalSession.english')]}
+              onChange={(value) => setPatientResponseLanguage(value === t('clinicalSession.english') ? 'en' : 'es')}
+            />
+          </div>
 
           <div className="min-w-0">
             <CustomSelect

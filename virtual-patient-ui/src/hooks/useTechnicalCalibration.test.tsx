@@ -32,7 +32,7 @@ class Recorder {
 function MockMediaStream(this: {getTracks: () => unknown[]}, tracks: unknown[]) {
   this.getTracks = () => tracks;
 }
-const track = {clone: () => ({stop: vi.fn()}), getSettings: () => ({width: 1280, height: 720})};
+const track = Object.assign(new EventTarget(), {clone: () => ({stop: vi.fn()}), getSettings: () => ({width: 1280, height: 720})});
 const stream = {active: true, getAudioTracks: () => [track], getVideoTracks: () => [track]} as unknown as MediaStream;
 const useCapture = () => {
   const capture = useTechnicalCalibration(stream, stream);
@@ -224,6 +224,46 @@ it('cancels countdown without starting a late recorder', async () => {
   expect(result.current.phase).toBe('error');
   expect(Recorder.instances).toHaveLength(0);
   expect(vi.getTimerCount()).toBe(0);
+});
+
+it('cancels recording when a source device disconnects', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('MediaRecorder', Recorder);
+  vi.stubGlobal('MediaStream', MockMediaStream);
+  vi.stubGlobal('AudioContext', undefined);
+  const videoTrack = Object.assign(new EventTarget(), track);
+  const camera = {...stream, getVideoTracks: () => [videoTrack]} as unknown as MediaStream;
+  const {result} = renderHook(() => useTechnicalCalibration(stream, camera));
+  await act(async () => {
+ await result.current.start('camera');
+});
+  act(() => videoTrack.dispatchEvent(new Event('ended')));
+  expect(result.current.phase).toBe('error');
+  expect(result.current.failureReason).toBe('recording_failed');
+  expect(result.current.media).toBeNull();
+  expect(Recorder.instances[0].state).toBe('inactive');
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+it('cancels the countdown when its input stream is replaced', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('MediaRecorder', Recorder);
+  vi.stubGlobal('MediaStream', MockMediaStream);
+  vi.stubGlobal('AudioContext', undefined);
+  const {result, rerender} = renderHook(({camera}) => useTechnicalCalibration(stream, camera), {
+    initialProps: {camera: stream},
+  });
+  let started!: Promise<void>;
+  act(() => {
+ started = result.current.start('unified');
+});
+  rerender({camera: {...stream} as MediaStream});
+  await act(async () => {
+ await vi.advanceTimersByTimeAsync(6000); await started;
+});
+  expect(result.current.phase).toBe('error');
+  expect(result.current.media).toBeNull();
+  expect(Recorder.instances).toHaveLength(0);
 });
 
 

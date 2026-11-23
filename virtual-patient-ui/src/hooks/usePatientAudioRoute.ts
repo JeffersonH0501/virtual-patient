@@ -1,7 +1,8 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
+import {usesIOSAudio} from '../services/speech/preparePatientAudio';
 import {connectPatientVoice, PATIENT_VOICE_GAIN} from '../utils/patientVoice';
 
-/** Route patient TTS through one AudioContext and expose its level for the speaking indicator. */
+/** Route patient TTS through Web Audio where supported and expose its speaking level. */
 export const usePatientAudioRoute = () => {
   const [level, setLevel] = useState(0);
   const context = useRef<AudioContext | null>(null);
@@ -14,7 +15,8 @@ export const usePatientAudioRoute = () => {
   }, []);
 
   const resumeAudioGraph = useCallback(async () => {
-    if (typeof window === 'undefined' || !window.AudioContext) return;
+    // Keep iOS playback on the native player while the interview captures the microphone.
+    if (typeof window === 'undefined' || !window.AudioContext || usesIOSAudio()) return;
     context.current ??= new AudioContext();
     if (context.current.state !== 'running') await context.current.resume();
   }, []);
@@ -31,8 +33,12 @@ export const usePatientAudioRoute = () => {
     const disconnectVoice = connectPatientVoice(graph, source, analyser);
     analyser.connect(graph.destination);
     const timer = window.setInterval(() => {
-      if (audio.paused || audio.ended) {
+      if (audio.ended) {
         cleanup.current?.(); return;
+      }
+      // Capture pauses resume the same player, which still needs its audio output connected.
+      if (audio.paused) {
+        setLevel(0); return;
       }
       analyser.getFloatTimeDomainData(samples);
       const rms = Math.sqrt(samples.reduce((sum, sample) => sum + sample * sample, 0) / samples.length);

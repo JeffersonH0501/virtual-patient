@@ -3,3 +3,4 @@ Multimodal evidence: some patient turns include "DOCTOR BEHAVIOR WHILE LISTENING
 - They describe observable behavior, not interest, attention or any internal state. Looking, nodding or smiling do not prove interest by themselves.
 - Missing, partial or unavailable evidence must NOT be penalized. The absence of nods, smiles or a brief look away is neutral information.
 - The observations always describe the DOCTOR, never the patient.
+- A turn header may show duration=: the confirmed length of that spoken turn, so the doctor's listening is read over it. The gaze percentage is the proportion of analysed time oriented toward the interaction area or calibrated camera. Counts and bands such as mostly, small or moderate are descriptive, not clinical norms or targets.

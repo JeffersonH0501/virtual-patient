@@ -9,6 +9,8 @@ import {turnFetch} from '../recordings/turns';
 import {InterviewTurnStore} from '../../recording/InterviewTurnStore';
 import {CaptureSyncError} from '../../recording/CaptureSyncError';
 
+const MESSAGE_TIMEOUT_MS = 120_000;
+
 export const sendMessage = async (
   interviewId: string,
   message: string,
@@ -35,7 +37,8 @@ export const sendMessage = async (
     },
   };
   const response = captureTiming?.turn_media_id
-    ? await turnFetch(Number(interviewId), '/messages', init, captureTiming.capture_scope)
+    // One deadline covers retries and offline waits; the pending request key survives for an explicit retry.
+    ? await turnFetch(Number(interviewId), '/messages', {...init, signal: AbortSignal.timeout(MESSAGE_TIMEOUT_MS)}, captureTiming.capture_scope)
     : await captureFetch(interviewId, `${API_URL}/medical-interviews/${interviewId}/messages`, init);
 
   // An expired session must recover centrally (clear token + redirect) instead

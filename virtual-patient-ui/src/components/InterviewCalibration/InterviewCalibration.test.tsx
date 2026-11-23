@@ -1,7 +1,7 @@
-import {cleanup, fireEvent, render, screen, within} from '@testing-library/react';
+import {act, cleanup, fireEvent, render, screen, waitFor, within} from '@testing-library/react';
 import {StrictMode, useState} from 'react';
 import {MemoryRouter, Route, Routes} from 'react-router-dom';
-import {afterEach, expect, it, vi} from 'vitest';
+import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {InterviewCalibration} from '.';
 
 const api = vi.hoisted(() => ({
@@ -9,6 +9,7 @@ const api = vi.hoisted(() => ({
   processCalibrationStage: vi.fn(),
   processNonverbalTest: vi.fn(),
   saveCalibrationResult: vi.fn(),
+  continueWithoutGaze: vi.fn(),
   startInterview: vi.fn(),
   warmUpCalibration: vi.fn().mockResolvedValue(undefined),
   discardCalibrationDraft: vi.fn().mockResolvedValue(undefined),
@@ -20,7 +21,7 @@ const media = vi.hoisted(() => ({
   cameraStream: null as MediaStream | null,
   startCamera: vi.fn(), startMicrophone: vi.fn(), bindInterview: vi.fn(),
 }));
-const captureControl = vi.hoisted(() => ({hold: false, cancel: vi.fn(), start: vi.fn()}));
+const captureControl = vi.hoisted(() => ({hold: false, cancel: vi.fn(), start: vi.fn(), fail: (() => undefined) as (reason: string) => void}));
 const activeCapture = vi.hoisted(() => vi.fn(() => null));
 
 vi.mock('react-i18next', () => ({useTranslation: () => ({i18n: {}, t: (key: string) => key})}));
@@ -32,17 +33,22 @@ vi.mock('../../services/interviews/createInterview', () => ({createInterview: ap
 vi.mock('./GazeTest', () => ({GazeTest: () => <p>Live gaze test</p>}));
 vi.mock('../common/Dialog', () => ({Dialog: ({open, children, actions}: {open: boolean; children: React.ReactNode; actions: React.ReactNode}) => open ? <div role="dialog">{children}{actions}</div> : null}));
 vi.mock('../../hooks/useTechnicalCalibration', () => ({
+  readGeometry: () => ({viewportWidth: 1280, viewportHeight: 720}),
   useTechnicalCalibration: () => {
     const [phase, setPhase] = useState('idle');
+    const [failureReason, setFailureReason] = useState<string | null>(null);
     const [capture, setCapture] = useState<{stage: string; blob: Blob} | null>(null);
+    captureControl.fail = (reason) => {
+      setCapture(null); setFailureReason(reason); setPhase('error');
+    };
     return {
       media: capture, phase, reset: () => {
-        setCapture(null); setPhase('idle');
+        setCapture(null); setFailureReason(null); setPhase('idle');
       },
-      cancel: () => {
-        captureControl.cancel(); setPhase('error');
+      cancel: (reason = 'capture_interrupted') => {
+        captureControl.cancel(); captureControl.fail(reason);
       },
-      failureReason: 'capture_interrupted',
+      failureReason,
       start: (stage: string, metadata: Record<string, unknown>) => {
         captureControl.start(stage, metadata);
         setPhase(captureControl.hold ? 'gaze_targets' : 'complete'); if (!captureControl.hold) setCapture({stage, blob: new Blob([stage])});
@@ -57,20 +63,35 @@ vi.mock('./CalibrationWizard', () => ({
   </>,
   CalibrationActiveStep: activeCapture,
   CalibrationProcessing: () => <p>Checking calibration</p>,
-  CalibrationCheckpoint: ({onStart, onContinue, passed, failureReason, error, busy, guidedVideoUrl}: {
+  CalibrationCheckpoint: ({onStart, onContinue, onContinueWithoutGaze, passed, failureReason, error, busy, guidedVideoUrl}: {
     onStart: () => void; onContinue?: () => void; passed?: boolean;
+    onContinueWithoutGaze?: () => void;
     failureReason?: string; error?: boolean; busy?: boolean; guidedVideoUrl?: string | null;
   }) => <>
     {guidedVideoUrl && <video src={guidedVideoUrl} aria-label="calibration.guided.testVideo" />}
     {failureReason && <p>{failureReason}</p>}
     {error && <p>Start failed</p>}
+    {onContinueWithoutGaze && <button disabled={busy} onClick={onContinueWithoutGaze}>Continue without gaze</button>}
     {passed ? <button disabled={busy} onClick={onContinue}>Continue</button> : <button disabled={busy} onClick={onStart}>Capture or retry</button>}
   </>,
 }));
 
+beforeEach(() => {
+  Object.values(api).forEach((mock) => mock.mockReset());
+  api.createInterview.mockResolvedValue({id: 42});
+  api.processCalibrationStage.mockImplementation(() => new Promise(() => undefined));
+  api.processNonverbalTest.mockImplementation(() => new Promise(() => undefined));
+  api.saveCalibrationResult.mockResolvedValue(undefined);
+  api.continueWithoutGaze.mockResolvedValue(undefined);
+  api.warmUpCalibration.mockResolvedValue(undefined);
+  api.discardCalibrationDraft.mockResolvedValue(undefined);
+  api.discardResumeCalibration.mockResolvedValue(undefined);
+});
+
 afterEach(async () => {
-  cleanup(); await Promise.resolve(); captureControl.hold = false; vi.clearAllMocks(); api.discardCalibrationDraft.mockReset().mockResolvedValue(undefined);
+  cleanup(); await Promise.resolve(); captureControl.hold = false; vi.clearAllMocks();
   media.cameraStream = null;
+  media.cameraState = 'ready';
 });
 
 it('opens the live gaze view only after successful test calibration', async () => {
@@ -240,7 +261,7 @@ it('cancels capture before opening the exit dialog', async () => {
     <Routes><Route path="/interviews/calibration" element={<InterviewCalibration />} /></Routes>
   </MemoryRouter>);
   fireEvent.click(await screen.findByRole('button', {name: 'Prepare'}));
-  await screen.findByRole('button', {name: 'calibration.exitTitle'});
+  await waitFor(() => expect(captureControl.start).toHaveBeenCalledOnce());
   fireEvent.click(screen.getByRole('button', {name: 'calibration.exitTitle'}));
   expect(captureControl.cancel).toHaveBeenCalledOnce();
   expect(await screen.findByRole('dialog')).toBeTruthy();
@@ -257,6 +278,94 @@ const renderCalibrationWithExit = (strict = false) => {
   </MemoryRouter>;
   return render(strict ? <StrictMode>{route}</StrictMode> : route);
 };
+
+const passedCalibration = {
+  stage: 'unified', status: 'passed', result: {checkpoints: {
+    gaze: {stage: 'gaze', status: 'passed', attestation: 'gaze', result: {profile: {captureGeometry: {}}}},
+    camera: {stage: 'camera', status: 'passed', attestation: 'camera', result: {cameraReferenceCenter: [0, 0], neutralHead: {}}},
+  }},
+};
+
+it('requires retry after the first failure and offers no-gaze continuation after the second', async () => {
+  media.cameraStream = {} as MediaStream;
+  const failure = {stage: 'unified', status: 'failed', failureReason: 'insufficient_target_samples',
+    result: {failedStage: 'gaze', checkpoints: {gaze: {stage: 'gaze', status: 'failed', failureReason: 'insufficient_target_samples', result: {}}}}};
+  api.processCalibrationStage.mockResolvedValueOnce({...failure, canContinueWithoutGaze: false})
+    .mockResolvedValueOnce({...failure, canContinueWithoutGaze: true});
+  render(<MemoryRouter initialEntries={[{pathname: '/interviews/calibration', state: {clinicalCaseId: 1, patientResponseLanguage: 'en'}}]}>
+    <Routes><Route path="/interviews/calibration" element={<InterviewCalibration />} />
+      <Route path="/interviews/42/session" element={<h1>Session without gaze</h1>} /></Routes>
+  </MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', {name: 'Prepare'}));
+  fireEvent.click(await screen.findByRole('button', {name: 'Capture or retry'}));
+  expect(screen.queryByRole('button', {name: 'Continue without gaze'})).toBeNull();
+  fireEvent.click(await screen.findByRole('button', {name: 'Continue without gaze'}));
+  await screen.findByRole('heading', {name: 'Session without gaze'});
+  expect(api.continueWithoutGaze).toHaveBeenCalledWith(42, {viewportWidth: 1280, viewportHeight: 720}, undefined);
+  expect(api.saveCalibrationResult).not.toHaveBeenCalled();
+  expect(api.discardCalibrationDraft).not.toHaveBeenCalled();
+  expect(media.bindInterview).toHaveBeenCalledWith('42');
+});
+
+it('ignores a passed upload after its source capture has been invalidated', async () => {
+  let finishUpload!: (value: unknown) => void;
+  api.processCalibrationStage.mockImplementationOnce(() => new Promise((resolve) => {
+ finishUpload = resolve;
+}));
+  renderCalibrationWithExit();
+  fireEvent.click(screen.getByRole('button', {name: 'Prepare'}));
+  await screen.findByText('Checking calibration');
+  act(() => captureControl.fail('recording_failed'));
+  await screen.findByText('recording_failed');
+  await act(async () => {
+ finishUpload(passedCalibration);
+});
+  expect(screen.queryByRole('button', {name: 'Continue'})).toBeNull();
+  expect(api.saveCalibrationResult).not.toHaveBeenCalled();
+});
+
+it('invalidates a passed checkpoint if a source device changes before continuing', async () => {
+  api.processCalibrationStage.mockResolvedValue(passedCalibration);
+  renderCalibrationWithExit();
+  fireEvent.click(screen.getByRole('button', {name: 'Prepare'}));
+  await screen.findByRole('button', {name: 'Continue'});
+  act(() => captureControl.fail('recording_failed'));
+  await screen.findByText('recording_failed');
+  expect(screen.queryByRole('button', {name: 'Continue'})).toBeNull();
+  expect(api.saveCalibrationResult).not.toHaveBeenCalled();
+});
+
+it('does not return to the session when saving finishes after navigation away', async () => {
+  let finishSave!: () => void;
+  api.createInterview.mockResolvedValue({id: 42});
+  api.processCalibrationStage.mockResolvedValue(passedCalibration);
+  api.saveCalibrationResult.mockImplementationOnce(() => new Promise<void>((resolve) => {
+ finishSave = resolve;
+}));
+  const view = renderCalibrationWithExit();
+  fireEvent.click(screen.getByRole('button', {name: 'Prepare'}));
+  fireEvent.click(await screen.findByRole('button', {name: 'Continue'}));
+  view.unmount();
+  await act(async () => {
+ finishSave();
+});
+  expect(media.bindInterview).not.toHaveBeenCalled();
+});
+
+it('returns to device preparation when retrying with a disconnected camera', async () => {
+  api.createInterview.mockResolvedValue({id: 42});
+  api.processCalibrationStage.mockResolvedValue({stage: 'unified', status: 'failed', failureReason: 'recording_failed', result: null});
+  const view = renderCalibrationWithExit();
+  fireEvent.click(screen.getByRole('button', {name: 'Prepare'}));
+  await screen.findByText('recording_failed');
+  media.cameraState = 'unavailable';
+  view.rerender(<MemoryRouter initialEntries={[{pathname: '/interviews/calibration', state: {clinicalCaseId: 1, patientResponseLanguage: 'en'}}]}>
+    <Routes><Route path="/interviews/calibration" element={<InterviewCalibration />} /><Route path="/cases" element={<h1>Cases</h1>} /></Routes>
+  </MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', {name: 'Capture or retry'}));
+  expect(screen.getByRole('button', {name: 'Prepare'})).toBeTruthy();
+  expect((screen.getByRole('button', {name: 'Prepare'}) as HTMLButtonElement).disabled).toBe(true);
+});
 
 const confirmCalibrationExit = async () => {
   fireEvent.click(screen.getByRole('button', {name: 'calibration.exitTitle'}));

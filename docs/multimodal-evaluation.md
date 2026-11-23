@@ -1,6 +1,6 @@
 # Complete multimodal evaluation
 
-Policy: `multimodal_categories_v4_score_only`, 13 October 2026. This extends the existing
+Policy: `multimodal_categories_v9_labels_with_minimal_counts` (the category set dates from 13 October 2026). This extends the existing
 interest implementation; it does not establish empirical signal accuracy,
 expert agreement, or an experimental improvement.
 
@@ -49,9 +49,10 @@ path. Completed transcripts must remain fixed for an experimental comparison;
 this implementation does not add an immutable historical input archive.
 
 The registry contains only interest, empathy and clarity and specifies allowed
-families and speaking/listening roles. The formatter sends glossary descriptions
-of integrated labels only, never raw/processed features, base labels, thresholds
-or numeric values. Internal `smile_activity` is displayed to the evaluator
+families and speaking/listening roles. The formatter sends observational descriptions
+of integrated labels, the verified analysis-window duration and only the gaze
+percentage, nod count and nonzero internal-pause count described below. It never
+sends raw series, base labels or band thresholds. Internal `smile_activity` is displayed to the evaluator
 as **Smile behavior**.
 
 The scoring prompt of each multimodal category is the inherited TEXT_ONLY prompt
@@ -62,6 +63,16 @@ prompt exactly, which a test verifies. The score call also uses the same user me
 the same structured output as the TEXT_ONLY call, so the two conditions differ only in the
 evidence. Scoring does not request Critical Turns or Learning Moments. The evaluation
 model is `gpt-4.1` for both conditions and the temperature is 0.7.
+
+### Per-turn evidence representation
+
+Only the text sent to the model is shaped; the persisted measurements, thresholds, labels and extractors are unchanged, and the run snapshot still stores the raw evidence of every turn. The same enriched transcript reaches the scoring call, the comment call and the learning moments.
+
+- **Header.** A turn the category reads evidence for is headed `[TURN T4 speaker=DOCTOR duration=13.3s]`. The duration is the analysed window (`end_ms - start_ms` of the stored turn, identical to the extractors' `turn_duration_ms`): the student's speech from its onset, or the patient's confirmed TTS playback, so waiting for the reply is never included. It is omitted when the timing is not `measured`, the source is not `turn_media`/`tts_playback`, or the window does not run forward. Turns a category receives no evidence for (the student's turns for interest, the patient's turns for clarity) do not carry it. It is stated once and not repeated per family.
+- **Minimal numeric evidence.** Beyond the header duration, only three measurements are sent: the gaze percentage of analysed time oriented toward the interaction area or calibrated camera (whole percentages, `<1%` for a trace), the nod count (`1 head nod` / `3 head nods`) and the count of internal pauses of at least 500 ms, only when nonzero. The integrated-label description is the main representation. No words per minute, median pause duration, smile percentage, pause-time percentage, F0 values or loudness values are sent. Nod/smile absence remains neutral and is omitted as evidence.
+- **Quality notes.** Closed eyes and a missing face are mentioned qualitatively only when each accounts for at least 0.5 s: for example, `The time away includes closed eyes.` Their durations are not sent. Existing truncated-audio and speech-at-window-boundary notes are preserved.
+- **Relative bands.** Descriptions no longer cite P25/P75, "provisional bands" or "defined typical ranges". Loudness is compared with the same student's other analysed turns in the interview, other bands are called descriptive, and each evidence block of the prompt says that none is a clinical norm or target.
+- **Traceability.** This representation is versioned as `multimodal_categories_v9_labels_with_minimal_counts`; it does not change the glossary, persisted measurements or extraction methodology. The learning-moment source hash includes the rendered transcript. Previously saved moments whose rendered input changes are therefore stale until regenerated; this change does not regenerate them or alter stored scores automatically.
 
 ### Category comment (second call, does not score)
 

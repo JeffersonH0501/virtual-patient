@@ -13,7 +13,7 @@ export const getInterview = async (
   const query = new URLSearchParams({language});
   const response = await apiFetch(`${API_URL}/medical-interviews/${interviewId}/complete?${query}`, {
     method: 'GET',
-    signal,
+    signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(30_000)]) : AbortSignal.timeout(30_000),
     headers: {
       'Content-Type': 'application/json',
       accept: 'application/json',
@@ -23,7 +23,7 @@ export const getInterview = async (
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({}));
-    throw new Error(errorData.detail || 'Failed to fetch interview');
+    throw Object.assign(new Error(errorData.detail || 'Failed to fetch interview'), {status: response.status});
   }
 
   const data = await response.json();

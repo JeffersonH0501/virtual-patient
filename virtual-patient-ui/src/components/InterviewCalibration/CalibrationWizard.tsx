@@ -315,6 +315,7 @@ type CheckpointProps = {
   onStart: () => void;
   onContinue?: () => void;
   onRestart?: () => void;
+  onContinueWithoutGaze?: () => void;
   busy?: boolean;
   error?: boolean;
   titleRef: RefObject<HTMLHeadingElement | null>;
@@ -332,6 +333,7 @@ export const CalibrationCheckpoint: FC<CheckpointProps> = ({
   onStart,
   onContinue,
   onRestart,
+  onContinueWithoutGaze,
   busy = false,
   error = false,
   titleRef,
@@ -413,10 +415,13 @@ export const CalibrationCheckpoint: FC<CheckpointProps> = ({
             </button>
           )}
           {(!hasResult || !passed) && (
-            <button type="button" className="ui-button ui-button--primary" onClick={onStart} disabled={busy}>
+            <Button variant={onContinueWithoutGaze ? 'secondary' : 'primary'} onClick={onStart} disabled={busy}>
               {t(retryLabel)}
-            </button>
+            </Button>
           )}
+          {passed === false && onContinueWithoutGaze && <Button onClick={onContinueWithoutGaze} disabled={busy}>
+            {t('calibration.continueWithoutGaze')}
+          </Button>}
         </div>
       </div>
     </div>

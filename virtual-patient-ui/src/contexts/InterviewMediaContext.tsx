@@ -70,7 +70,7 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string;
         frameRate: {ideal: 30, max: 30},
       },
     }).then((stream) => {
-      if (generation !== requestGenerationRef.current) {
+      if (generation !== requestGenerationRef.current || cameraRequestRef.current !== request) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -84,7 +84,7 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string;
         setCameraState('unavailable');
       }, {once: true});
     }).catch((error: unknown) => {
-      if (generation !== requestGenerationRef.current) return;
+      if (generation !== requestGenerationRef.current || cameraRequestRef.current !== request) return;
       setCameraState(errorState(error));
     }).finally(() => {
       if (cameraRequestRef.current === request) cameraRequestRef.current = null;
@@ -117,7 +117,7 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string;
         echoCancellation: true, noiseSuppression: true, autoGainControl: true,
       },
     }).then((stream) => {
-      if (generation !== requestGenerationRef.current) {
+      if (generation !== requestGenerationRef.current || microphoneRequestRef.current !== request) {
         stream.getTracks().forEach((track) => track.stop());
         return;
       }
@@ -131,7 +131,7 @@ export const InterviewMediaProvider: FC<PropsWithChildren<{interviewId?: string;
         setMicrophoneState('unavailable');
       }, {once: true});
     }).catch((error: unknown) => {
-      if (generation !== requestGenerationRef.current) return;
+      if (generation !== requestGenerationRef.current || microphoneRequestRef.current !== request) return;
       setMicrophoneState(errorState(error));
     }).finally(() => {
       if (microphoneRequestRef.current === request) microphoneRequestRef.current = null;

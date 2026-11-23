@@ -29,6 +29,23 @@ const defaults = () => ({
   onSelectCamera: vi.fn(),
   onSelectMicrophone: vi.fn(),
 });
+
+it('offers authorized no-gaze continuation as the primary action after the secondary retry', () => {
+  const onContinueWithoutGaze = vi.fn();
+  const checkpoint = (allowed: boolean) => <I18nextProvider i18n={i18n}><CalibrationCheckpoint stage="gaze" passed={false}
+    onStart={vi.fn()} onContinueWithoutGaze={allowed ? onContinueWithoutGaze : undefined} titleRef={{current: null}} /></I18nextProvider>;
+  const {rerender} = render(checkpoint(false));
+  expect(screen.queryByRole('button', {name: 'Continue without gaze evidence'})).toBeNull();
+  rerender(checkpoint(true));
+  expect(screen.queryByText(/gaze orientation will remain unavailable/)).toBeNull();
+  const retry = screen.getByRole('button', {name: 'Retry calibration'});
+  const proceed = screen.getByRole('button', {name: 'Continue without gaze evidence'});
+  expect(retry.classList.contains('ui-button--secondary')).toBe(true);
+  expect(proceed.classList.contains('ui-button--primary')).toBe(true);
+  expect(retry.compareDocumentPosition(proceed) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(proceed);
+  expect(onContinueWithoutGaze).toHaveBeenCalledOnce();
+});
 const preparation = (props: ComponentProps<typeof CalibrationPreparation>) => (
   <StrictMode>
     <I18nextProvider i18n={i18n}>

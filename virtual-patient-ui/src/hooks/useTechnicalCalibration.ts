@@ -56,6 +56,7 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
   const chunksRef = useRef<Blob[]>([]);
   const geometryStableRef = useRef(true);
   const sequenceRef = useRef(0);
+  const captureInputsRef = useRef<{microphone: MediaStream | null; camera: MediaStream | null} | null>(null);
   const cleanupRef = useRef<() => void>(() => undefined);
   const presentationRef = useRef<((order: number | null | GuidedCheckKind) => void) | null>(null);
   const [failureReason, setFailureReason] = useState<string | null>(null);
@@ -84,6 +85,7 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
 
   const reset = useCallback(() => {
     sequenceRef.current += 1;
+    captureInputsRef.current = null;
     cleanupRef.current();
     cleanupRef.current = () => undefined;
     presentationRef.current = null;
@@ -102,11 +104,16 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
     setFailureReason(reason);
     setPhase('error');
   }, [reset]);
+  useEffect(() => {
+    const inputs = captureInputsRef.current;
+    if (inputs && (inputs.microphone !== microphoneStream || inputs.camera !== cameraStream)) cancel('recording_failed');
+  }, [microphoneStream, cameraStream, cancel]);
   const confirmPresentation = useCallback((order: number | null | GuidedCheckKind) => presentationRef.current?.(order), []);
   const startGuidedStep = useCallback(() => startGuidedStepRef.current?.(), []);
 
   const start = useCallback(async (stage: CalibrationStage, stageMetadata: Record<string, unknown> = {}) => {
     reset();
+    captureInputsRef.current = {microphone: microphoneStream, camera: cameraStream};
     const sequence = sequenceRef.current;
     const checks = stageMetadata.nonverbalOnly ? GUIDED_CHECKS.filter((item) => !item.kind.startsWith('gaze_')) : GUIDED_CHECKS;
     if (stage !== 'camera' && stage !== 'guided') {
@@ -195,12 +202,16 @@ export const useTechnicalCalibration = (microphoneStream: MediaStream | null, ca
     const markGeometryChange = () => {
       geometryStableRef.current = false;
     };
+    const sourceTracks = [...microphoneStream.getAudioTracks(), ...cameraStream.getVideoTracks()];
+    const sourceEnded = () => cancel('recording_failed');
+    sourceTracks.forEach((track) => track.addEventListener('ended', sourceEnded));
     cleanupRef.current = () => {
       if (timerRef.current !== null) clearInterval(timerRef.current);
       timerRef.current = null;
       if (frameRequest !== null) cancelAnimationFrame(frameRequest);
       window.removeEventListener('resize', markGeometryChange);
       document.removeEventListener('visibilitychange', markGeometryChange);
+      sourceTracks.forEach((track) => track.removeEventListener('ended', sourceEnded));
       recorder.onstart = null; recorder.onstop = null; recorder.ondataavailable = null; recorder.onerror = null;
       if (recorder.state !== 'inactive') recorder.stop();
       combined.getTracks().forEach((track) => track.stop());

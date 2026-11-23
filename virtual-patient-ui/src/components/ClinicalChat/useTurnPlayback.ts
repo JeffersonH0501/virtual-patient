@@ -44,21 +44,23 @@ export const useTurnPlayback = (recap: InterviewRecap, seekRequest?: SeekRequest
   const [volume, setVolumeState] = useState(1);
   const [error, setError] = useState(false);
   const appliedRequest = useRef<number | null>(null);
+  const pendingSeek = useRef<number | null>(null);
   const duration = mediaDuration ?? (recap.durationMs ?? 0) / 1000;
   const clips = useMemo(() => timeline(recap), [recap]);
 
   const seek = useCallback((seconds: number) => {
     const target = Math.max(0, Math.min(seconds, video.current?.duration || seconds));
+    pendingSeek.current = target;
     if (video.current) video.current.currentTime = target;
     setTime(target);
   }, []);
 
   useEffect(() => {
-    if (!seekRequest || appliedRequest.current === seekRequest.requestId) return;
+    if (!seekRequest || !video.current || appliedRequest.current === seekRequest.requestId) return;
     const turn = recap.turns.find((item) => item.turnId === seekRequest.turnId);
     if (turn?.startMs != null) seek(turn.startMs / 1000);
     appliedRequest.current = seekRequest.requestId;
-  }, [seekRequest, recap.turns, seek]);
+  }, [seekRequest, recap.turns, recap.replay?.status, recap.replay?.source, seek]);
 
   const togglePlayback = () => {
     const element = video.current;
@@ -84,6 +86,10 @@ export const useTurnPlayback = (recap: InterviewRecap, seekRequest?: SeekRequest
       const element = event.currentTarget;
       element.volume = volume;
       if (Number.isFinite(element.duration)) setMediaDuration(element.duration);
+      if (pendingSeek.current !== null) {
+        element.currentTime = Math.min(pendingSeek.current, Number.isFinite(element.duration) ? element.duration : pendingSeek.current);
+        pendingSeek.current = null;
+      }
     },
     onPlay: () => setPlaying(true),
     onPause: () => setPlaying(false),

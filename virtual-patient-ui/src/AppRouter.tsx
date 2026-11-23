@@ -41,7 +41,7 @@ const EntryRedirect: FC = () => {
         setDestination(
           activeInterview
             ? interviewPath(activeInterview.id, 'session')
-            : ROUTES.clinicalCases,
+            : ROUTES.interviews,
         );
       })
       .catch(() => {

@@ -53,6 +53,15 @@ it('seeks the video when a transcript bubble is clicked', () => {
   expect(video.currentTime).toBe(2);
 });
 
+it('applies a jump requested while the replay was still being prepared', () => {
+  const seekRequest = {turnId: 'turn-student', requestId: 1};
+  const {container, rerender} = render(<TurnInterviewRecap recap={{...baseRecap(), replay: {status: 'processing', progress: 50}}} infoDisabled={false} seekRequest={seekRequest} />);
+  rerender(<TurnInterviewRecap recap={baseRecap()} infoDisabled={false} seekRequest={seekRequest} />);
+  const video = container.querySelector('video')!;
+  fireEvent.loadedMetadata(video);
+  expect(video.currentTime).toBe(2);
+});
+
 it('scrolls the requested turn bubble into view on a jump request', () => {
   const scrollIntoView = vi.fn();
   // jsdom does not implement scrollIntoView; provide it to observe the jump.

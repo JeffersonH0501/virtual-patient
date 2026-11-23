@@ -48,3 +48,20 @@ it('cancels its pending poll timer on unmount', async () => {
   unmount();
   expect(vi.getTimerCount()).toBe(0);
 });
+
+it('reports an observation failure without waiting for evaluation to finish', async () => {
+  vi.useFakeTimers();
+  service.reprocess.mockResolvedValue(undefined);
+  service.recap.mockResolvedValue({interviewId: 7, turns: [], recordingStatus: 'ready',
+    observationProcessing: {status: 'failed'}, evaluationProcessing: {status: 'queued'}});
+  const {result} = renderHook(() => useReviewRefresh({interviewId: 7, role: 'admin', mode: 'review',
+    isCompleted: true, recapData: null, setRecapData: vi.fn(), fetchInterview: vi.fn()}));
+  await act(async () => {
+ void result.current.handleRefresh(true);
+});
+  await act(async () => {
+ await vi.advanceTimersByTimeAsync(3000);
+});
+  expect(result.current.refreshError).toBe(true);
+  expect(result.current.isReprocessing).toBe(false);
+});

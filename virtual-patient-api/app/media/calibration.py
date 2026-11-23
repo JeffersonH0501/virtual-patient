@@ -20,6 +20,18 @@ def require_pending_resume(db, interview, attempt_id):
     return recording, attempt
 
 
+def failed_calibration_captures(db, interview_id, resume_attempt_id=None):
+    """Count preserved quality failures once per original, within this preparation."""
+    captures = db.query(CalibrationCaptureDB).filter_by(medical_interview_id=interview_id).order_by(
+        CalibrationCaptureDB.created_at, CalibrationCaptureDB.id).all()
+    return [capture for capture in captures
+            if capture.stage in {"gaze", "camera", "unified"}
+            and (capture.capture_metadata or {}).get("resume_attempt_id") == resume_attempt_id
+            and (capture.capture_metadata or {}).get("geometry_stable") is True
+            and (capture.result or {}).get("passed") is False
+            and (capture.result or {}).get("failure_reason") != "processing_failed"]
+
+
 def discard_capture_references(db, interview):
     """Invalidate temporary calibration first; physical erasure remains retryable."""
     if (interview.interview_metadata or {}).get("calibration_test") is True:

@@ -12,6 +12,7 @@ export const createHypothesis = async (
   const authHeaders = getAuthHeaders();
   const init: RequestInit = {
     method: 'POST',
+    signal: AbortSignal.timeout(120_000),
     body: JSON.stringify(hypotheses.map((hypothesis) => ({
       hypothesis_text: hypothesis.hypothesisText,
       hypothesis_order: hypothesis.hypothesisOrder,

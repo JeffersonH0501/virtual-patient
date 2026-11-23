@@ -24,7 +24,8 @@ export type PersonalBaseline = {
 // (including the gaze affine matrix) the multimodal pipeline consumes.
 export type CalibrationResult = {
   version: string;
-  status: 'passed' | 'failed';
+  status: 'passed' | 'failed' | 'without_gaze';
+  failedCaptureIds?: string[];
   failureReason?: string | null;
   completedAt: string;
   profile?: Record<string, unknown> | null;

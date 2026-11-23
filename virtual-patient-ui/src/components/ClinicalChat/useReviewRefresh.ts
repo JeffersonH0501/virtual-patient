@@ -52,8 +52,8 @@ export const useReviewRefresh = ({
       const POLL_INTERVAL_MS = 3000;
       const MAX_POLLS = observations ? 800 : 200;
       try {
-        if (observations) await reprocessInterviewRecording(interviewId);
-        else await regenerateInterviewEvaluation(interviewId);
+        if (observations) await reprocessInterviewRecording(interviewId, controller.signal);
+        else await regenerateInterviewEvaluation(interviewId, controller.signal);
         if (controller.signal.aborted) return;
         let finished = false;
         // The evaluation lifecycle remains pending while the LLM is running.
@@ -69,17 +69,20 @@ export const useReviewRefresh = ({
           });
           if (controller.signal.aborted) return;
           let status: string | undefined;
+          let observationStatus: string | undefined;
           try {
             const recap = await getInterviewRecap(interviewId, controller.signal);
             if (controller.signal.aborted) return;
             setRecapData(recap);
             status = recap.evaluationProcessing?.status;
+            observationStatus = recap.observationProcessing?.status;
           } catch (error) {
             if (controller.signal.aborted) return;
             console.error('Failed to poll regeneration status:', error);
           }
+          if (status === 'failed' || (observations && observationStatus === 'failed')) throw new Error('Review refresh failed');
+          if (observations && observationStatus && PENDING_STATUSES.includes(observationStatus)) continue;
           if (status && !PENDING_STATUSES.includes(status)) {
-            if (status === 'failed') throw new Error('Review refresh failed');
             finished = true;
             break;
           }

@@ -167,6 +167,13 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   // The greeting (or a reply pending on resume) plays first; capture opens its clip when arming.
   const initialPatientMessageIdRef = useRef<number | null>(null);
   const media = useInterviewMedia();
+  const activeRef = useRef(false);
+  useEffect(() => {
+    activeRef.current = true;
+    return () => {
+ activeRef.current = false;
+};
+  }, []);
 
   useEffect(() => {
     if (mode === 'session' && (location.state as {justStarted?: boolean} | null)?.justStarted) {
@@ -312,6 +319,10 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         return interviewData;
       } catch (error) {
         if (controller.signal.aborted || requestId !== interviewRequestRef.current) return;
+        if (error instanceof Error && 'status' in error && error.status === 404) {
+          navigate(ROUTES.interviews, {replace: true});
+          return;
+        }
         console.error('Failed to load interview:', error);
         setInterviewLoadError(true);
       } finally {
@@ -376,6 +387,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setCompletionRetryError(false);
     try {
       await completeInterview(interviewId.toString());
+      if (!activeRef.current) return;
       await fetchInterview();
     } catch (error) {
       console.error('Failed to retry interview completion:', error);
@@ -389,6 +401,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
 
   const handleSendMessage = useCallback(
     async (content: string, timing?: SpeechTiming) => {
+      if (!activeRef.current) return;
       const segmentId = recordingRef.current?.segmentId;
       if (interviewId && !endingRef.current && content.trim() && (!segmentId || recordingRef.current?.syncPending)) {
         deferredUtteranceRef.current = {content, timing};
@@ -429,11 +442,13 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       try {
         recordingRef.current?.submitStudentTurn(pending.requestId);
         pending.captureTiming ??= await recordingRef.current?.prepareStudentTurn?.(timing);
-        await recordingRef.current?.resumeAudioGraph();
+        if (!activeRef.current) return;
+        void recordingRef.current?.resumeAudioGraph().catch(() => undefined);
         requestStartedAt = performance.now();
         const response = pending.captureTiming
           ? await sendMessage(interviewId.toString(), pending.content, pending.requestId, segmentId, pending.captureTiming)
           : await sendMessage(interviewId.toString(), pending.content, pending.requestId, segmentId);
+        if (!activeRef.current) return;
         measureResponse(retry ? 'reply-retry' : 'reply', requestStartedAt, pending.requestId);
         const processedMessages = processMessagesWithAvatars(
           response.messages,
@@ -468,6 +483,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
         if (studentMessage && pending.clockMs != null) setMessageTimes((times) => ({...times, [studentMessage.id]: pending.clockMs!}));
         pendingMessageRef.current = null;
       } catch (error) {
+        if (!activeRef.current) return;
         measureResponse('reply-failed', requestStartedAt, pending.requestId);
         console.error('Failed to send message:', error);
         setPatientTurnActive(false);
@@ -481,7 +497,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       } finally {
         utteranceInFlightRef.current = false;
         sendInFlightRef.current = false;
-        setIsLoading(false);
+        if (activeRef.current) setIsLoading(false);
       }
     },
     [interview?.patientGender, interview?.interviewMetadata?.recordingTransport, interviewId, isLoading, t],
@@ -661,6 +677,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const prepareResumption = async (id: number) => {
     resumeRequestRef.current ??= crypto.randomUUID();
     await recording.stopForRecovery();
+    if (!activeRef.current) return null;
     return resumeTurnInterview(id, resumeRequestRef.current);
   };
 
@@ -671,8 +688,10 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     setForceTerminationError(false);
     try {
       const resume = await prepareResumption(interviewId);
+      if (!activeRef.current || !resume) return;
       navigate(ROUTES.calibration, {replace: true, state: {draftInterviewId: interviewId, resume}});
     } catch (error) {
+      if (!activeRef.current) return;
       console.error('Interview resume preparation failed:', error);
       setForceTerminationError(true);
     } finally {
@@ -692,16 +711,20 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       if (resumePromptOpen) {
         resumeRequestRef.current ??= crypto.randomUUID();
         await recording.stopForRecovery();
+        if (!activeRef.current) return;
         resumeAttemptId = (await resumeTurnInterview(interviewId, resumeRequestRef.current, true, forceSignal)).resumeAttemptId;
       } else if (!await recording.finalize(true)) {
         throw new Error('Recording preservation failed; retry before leaving the interview');
       }
+      if (!activeRef.current) return;
       await interruptInterview(String(interviewId), {...(resumeAttemptId
         ? {resumeAttemptId} : {segmentId: recording.captureSegmentId}),
       signal: forceSignal});
+      if (!activeRef.current) return;
       // An interrupted interview has no review; return to the history.
       navigate(ROUTES.interviews, {replace: true});
     } catch (error) {
+      if (!activeRef.current) return;
       console.error('Failed to force interview termination:', error);
       setForceTerminationError(true);
       setForcingTermination(false);
@@ -711,11 +734,13 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
   const cancelHypotheses = async () => {
     if (resumingInterview) return;
     if (!captureSealed && !await sealCapture()) return;
+    if (!activeRef.current) return;
     if (!recording.canRestartWithCurrentGeometry()) {
       void handleResume();
       return;
     }
     await recording.restartAfterCancel();
+    if (!activeRef.current) return;
     setCaptureSealed(false);
     endingRef.current = false;
     setEnding(false);
@@ -723,6 +748,7 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
     speech.start();
   };
   const handleInterviewFinalized = (nextEvaluationData: InterviewEvaluationResponse) => {
+    if (!activeRef.current) return;
     setInterview((current) => current ? {
       ...current,
       ...nextEvaluationData.interview,
@@ -902,11 +928,15 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
             {recording.syncPending && (recording.errorCode || !navigator.onLine || recording.reconnecting) && <div className="mx-layout mb-layout text-warning-800 secondary-text" role="status">
               <p>{!navigator.onLine ? t('clinicalChat.syncPausedOffline')
                 : recording.reconnecting && !recording.errorCode ? t('clinicalChat.syncReconnecting') : t('clinicalChat.syncPaused')}</p>
-              <button type="button" className="ui-button ui-button--secondary" onClick={() => {
+              {recording.errorCode ? <button type="button" className="ui-button ui-button--secondary" onClick={() => {
                 speech.stop();
                 recording.pause();
                 setResumePromptOpen(true);
-              }}>{t('clinicalChat.reviewSession')}</button>
+              }}>{t('clinicalChat.reviewSession')}</button> : (
+                <button type="button" className="ui-button ui-button--secondary" onClick={recording.retryConnection}>
+                  {t('clinicalChat.retryConnection')}
+                </button>
+              )}
             </div>}
             {lostDeferredUtterance && (
               <div
@@ -988,7 +1018,9 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
           void (async () => {
             try {
               if (!interview.startTime) await startInterview(interviewId);
+              if (!activeRef.current) return;
               const refreshed = await fetchInterview();
+              if (!activeRef.current) return;
               if (!refreshed?.startTime) throw new Error('Interview start could not be confirmed');
               setSimulationAccepted(true);
               setOpenWelcomeModal(false);

@@ -19,6 +19,20 @@ class EnrichedConversation:
     alias_to_turn_id: dict = field(default_factory=dict)
 
 
+# Where each speaker's window comes from: the student's speech from its onset in their own clip, and the patient's
+# complete, confirmed TTS playback. Any other source (for example written delivery) has no verified window.
+_VERIFIED_WINDOW_SOURCE = {"student": "turn_media", "patient": "tts_playback"}
+def analysed_window_seconds(turn) -> float | None:
+    """Length of the window the turn's evidence was computed over, or None when it is not verified.
+    For the patient this is the confirmed playback, so waiting for the reply is never included. Provisional or
+    unavailable timing, or a window that does not run forward, has no reliable duration and is omitted.
+    """
+    start, end = getattr(turn, "start_ms", None), getattr(turn, "end_ms", None)
+    if (getattr(turn, "timing_quality", None) != "measured"
+            or getattr(turn, "timing_source", None) != _VERIFIED_WINDOW_SOURCE.get(getattr(turn, "speaker", None))
+            or not isinstance(start, (int, float)) or not isinstance(end, (int, float)) or end <= start):
+        return None
+    return (end - start) / 1000
 class MultimodalConversationFormatter:
     def __init__(self, db: Session):
         self.db = db
@@ -57,14 +71,18 @@ class MultimodalConversationFormatter:
             # reaches the model, only the alias used for citation and validation.
             alias = f"T{len(alias_to_turn_id) + 1}"
             alias_to_turn_id[alias] = str(turn.id)
-            lines = [f"[TURN {alias} speaker={speaker}]", text]
-            if patient and getattr(turn, "timing_quality", None) == "provisional":
-                lines.append("[PLAYBACK: completion was not confirmed; do not assume the entire patient message was heard.]")
             modalities = []
             if turn.speaker in config["nonverbal_speakers"]:
                 modalities.append((turn.nonverbal_features, config["nonverbal"]))
             if doctor:
                 modalities.append((turn.paraverbal, config["paraverbal"]))
+            # The duration belongs only to turns this category receives evidence for: it is the window that evidence
+            # describes, so it is not given for turns whose behavior the category does not read.
+            header = f"[TURN {alias} speaker={speaker}"
+            duration = analysed_window_seconds(turn) if any(families for _, families in modalities) else None
+            lines = [f"{header}{f' duration={duration:.1f}s' if duration is not None else ''}]", text]
+            if patient and getattr(turn, "timing_quality", None) == "provisional":
+                lines.append("[PLAYBACK: completion was not confirmed; do not assume the entire patient message was heard.]")
             evidence_lines = []
             valid_evidence = {}
             for payload, families in modalities:

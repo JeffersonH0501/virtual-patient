@@ -60,6 +60,26 @@ it('adapts to keyboard opening and closing without changing text, selection or f
   expect(input.scrollIntoView).toHaveBeenCalledTimes(1);
 });
 
+it('uses CSS viewport sizing on initial load and after a text field loses focus', () => {
+  viewport.height = 350;
+  viewport.offsetTop = 25;
+  renderHook(useInputViewport);
+  flush();
+  const style = document.documentElement.style;
+  expect(style.getPropertyValue('--app-viewport-height')).toBe('');
+  expect(style.getPropertyValue('--app-viewport-top')).toBe('');
+
+  const input = field(100, 140);
+  flush();
+  expect(style.getPropertyValue('--app-viewport-height')).toBe('350px');
+  expect(style.getPropertyValue('--app-viewport-top')).toBe('25px');
+
+  input.blur();
+  flush();
+  expect(style.getPropertyValue('--app-viewport-height')).toBe('');
+  expect(style.getPropertyValue('--app-viewport-top')).toBe('');
+});
+
 it('reveals a textarea clipped by a dialog body even inside the visible screen', () => {
   const scroller = document.createElement('div');
   scroller.style.overflowY = 'auto';

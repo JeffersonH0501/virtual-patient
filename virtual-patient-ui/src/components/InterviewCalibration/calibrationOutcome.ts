@@ -31,7 +31,8 @@ export const interpretCalibrationResult = (stage: CalibrationStage, result: Cali
       if (checkpoints?.[checkpoint]?.status === 'passed') passed[checkpoint] = checkpoints[checkpoint];
     }
     const failedStage = result.result?.failedStage as Checkpoint | undefined;
-    const display = checkpoints?.[failedStage ?? 'camera'] ?? {...result, stage: 'gaze'};
+    const display: CalibrationStageResult = {...(checkpoints?.[failedStage ?? 'camera'] ?? {...result, stage: 'gaze'}),
+      canContinueWithoutGaze: result.canContinueWithoutGaze};
     const gazeQuality = checkpoints?.gaze?.result?.quality as Record<string, unknown> | undefined;
     return {
       diagnostics, passed, reset: true,

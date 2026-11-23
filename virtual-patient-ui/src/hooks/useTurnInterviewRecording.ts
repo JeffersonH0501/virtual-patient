@@ -65,6 +65,7 @@ export const useTurnInterviewRecording = (options: UseInterviewRecordingOptions)
   const isCapturing = status === 'recording' && !syncPending;
   const [api] = useState(() => ({
     retryStart: () => capture.arm(),
+    retryConnection: () => capture.goOnline(),
     attemptStorageRecovery: () => capture.attemptStorageRecovery(),
     canRestartWithCurrentGeometry: () => capture.canContinueWithCurrentSetup(),
     restartAfterCancel: () => capture.reopen(),

@@ -6,6 +6,7 @@ import json
 import os
 import logging
 import tempfile
+from datetime import datetime, timezone
 from time import perf_counter
 from pathlib import Path
 from typing import Annotated, Literal
@@ -15,7 +16,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.core.database import get_db
-from app.media.calibration import preserve_capture, discard_capture_references, require_pending_resume
+from app.media.calibration import preserve_capture, discard_capture_references, require_pending_resume, failed_calibration_captures
 from app.media.storage import get_media_storage
 from app.models.calibration_capture import CalibrationCaptureDB
 from app.models.medical_interview import MedicalInterviewDB
@@ -25,7 +26,7 @@ from app.core.auth import get_current_active_user
 from app.models.calibration import (
     UnifiedCalibrationMetadata, GuidedOnlyMetadata,
     CameraCalibrationMetadata,
-    GazeCalibrationMetadata, LiveGazeMetadata,
+    GazeCalibrationMetadata, LiveGazeMetadata, CalibrationGeometry,
 )
 from app.multimodal.media_processing_client import (
     process_calibration_video,
@@ -100,6 +101,46 @@ class CalibrationStageResponse(BaseModel):
     failure_reason: str | None
     result: dict | None
     attestation: str | None = None
+    can_continue_without_gaze: bool = False
+
+
+class WithoutGazeRequest(BaseModel):
+    geometry: CalibrationGeometry
+    resume_attempt_id: str | None = None
+
+
+@router.post("/without-gaze/{interview_id}")
+def continue_without_gaze(interview_id: int, payload: WithoutGazeRequest,
+                          current_user: User = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """Authorize capture without gaze after two retained failed calibration originals."""
+    interview = lock_row(db, MedicalInterviewDB, interview_id)
+    if interview is None or interview.user_id != current_user.id:
+        raise HTTPException(404, "Interview not found")
+    metadata = dict(interview.interview_metadata or {})
+    if metadata.get("calibration_discarded"):
+        raise HTTPException(410, "Calibration preparation was discarded")
+    if metadata.get("calibration_test"):
+        raise HTTPException(409, "Calibration tests require their normal diagnostic flow")
+    if payload.resume_attempt_id is not None:
+        recording, attempt = require_pending_resume(db, interview, payload.resume_attempt_id)
+    elif interview.start_time is not None or interview.status != "in_progress":
+        raise HTTPException(409, "Calibration requires an unstarted interview or an active resume attempt")
+    failures = failed_calibration_captures(db, interview_id, payload.resume_attempt_id)
+    if len(failures) < 2:
+        raise HTTPException(409, "Two distinct failed calibration captures are required")
+    geometry = payload.geometry.model_dump(mode="json")
+    if geometry != CalibrationGeometry.model_validate(failures[-1].capture_metadata["geometry"]).model_dump(mode="json"):
+        raise HTTPException(409, "Capture geometry changed; repeat calibration")
+    now = datetime.now(timezone.utc).isoformat()
+    result = {"version": "multimodal_without_gaze_v1", "status": "without_gaze",
+              "profile": {"capture_geometry": geometry}, "personal_baseline": None,
+              "failed_capture_ids": [capture.id for capture in failures], "completed_at": now}
+    if payload.resume_attempt_id is not None:
+        recording.capture_config = {**recording.capture_config, "resume_attempt": {**attempt, "calibration": result}}
+    else:
+        interview.interview_metadata = {**metadata, "calibration": result, "calibration_activity_at": now}
+    db.commit()
+    return {"status": "without_gaze"}
 
 
 async def _run_timed_worker(
@@ -485,6 +526,7 @@ async def process_calibration_stage(
         _delete_temp(temp_path)
 
     passed = bool(result.get("passed"))
+    can_continue_without_gaze = (not passed and len(failed_calibration_captures(db, interview_id, resume_attempt_id)) >= 2)
     experimental_allowed = getattr(metadata,"experimental_quality_bypass",False)
     accepted = passed or experimental_allowed and result.get("experimental_quality_bypass") is True
     if result.get("failure_reason") == "processing_failed":
@@ -514,6 +556,7 @@ async def process_calibration_stage(
                 "attestation": sign_checkpoint(current_user.id, interview_id, checkpoint, outcome, checkpoint_metadata, resume_attempt_id) if outcome["passed"] or experimental_allowed and outcome.get("experimental_quality_bypass") else None,
             }
         return CalibrationStageResponse(stage=stage, status="passed" if accepted else "failed",
+            can_continue_without_gaze=can_continue_without_gaze,
             failure_reason=result.get(result.get("failed_stage"), {}).get("failure_reason") if not passed else None,
             result={"checkpoints": checkpoints, "failed_stage": result.get("failed_stage"),
                     "experimental_quality_bypass": result.get("experimental_quality_bypass", False),
@@ -522,6 +565,7 @@ async def process_calibration_stage(
 
     return CalibrationStageResponse(
         stage=stage,
+        can_continue_without_gaze=can_continue_without_gaze,
         status="passed" if accepted else "failed",
         failure_reason=result.get("failure_reason"),
         result=result,
