@@ -11,6 +11,7 @@ type ConversationTranscriptProps = {
   capturePaused?: boolean;
   interviewId: number;
   headerAction?: ReactNode;
+  notices?: ReactNode;
   /** Interview-clock time (ms) of each message, from the same clock as the header timer. */
   messageTimes?: Record<number, number>;
   messages?: Message[];
@@ -38,6 +39,7 @@ type ConversationTranscriptProps = {
 export const ConversationTranscript = ({
   interviewId,
   headerAction,
+  notices,
   messageTimes,
   messages,
   isListening,
@@ -360,7 +362,7 @@ export const ConversationTranscript = ({
 
   return (
     <section
-      className="flex min-h-0 flex-1 flex-col"
+      className="call-transcript flex min-h-0 flex-1 flex-col"
       aria-label={t('clinicalChat.call.interview')}
     >
       <header className="ui-panel-header flex shrink-0 items-center justify-between gap-inset text-left">
@@ -371,7 +373,7 @@ export const ConversationTranscript = ({
       </header>
       <div
         ref={containerRef}
-        className="ui-panel-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto scrollbar-hidden"
+        className="ui-panel-body min-h-0 flex-1 overflow-x-hidden overflow-y-auto overscroll-contain scrollbar-hidden"
         aria-live="polite"
       >
         <div ref={contentRef} className="mx-auto flex w-full max-w-3xl flex-col gap-layout pb-inset">
@@ -412,39 +414,35 @@ export const ConversationTranscript = ({
             </MotionMessage>
           );
         })}
-        <div className={showSendAudioHint && showStudentWave ? 'call-send-guide' : undefined}>
         <div className="transcript-status" hidden={!showStudentWave} inert={!showStudentWave}>
-          <div className="min-h-0 overflow-hidden">
-            <article className="recap-turn-bubble recap-turn-bubble--student transcript-voice-bubble ml-auto">
-              <div className="flex items-center gap-layout">
-                {showStudentWave && <VoiceWave speaker="student" level={audioLevel} active={isListening && !isSubmittingUtterance} />}
-                <button
-                  ref={sendAudioRef}
-                  type="button"
-                  onClick={() => {
-                    onSubmitUtterance();
-                    setHasSubmittedAudio(true);
-                  }}
-                  aria-keyshortcuts="Enter"
-                  disabled={!showStudentWave || !hasPendingUtterance || isSubmittingUtterance}
-                  className={`ui-icon-button ui-icon-button--brand ui-icon-button--large call-send-audio ${showSendAudioHint ? 'call-send-audio--highlighted' : ''}`}
-                  aria-label={t('clinicalChat.call.sendAudio')}
-                  aria-describedby={showSendAudioHint ? sendAudioHintId : undefined}
-                  title={t('clinicalChat.call.sendAudio')}
-                >
-                  {isSubmittingUtterance ? (
-                    <LoaderCircle className="h-5 w-5 motion-safe:animate-spin" aria-hidden="true" />
-                  ) : (
-                    <SendHorizontal className="h-5 w-5" aria-hidden="true" />
-                  )}
-                </button>
-              </div>
-            </article>
-          </div>
-        </div>
-        {showSendAudioHint && <p id={sendAudioHintId} hidden={!showStudentWave} className="call-send-coachmark dialog-annotation text-left">
-          {t('clinicalChat.call.sendAudioHint')}
-        </p>}
+          <article className="recap-turn-bubble recap-turn-bubble--student transcript-voice-bubble ml-auto">
+            <div className="flex items-center gap-layout">
+              {showStudentWave && <VoiceWave speaker="student" level={audioLevel} active={isListening && !isSubmittingUtterance} />}
+              <button
+                ref={sendAudioRef}
+                type="button"
+                onClick={() => {
+                  onSubmitUtterance();
+                  setHasSubmittedAudio(true);
+                }}
+                aria-keyshortcuts="Enter"
+                disabled={!showStudentWave || !hasPendingUtterance || isSubmittingUtterance}
+                className={`ui-icon-button ui-icon-button--brand ui-icon-button--large call-send-audio ${showSendAudioHint ? 'call-send-audio--highlighted' : ''}`}
+                aria-label={t('clinicalChat.call.sendAudio')}
+                aria-describedby={showSendAudioHint ? sendAudioHintId : undefined}
+                title={t('clinicalChat.call.sendAudio')}
+              >
+                {isSubmittingUtterance ? (
+                  <LoaderCircle className="h-5 w-5 motion-safe:animate-spin" aria-hidden="true" />
+                ) : (
+                  <SendHorizontal className="h-5 w-5" aria-hidden="true" />
+                )}
+              </button>
+            </div>
+          </article>
+          {showSendAudioHint && <p id={sendAudioHintId} className="call-send-coachmark dialog-annotation text-left">
+            {t('clinicalChat.call.sendAudioHint')}
+          </p>}
         </div>
         <div className="transcript-status" hidden={!waitingForPatient} aria-hidden={!waitingForPatient || undefined}>
           <div className="min-h-0 overflow-hidden">
@@ -462,6 +460,7 @@ export const ConversationTranscript = ({
               else void playMessage(failedPatientMessage);
             }}>{t(blockedPlaybackRef.current ? 'clinicalChat.call.playPatientAudio' : 'common.retry')}</button>}
         </div>}
+        {notices}
         </div>
       </div>
     </section>

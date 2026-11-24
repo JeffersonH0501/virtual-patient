@@ -42,7 +42,7 @@ export const CallStage = ({
 
   return (
     <section
-      className={`grid grid-cols-1 gap-layout md:flex md:h-full md:min-h-0 md:flex-col md:items-center ${className}`}
+      className={`call-stage grid grid-cols-2 gap-layout md:flex md:h-full md:min-h-0 md:flex-col md:items-center ${className}`}
       aria-label={t('clinicalChat.call.videoArea')}
     >
       <article className="relative flex aspect-video min-h-0 min-w-0 items-center justify-center overflow-hidden rounded-xl bg-neutral-900 md:h-call-tile md:w-auto md:max-w-full md:flex-none">
@@ -52,7 +52,7 @@ export const CallStage = ({
           }`}
         />
         <div
-          className={`relative flex h-20 w-20 items-center justify-center rounded-full bg-warning-100 ring-4 motion-speaking sm:h-24 sm:w-24 ${
+          className={`call-stage-avatar relative flex h-20 w-20 items-center justify-center rounded-full bg-warning-100 ring-4 motion-speaking sm:h-24 sm:w-24 ${
             patientSpeaking
               ? 'scale-105 ring-success-400 shadow-speaking'
               : 'ring-white/15'
@@ -65,8 +65,8 @@ export const CallStage = ({
             className="h-patient-avatar w-patient-avatar rounded-full object-cover"
           />
         </div>
-        <div className="absolute inset-x-0 bottom-0 bg-black/45 px-inset py-inset text-left text-white backdrop-blur-sm secondary-text">
-          <span className="truncate">{patientName || t('clinicalChat.call.patient')}</span>
+        <div className="call-stage-name absolute inset-x-0 bottom-0 bg-black/45 px-inset py-inset text-left text-white backdrop-blur-sm secondary-text">
+          <span className="block truncate">{patientName || t('clinicalChat.call.patient')}</span>
         </div>
       </article>
 
@@ -77,12 +77,12 @@ export const CallStage = ({
             autoPlay
             muted
             playsInline
-            className="h-full w-full -scale-x-100 bg-neutral-950 object-contain"
+            className="camera-preview-video"
             aria-label={t('clinicalChat.call.studentCamera')}
           />
         ) : (
-          <div className="flex max-w-camera-notice flex-col items-center gap-layout px-inset text-center text-neutral-200 secondary-text">
-            <span className="flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
+          <div className="call-camera-notice flex max-w-camera-notice flex-col items-center gap-layout px-inset text-center text-neutral-200 secondary-text">
+            <span className="call-camera-icon flex h-10 w-10 items-center justify-center rounded-full bg-white/10">
               <span className="block h-camera-icon w-camera-icon [&_svg]:h-full [&_svg]:w-full"><Camera /></span>
             </span>
             <span>{cameraMessage}</span>
@@ -97,7 +97,7 @@ export const CallStage = ({
             )}
           </div>
         )}
-        <div className="absolute inset-x-0 bottom-0 bg-black/45 px-inset py-inset text-left text-white backdrop-blur-sm secondary-text">
+        <div className="call-stage-name absolute inset-x-0 bottom-0 bg-black/45 px-inset py-inset text-left text-white backdrop-blur-sm secondary-text">
           <span className="block truncate">{studentName}</span>
         </div>
       </article>

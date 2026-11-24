@@ -6,7 +6,7 @@ type InterviewLayoutProps = {
 };
 
 export const ActiveSimulationLayout = ({children}: InterviewLayoutProps) => (
-  <section data-interaction-area className="grid h-full min-h-0 w-full min-w-0 grid-cols-1 auto-rows-max gap-layout overflow-y-auto bg-neutral-100 md:grid-cols-simulation-tablet md:grid-rows-1 md:overflow-hidden">
+  <section data-interaction-area className="active-interview-layout grid h-full min-h-0 w-full min-w-0 grid-cols-1 grid-rows-simulation gap-layout overflow-hidden bg-neutral-100 md:grid-cols-simulation-tablet md:grid-rows-1">
     {children}
   </section>
 );

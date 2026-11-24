@@ -41,6 +41,7 @@ export const CameraPreview: FC<CameraPreviewProps> = ({
           autoPlay
           muted
           playsInline
+          className="camera-preview-video"
           aria-label={t('calibration.cameraPreview')}
         />
       ) : (

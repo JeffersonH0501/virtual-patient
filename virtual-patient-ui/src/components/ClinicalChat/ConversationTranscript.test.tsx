@@ -12,7 +12,7 @@ vi.mock('../../services/speech/patientSpeechUrl', () => ({
 }));
 vi.mock('react-i18next', () => ({useTranslation: () => ({t: (key: string) => key})}));
 vi.mock('../common/Motion', () => ({
-  MotionMessage: ({children}: PropsWithChildren) => <div>{children}</div>,
+  MotionMessage: ({children, className}: PropsWithChildren<{className?: string}>) => <div className={className}>{children}</div>,
 }));
 vi.mock('../common/Motion/hooks', () => ({useAppMotion: () => ({reduced: true})}));
 class Audio {
@@ -78,6 +78,24 @@ afterEach(() => {
   cleanup();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+it('places the voice bubble immediately after the last patient message inside the transcript', () => {
+  render(<ConversationTranscript
+    {...props()}
+    audioAutoPlayEnabled={false}
+    captureEnabled={false}
+    isListening
+    hasPendingUtterance
+    notices={<button type="button">Retry capture</button>}
+  />);
+  const history = screen.getByRole('button', {name: 'Retry capture'}).closest('[aria-live="polite"]');
+  const patient = screen.getByText('Synthetic patient').closest('.transcript-bubble');
+  const voiceBubble = screen.getByRole('button', {name: 'clinicalChat.call.sendAudio'}).closest('.transcript-status');
+  expect(history).not.toBeNull();
+  expect(voiceBubble).not.toBeNull();
+  expect(history?.contains(voiceBubble)).toBe(true);
+  expect(patient?.nextElementSibling).toBe(voiceBubble);
 });
 
 it('sends pending audio with Enter without overriding focused controls or dialogs', () => {

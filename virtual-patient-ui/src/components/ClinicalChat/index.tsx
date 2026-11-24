@@ -882,9 +882,9 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
       )}
 
       {mode !== 'review' && !resumePromptOpen && (
-        <div className={isInterviewOpen ? 'flex min-h-0 min-w-0 flex-col gap-layout md:col-start-2 md:row-start-1' : 'contents'}>
+        <div className={isInterviewOpen ? 'active-interview-conversation flex min-h-0 min-w-0 flex-col gap-layout md:col-start-2 md:row-start-1' : 'contents'}>
           <section
-            className={`ui-panel flex min-w-0 flex-1 flex-col overflow-hidden xl:col-start-2 xl:row-start-1 ${isInterviewOpen ? 'min-h-80 md:min-h-0' : 'md:max-xl:col-span-2 md:max-xl:row-start-1 xl:h-full'}`}
+            className={`ui-panel flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden xl:col-start-2 xl:row-start-1 ${isInterviewOpen ? '' : 'md:max-xl:col-span-2 md:max-xl:row-start-1 xl:h-full'}`}
           >
             <ConversationTranscript
               headerAction={isInterviewOpen ? <CallTimer elapsedSeconds={elapsedSeconds} /> : undefined}
@@ -912,68 +912,70 @@ const ClinicalChatContent: FC<{mode: 'session' | 'review'}> = ({mode}) => {
               onPatientTurnStart={handlePatientTurnStart}
               onPatientTurnEnd={handlePatientTurnEnd}
               onPatientTurnComplete={handlePatientTurnComplete}
-            />
-            {(speech.errorCode || messageError) && (
-              <div
-                className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
-                role="alert"
-              >
-                {messageError || t(`clinicalChat.call.speechErrors.${speech.errorCode}`)}
-                {messageError && <button type="button" className="ui-button ui-button--secondary" disabled={isLoading} onClick={() => {
-                  const pending = pendingMessageRef.current;
-                  if (pending) void handleSendMessage(pending.content, pending.timing);
-                }}>{t('common.retry')}</button>}
-              </div>
-            )}
-            {recording.syncPending && (recording.errorCode || !navigator.onLine || recording.reconnecting) && <div className="mx-layout mb-layout text-warning-800 secondary-text" role="status">
-              <p>{!navigator.onLine ? t('clinicalChat.syncPausedOffline')
-                : recording.reconnecting && !recording.errorCode ? t('clinicalChat.syncReconnecting') : t('clinicalChat.syncPaused')}</p>
-              {recording.errorCode ? <button type="button" className="ui-button ui-button--secondary" onClick={() => {
-                speech.stop();
-                recording.pause();
-                setResumePromptOpen(true);
-              }}>{t('clinicalChat.reviewSession')}</button> : (
-                <button type="button" className="ui-button ui-button--secondary" onClick={recording.retryConnection}>
-                  {t('clinicalChat.retryConnection')}
-                </button>
-              )}
-            </div>}
-            {lostDeferredUtterance && (
-              <div
-                className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
-                role="alert"
-              >
-                {t('clinicalChat.lostDeferredUtterance', {content: lostDeferredUtterance})}
-                <button type="button" className="ui-button ui-button--secondary" onClick={() => {
-                  setLostDeferredUtterance(null);
-                  void handleSendMessage(lostDeferredUtterance);
-                }}>{t('clinicalChat.retryLostUtterance')}</button>
-              </div>
-            )}
-            {recording.errorCode && (
-              <div
-                className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
-                role="alert"
-              >
-                {t(`clinicalChat.recording.errors.${recording.errorCode}`)}
-                {recording.canRetryStart && <button type="button" className="ui-button ui-button--secondary"
-                  onClick={recording.retryStart}>{t('common.retry')}</button>}
-                {recording.errorCode === 'temporary-storage-failed' && <button type="button" className="ui-button ui-button--secondary"
-                  onClick={async () => {
-                    const recovered = await recording.attemptStorageRecovery();
-                    if (!recovered) setResumePromptOpen(true);
-                  }}>{t('common.retry')}</button>}
-                {['finalize-timeout', 'finalize-failed'].includes(recording.errorCode) && (
-                  <button type="button" className="ui-button ui-button--secondary"
-                    onClick={() => void recording.finalize()}>{t('common.retry')}</button>
+              notices={<>
+                {(speech.errorCode || messageError) && (
+                  <div
+                    className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
+                    role="alert"
+                  >
+                    {messageError || t(`clinicalChat.call.speechErrors.${speech.errorCode}`)}
+                    {messageError && <button type="button" className="ui-button ui-button--secondary" disabled={isLoading} onClick={() => {
+                      const pending = pendingMessageRef.current;
+                      if (pending) void handleSendMessage(pending.content, pending.timing);
+                    }}>{t('common.retry')}</button>}
+                  </div>
                 )}
-              </div>
-            )}
-            {!isOwner && (
-              <div className="ui-panel-footer text-center text-neutral-500 default-text">
-                {t('clinicalChat.readOnlyMode')}
-              </div>
-            )}
+                {recording.syncPending && (recording.errorCode || !navigator.onLine || recording.reconnecting) && <div className="mx-layout mb-layout text-warning-800 secondary-text" role="status">
+                  <p>{!navigator.onLine ? t('clinicalChat.syncPausedOffline')
+                    : recording.reconnecting && !recording.errorCode ? t('clinicalChat.syncReconnecting') : t('clinicalChat.syncPaused')}</p>
+                  {recording.errorCode ? <button type="button" className="ui-button ui-button--secondary" onClick={() => {
+                    speech.stop();
+                    recording.pause();
+                    setResumePromptOpen(true);
+                  }}>{t('clinicalChat.reviewSession')}</button> : (
+                    <button type="button" className="ui-button ui-button--secondary" onClick={recording.retryConnection}>
+                      {t('clinicalChat.retryConnection')}
+                    </button>
+                  )}
+                </div>}
+                {lostDeferredUtterance && (
+                  <div
+                    className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
+                    role="alert"
+                  >
+                    {t('clinicalChat.lostDeferredUtterance', {content: lostDeferredUtterance})}
+                    <button type="button" className="ui-button ui-button--secondary" onClick={() => {
+                      setLostDeferredUtterance(null);
+                      void handleSendMessage(lostDeferredUtterance);
+                    }}>{t('clinicalChat.retryLostUtterance')}</button>
+                  </div>
+                )}
+                {recording.errorCode && (
+                  <div
+                    className="ui-notice ui-notice--warning mx-layout mb-layout text-left"
+                    role="alert"
+                  >
+                    {t(`clinicalChat.recording.errors.${recording.errorCode}`)}
+                    {recording.canRetryStart && <button type="button" className="ui-button ui-button--secondary"
+                      onClick={recording.retryStart}>{t('common.retry')}</button>}
+                    {recording.errorCode === 'temporary-storage-failed' && <button type="button" className="ui-button ui-button--secondary"
+                      onClick={async () => {
+                        const recovered = await recording.attemptStorageRecovery();
+                        if (!recovered) setResumePromptOpen(true);
+                      }}>{t('common.retry')}</button>}
+                    {['finalize-timeout', 'finalize-failed'].includes(recording.errorCode) && (
+                      <button type="button" className="ui-button ui-button--secondary"
+                        onClick={() => void recording.finalize()}>{t('common.retry')}</button>
+                    )}
+                  </div>
+                )}
+                {!isOwner && (
+                  <div className="ui-panel-footer text-center text-neutral-500 default-text">
+                    {t('clinicalChat.readOnlyMode')}
+                  </div>
+                )}
+              </>}
+            />
             {isInterviewOpen && <CallToolbar endDisabled={isEndInterviewDisabled} onEndInterview={handleEndInterview} />}
           </section>
         </div>

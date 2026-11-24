@@ -9,6 +9,7 @@ const allQuestions = [...sus, ...experience, ...evaluation];
 const sections = {SUS: {title: 'perceptionSusTableTitle', questions: sus}, EXP: {title: 'perceptionExpTableTitle', questions: experience}, EVA: {title: 'perceptionEvaTableTitle', questions: evaluation}} as const;
 type SectionKey = keyof typeof sections;
 const sectionKeys: SectionKey[] = ['SUS', 'EXP', 'EVA'];
+const scaleValues = [1, 2, 3, 4, 5];
 
 const openQuestionKeys: Record<SectionKey, string> = {
   SUS: 'perception.openQuestionSUS',
@@ -75,77 +76,65 @@ export function PerceptionSurvey() {
   return <div className="ui-page survey-page">
     <PageHeader eyebrow={t('perceptionEyebrow')} title={t('perception.title')} />
 
-    {sectionKeys.map((section) => <div key={section} className="survey-table-scroll" role="region" aria-label={t(sections[section].title)} tabIndex={0}>
-      <table className="survey-table">
-        <thead className="survey-table-sticky-header">
-          <tr>
-            <th scope="col">{t(sections[section].title)}</th>
-            {[1, 2, 3, 4, 5].map((value) => <th scope="col" key={value}>
-              <span>{value}</span>
-              {t(`perception.scale.${value}`)}
-            </th>)}
-          </tr>
-        </thead>
-        <tbody>
-          {sections[section].questions.map((question, index, list) => <Fragment key={question.id}>
-            {question.group && question.group.es !== list[index - 1]?.group?.es &&
-              <tr className="survey-group-row">
-                <th colSpan={6} scope="colgroup">{question.group[language]}</th>
-              </tr>
+    {sectionKeys.map((section) => <section key={section} className="survey-section" aria-labelledby={`survey-${section}`}>
+      <div className="survey-section-header">
+        <h2 id={`survey-${section}`}>{t(sections[section].title)}</h2>
+        <ol className="survey-scale">
+          {scaleValues.map((value) => <li key={value}>
+            <strong>{value}</strong>{' '}{t(`perception.scale.${value}`)}
+          </li>)}
+        </ol>
+      </div>
+      {sections[section].questions.map((question, index, list) => <Fragment key={question.id}>
+        {question.group && question.group.es !== list[index - 1]?.group?.es &&
+          <h3 className="survey-group-heading">{question.group[language]}</h3>
+        }
+        <div className="survey-question" role="radiogroup" aria-labelledby={`survey-${question.id}`}>
+          <div className="survey-question-copy">
+            <p className="survey-statement" id={`survey-${question.id}`}>
+              {question.id}.{' '}
+              {section === 'EVA' && <>{evaluationTitles[index][language]}.{' '}</>}
+              {question.text[language]}
+            </p>
+            {question.caption && <p className="survey-caption">{question.caption[language]}</p>}
+            {question.criteria &&
+              <details className="survey-criteria">
+                <summary>{t('perception.criteria')}</summary>
+                <ul>{question.criteria.map((item) => <li key={item.es}>{item[language]}</li>)}</ul>
+              </details>
             }
-            <tr>
-              <th scope="row">
-                <span className="survey-id">{question.id}.</span>{' '}
-                {section === 'EVA' && <>{evaluationTitles[index][language]}.{' '}</>}
-                <span className="survey-statement">{question.text[language]}</span>
-                {question.caption && <span className="survey-caption">{question.caption[language]}</span>}
-                {question.criteria &&
-                  <details className="survey-criteria">
-                    <summary>{t('perception.criteria')}</summary>
-                    <ul>{question.criteria.map((item) => <li key={item.es}>{item[language]}</li>)}</ul>
-                  </details>
-                }
-              </th>
-              {[1, 2, 3, 4, 5].map((value) => <td key={value}>
-                <label className="survey-table-choice">
-                  <input
-                    type="radio"
-                    name={question.id}
-                    value={value}
-                    aria-label={`${question.id}: ${value}. ${t(`perception.scale.${value}`)}`}
-                    checked={answers[question.id] === value}
-                    onChange={() => {
-                      setAnswers({...answers, [question.id]: value});
-                      setSaved(false);
-                    }}
-                  />
-                </label>
-              </td>)}
-            </tr>
-          </Fragment>)}
-        </tbody>
-        <tfoot>
-          <tr>
-            <td colSpan={6}>
-              <label className="survey-comment">
-                <span className="survey-comment-label">
-                  {t(openQuestionKeys[section])} ({t('perception.optional')})
-                </span>
-                <textarea
-                  rows={3}
-                  maxLength={10000}
-                  value={comments[section] ?? ''}
-                  onChange={(event) => {
-                    setComments({...comments, [section]: event.target.value});
-                    setSaved(false);
-                  }}
-                />
-              </label>
-            </td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>)}
+          </div>
+          <div className="survey-choices">
+            {scaleValues.map((value) => <label className="survey-choice" key={value}>
+              <input
+                type="radio"
+                name={question.id}
+                value={value}
+                aria-label={`${value}. ${t(`perception.scale.${value}`)}`}
+                checked={answers[question.id] === value}
+                onChange={() => {
+                  setAnswers((current) => ({...current, [question.id]: value}));
+                  setSaved(false);
+                }}
+              />
+              <span aria-hidden="true">{value}</span>
+            </label>)}
+          </div>
+        </div>
+      </Fragment>)}
+      <label className="survey-comment">
+        <span>{t(openQuestionKeys[section])} ({t('perception.optional')})</span>
+        <textarea
+          rows={3}
+          maxLength={10000}
+          value={comments[section] ?? ''}
+          onChange={(event) => {
+            setComments({...comments, [section]: event.target.value});
+            setSaved(false);
+          }}
+        />
+      </label>
+    </section>)}
 
     {error && <p role="alert">{t('perception.error')}</p>}
     {saved && <p role="status" className="ui-notice ui-notice--success mx-auto w-fit max-w-full text-center">{t('perception.saved')}</p>}

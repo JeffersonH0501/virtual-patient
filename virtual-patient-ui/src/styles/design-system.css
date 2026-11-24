@@ -798,6 +798,7 @@
     background: var(--color-neutral-50);
   }
   .dialog-reading-card--compact { --card-padding: var(--layout-gap); }
+  .submitted-survey-sections { @apply grid grid-cols-1 items-start gap-layout lg:grid-cols-3; }
   .dialog-reading-card > :is(h3, h4, header), .case-record-section > h3 {
     margin-inline: calc(-1 * var(--card-padding));
     margin-block-start: calc(-1 * var(--card-padding));
@@ -1148,15 +1149,10 @@
   .call-toolbar-end { min-height: var(--header-control-height); padding: var(--button-large-padding-block) var(--button-large-padding-inline); }
   .call-send-audio { min-width: 44px; min-height: 44px; flex-shrink: 0; }
   .call-send-audio--highlighted { box-shadow: 0 0 0 4px var(--color-brand-200); }
-  .call-send-guide { position: relative; padding-bottom: 5rem; }
   .call-send-coachmark {
-    position: absolute;
-    right: 0;
-    bottom: 8px;
-    z-index: 1;
+    position: relative;
     max-width: min(100%, 18rem);
-    margin: 0;
-    pointer-events: none;
+    margin: var(--layout-gap) 0 0 auto;
   }
   .call-send-coachmark::before {
     content: '';
@@ -1243,8 +1239,6 @@
   .calibration-camera { @apply relative flex aspect-video min-h-0 w-full items-center justify-center overflow-hidden rounded-panel bg-neutral-900 shadow-lg; }
   .calibration-camera[data-sound-active] { outline: 3px solid transparent; transition: outline-color var(--motion-control); }
   .calibration-camera[data-sound-active='true'] { outline-color: var(--color-brand-600); }
-
-  .calibration-camera video { @apply h-full w-full -scale-x-100 object-cover; }
 
   .calibration-camera__empty { @apply default-text; @apply flex flex-col items-center gap-layout px-inset text-center text-neutral-200; }
 
@@ -1596,6 +1590,8 @@
 
 @utility h-call-tile { height: calc((100% - 0.5rem) / 2); }
 
+@utility camera-preview-video { @apply h-full w-full -scale-x-100 bg-neutral-950 object-contain; }
+
 @utility right-status-dot { right: 12px; }
 
 @utility rounded-case { border-radius: var(--case-card-inner-radius); }
@@ -1627,6 +1623,28 @@
 @utility tracking-eyebrow { letter-spacing: var(--tracking-eyebrow); }
 
 @utility z-modal { z-index: var(--z-modal); }
+
+@media (width < 48rem), (orientation: landscape) and (height < 30rem) and (pointer: coarse) {
+  .active-interview-layout {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: clip;
+  }
+  .active-interview-layout > .call-stage {
+    display: grid;
+    grid-area: 1 / 1;
+    height: auto;
+  }
+  .active-interview-layout > .active-interview-conversation { grid-area: 2 / 1; }
+  .call-stage > article { height: auto; width: 100%; max-height: calc(var(--app-viewport-height) * .28); }
+  .call-stage-avatar { width: min(42%, 4rem); height: auto; aspect-ratio: 1; }
+  .call-stage-name { padding-block: var(--layout-gap-small); padding-inline: var(--layout-gap); }
+  .call-camera-notice { gap: var(--layout-gap-small); padding-inline: var(--layout-gap-small); line-height: 1.15; }
+  .call-camera-notice button { min-height: 44px; padding-block: var(--layout-gap-small); }
+  .call-camera-icon, .call-stage > article:has(.call-camera-notice) > .call-stage-name { display: none; }
+  .call-transcript > .ui-panel-header,
+  .active-interview-conversation > .ui-panel > footer { padding-block: var(--layout-gap-small); }
+}
 
 @utility transition-disclosure { transition-property: grid-template-rows, opacity; }
 
@@ -1752,41 +1770,60 @@
 
 /* Perception survey */
 .survey-page { width: 100%; max-width: var(--content-max-width); margin: 0 auto; }
-.survey-actions { display: flex; flex-wrap: wrap; justify-content: center; }
-.survey-table-scroll { position: relative; width: 100%; overflow-x: clip; border: 1px solid #dbe3ed; border-radius: .75rem; background: white; }
-.survey-table { width: 100%; min-width: 720px; border-collapse: collapse; table-layout: fixed; }
-.survey-table th, .survey-table td { padding: .7rem .45rem; border-bottom: 1px solid #e5ebf2; }
-.survey-table thead th { background: var(--color-brand-50); color: #52647b; text-align: center; font-size: .75rem; font-weight: 600; line-height: 1.25; }
-.survey-table-sticky-header th { position: sticky; top: 0; z-index: 10; background: var(--color-brand-50); box-shadow: 0 1px 0 #e5ebf2; }
-.survey-table thead th:first-child { width: 44%; text-align: left; padding-left: 1rem; }
-.survey-table thead th span { display: block; color: #1e3a5f; font-size: .95rem; }
-.survey-table tbody th { padding-left: 1rem; text-align: left; font-size: .875rem; font-weight: 500; line-height: 1.4; }
-.survey-table tbody .survey-id { color: inherit; font-size: inherit; font-weight: 600; }
-.survey-table tbody .survey-statement { font-weight: 600; }
-.survey-table tbody .survey-caption { display: block; margin: .2rem 0 0; font-size: .78rem; font-weight: 400; }
-.survey-table tbody tr:last-child th, .survey-table tbody tr:last-child td { border-bottom: 0; }
-.survey-table td { text-align: center; }
-.survey-table tfoot td { padding: var(--layout-inset); border-top: 1px solid #e5ebf2; border-bottom: 0; text-align: left; }
-/* Survey answer radios: the whole cell is the click target; the circle itself is 1.75rem. */
-.survey-table td:has(> .survey-table-choice) { padding: 0; }
-.survey-table-choice { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 3.25rem; cursor: pointer; }
-.survey-table-choice input { appearance: none; -webkit-appearance: none; flex: none; width: 1.75rem; height: 1.75rem; margin: 0; border: 2px solid #8fa3ba; border-radius: 50%; background: white; cursor: pointer; transition: border-color .12s ease, background-color .12s ease, box-shadow .12s ease; }
-.survey-table-choice:hover input:not(:checked) { border-color: var(--color-brand-600); background: var(--color-brand-50); box-shadow: 0 0 0 4px var(--color-brand-100); }
-.survey-table-choice input:checked { border-color: var(--color-brand-600); background: var(--color-brand-600); }
-.survey-table-choice input:focus-visible { outline: var(--focus-outline-width) solid var(--color-focus); outline-offset: var(--focus-outline-offset); }
-.survey-table tbody tr:has(input:checked) { background: #f8fbff; }
-@media (prefers-reduced-motion: reduce) { .survey-table-choice input { transition: none; } }
-.survey-id { color: #52647b; font-size: .8rem; }
-.survey-caption { color: #52647b; font-size: .875rem; margin: .2rem 0 .6rem; }
+.survey-section { min-width: 0; border: 1px solid #dbe3ed; border-radius: .75rem; background: white; }
+.survey-section-header, .survey-question {
+  display: grid;
+  grid-template-columns: minmax(0, 44fr) minmax(0, 56fr);
+  align-items: center;
+  gap: var(--layout-gap);
+  padding: var(--layout-inset);
+}
+.survey-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--color-brand-50);
+  border-radius: .75rem .75rem 0 0;
+  border-bottom: 1px solid #e5ebf2;
+}
+.survey-section-header h2 { font-size: 1rem; font-weight: 600; }
+.survey-scale, .survey-choices { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--layout-gap-small); }
+.survey-scale { color: #52647b; font-size: .75rem; line-height: 1.3; text-align: center; overflow-wrap: anywhere; }
+.survey-scale strong { display: block; color: #1e3a5f; }
+.survey-question { border-bottom: 1px solid #e5ebf2; font-size: .875rem; line-height: 1.4; overflow-wrap: anywhere; }
+.survey-question:has(input:checked) { background: #f8fbff; }
+.survey-statement { font-weight: 600; }
+.survey-caption { color: #52647b; font-size: .8rem; margin-top: .2rem; }
+.survey-choice { position: relative; display: grid; min-height: 44px; cursor: pointer; }
+.survey-choice input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.survey-choice span {
+  display: grid;
+  place-self: center;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid #8fa3ba;
+  border-radius: 50%;
+  background: white;
+  color: var(--color-neutral-500);
+  font-size: .75rem;
+  font-weight: var(--font-weight-semibold);
+}
+.survey-choice:hover span { border-color: var(--color-brand-600); background: var(--color-brand-50); color: var(--color-content-muted); }
+.survey-choice input:checked + span { border-color: var(--color-brand-700); background: var(--color-brand-700); color: white; }
+.survey-choice input:focus-visible + span { outline: var(--focus-outline-width) solid var(--color-focus); outline-offset: var(--focus-outline-offset); }
 .survey-criteria { margin-top: .4rem; font-size: .875rem; font-weight: 400; }
 .survey-criteria summary { cursor: pointer; }
 .survey-criteria ul { list-style: disc; padding-left: 1.5rem; }
-.survey-comment { display: grid; gap: var(--layout-gap); }
-.survey-comment-label { text-align: left; }
-.survey-comment textarea { width: 100%; padding: .6rem; background: white; border: 1px solid #aab8c8; border-radius: .5rem; }
+.survey-comment { display: grid; gap: var(--layout-gap); padding: var(--layout-inset); }
+.survey-comment textarea { width: 100%; min-width: 0; padding: .6rem; background: white; border: 1px solid #aab8c8; border-radius: .5rem; }
+.survey-group-heading { padding: .5rem var(--layout-inset); background: var(--color-neutral-50); color: #52647b; font-size: .75rem; font-weight: 600; }
+.survey-actions { display: flex; flex-wrap: wrap; justify-content: center; margin-top: var(--layout-inset); }
 
-.survey-table tbody .survey-group-row th { padding: .5rem 1rem; background: var(--color-neutral-50); color: #52647b; font-size: .75rem; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; text-align: left; }
-
-.survey-actions { margin-top: var(--layout-inset); justify-content: center; }
-/* A scroll container would trap the sticky column labels; scroll sideways only where the table cannot fit. */
-@media (max-width: 760px) { .survey-table-scroll { overflow-x: auto; } }
+@media (max-width: 760px) {
+  .survey-section-header, .survey-question { grid-template-columns: minmax(0, 1fr); }
+  .survey-section-header { position: static; }
+  .survey-scale { grid-template-columns: repeat(2, minmax(0, 1fr)); text-align: start; }
+  .survey-scale strong { display: inline; }
+  .survey-question { font-size: .9375rem; }
+}

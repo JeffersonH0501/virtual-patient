@@ -86,12 +86,19 @@ describe('account administration', () => {
   });
   it('opens submitted survey details without opening the user editor', async () => {
     mocks.activity.mockResolvedValue([{userId: 1, hasInterviews: false, hasSubmittedSurvey: true}]);
-    mocks.survey.mockResolvedValueOnce({answers: {'SUS-01': 4, 'EVA-01': 2}, comments: {SUS: 'Useful', EVA: 'Clear'}});
+    mocks.survey.mockResolvedValueOnce({answers: {'SUS-01': 4, 'EVA-01': 2}, comments: {SUS: 'Useful', EVA: 'Clear'}, sus_score: 75});
     renderUsers();
     const button = await screen.findByRole('button', {name: 'users.viewSurvey'});
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(button);
     expect(await screen.findByText('SUS-01')).toBeDefined();
+    const dialog = screen.getByRole('dialog', {name: 'users.surveyTitle Student'});
+    expect(within(dialog).getByText('Me gustaría usar esta herramienta frecuentemente')).toBeDefined();
+    expect(within(dialog).getByText('Pude formular mis preguntas oralmente sin dificultades técnicas.')).toBeDefined();
+    expect(within(dialog).getByText('El puntaje y la retroalimentación sobre los criterios generales de la entrevista clínica fueron correctos.')).toBeDefined();
+    expect(dialog.classList.contains('modal-panel--wide')).toBe(true);
+    expect(within(dialog).getAllByRole('heading', {level: 3})).toHaveLength(3);
+    expect(within(dialog).getByText('75')).toBeDefined();
     expect(screen.getByText('4')).toBeDefined();
     expect(screen.getByText('EVA-01')).toBeDefined();
     expect(screen.getByText('2')).toBeDefined();

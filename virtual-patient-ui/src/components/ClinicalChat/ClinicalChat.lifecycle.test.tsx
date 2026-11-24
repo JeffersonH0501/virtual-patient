@@ -174,7 +174,10 @@ vi.mock('./CallToolbar', () => ({
 vi.mock('./ConversationTranscript', () => ({
   ConversationTranscript: (props: ComponentProps<typeof ConversationTranscript>) => {
     flow.transcript = props;
-    return <section aria-label="Interview conversation"><header>{props.headerAction}</header></section>;
+    return <section aria-label="Interview conversation">
+      <header>{props.headerAction}</header>
+      {props.notices}
+    </section>;
   },
 }));
 vi.mock('./ClinicalHypotheses', () => ({
