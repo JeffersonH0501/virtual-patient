@@ -133,6 +133,10 @@ class User(UserBase):
 class UserInDB(User):
     hashed_password: str
 
+class WebSession(BaseModel):
+    expires_in: int
+
+
 class Token(BaseModel):
     access_token: str
     token_type: str

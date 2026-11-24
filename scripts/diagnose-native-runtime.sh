@@ -86,9 +86,7 @@ with tempfile.TemporaryDirectory(prefix="native-diagnostic-") as directory:
 '
 
 check 'OpenSMILE and Silero synthetic audio extraction' api '
-import sys
-sys.path.insert(0, "/app/scripts")
-from verify_deployment import verify_audio_runtime
+from scripts.deployment.verify_deployment import verify_audio_runtime
 result = verify_audio_runtime()
 print("Feature frames:", result["feature_frames"], "VAD frames:", result["vad_frames"])
 '

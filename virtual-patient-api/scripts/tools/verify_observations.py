@@ -13,7 +13,7 @@ Legacy flat JSON (pre-refactor rows carrying top-level ``speech_rate_wpm`` or
 ``integrated_labels`` and is reported as ``legacy`` without failing. This script
 never writes; it only reads and prints.
 
-CLI: ``python -m scripts.verify_observations <interview_id>``.
+CLI: ``python -m scripts.tools.verify_observations <interview_id>``.
 """
 
 from __future__ import annotations

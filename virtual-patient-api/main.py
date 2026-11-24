@@ -41,6 +41,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     lifespan=lifespan,
+    openapi_url=None if settings.environment.lower() in {"production", "prod"} else "/openapi.json",
     title="Virtual Patient API",
     description="""
     A comprehensive medical education platform for conducting interactive patient interviews.

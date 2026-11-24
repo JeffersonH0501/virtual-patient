@@ -7,9 +7,9 @@ interviews. The pipeline re-extracts media (OpenSMILE + MediaPipe,
 smile blendshapes, and CCDb-HG), preprocesses,
 thresholds, and labels both modalities in a single pass, then persists the
 layered per-turn result. To relabel from *already stored* raw/processed features
-*without* re-extracting media, use ``scripts/relabel_multimodal.py`` instead.
+*without* re-extracting media, use ``python -m scripts.tools.relabel_multimodal``.
 
-CLI: ``python -m scripts.backfill_observations <interview_id> [<interview_id> ...]``.
+CLI: ``python -m scripts.tools.backfill_observations <interview_id> [<interview_id> ...]``.
 """
 
 from __future__ import annotations

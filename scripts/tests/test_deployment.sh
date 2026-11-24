@@ -34,6 +34,12 @@ for script in deploy-full.sh deploy-local.sh; do
     }
     if [[ "$script" == deploy-full.sh ]]; then
       grep -F 'http://127.0.0.1:8091/health' "$CALL_LOG" > /dev/null
+      if [[ "$action" == setup ]]; then
+        grep -F -- '--profile tools run --build --rm setup' "$CALL_LOG" > /dev/null
+      fi
+    fi
+    if [[ "$script" == deploy-full.sh || "$action" != up ]]; then
+      grep -F 'python -m scripts.deployment.verify_deployment' "$CALL_LOG" > /dev/null
     fi
   done
 done

@@ -8,57 +8,13 @@ This repository extends the earlier Virtual Patient implementation developed by 
 
 The original authorship and license notices included in the inherited source code are preserved. New work in this repository includes the current deployment structure and the ongoing multimodal extensions, including interview recording, synchronized recap, paraverbal analysis with OpenSMILE/eGeMAPSv02, non-verbal feature extraction with MediaPipe Face Landmarker and CCDb-HG, and related research-oriented processing infrastructure.
 
-## Structure
+## Documentation
 
-The initial two-condition evaluation preserves the inherited text-only control
-and adds a complete six-category condition with multimodal interest, empathy and
-clarity assessment and exact reuse of the other textual results. See [multimodal evaluation](docs/multimodal-evaluation.md)
-for persistence, contracts, focused Docker tests, API examples and manual checks.
-
-```text
-virtual-patient/
-├── virtual-patient-api/    # API, agents, models, and migrations
-├── virtual-patient-ui/     # Web interface and Nginx proxy
-├── deploy-local.sh         # Reproducible development environment
-├── deploy-full.sh          # Full HTTPS deployment
-├── setup-tls.sh            # Certificate installation and validation
-├── docker-compose.local.yml
-└── docker-compose.full.yml
-```
-
-Each application has a single `Dockerfile`. Configuration is defined only through `.env.local` or `.env.full` in this directory. Their corresponding `.example` files are the configuration inventories.
-
-Azure OpenAI uses the standard SDK against the v1 API. The application appends
-`/openai/v1/` to `AZURE_OPENAI_ENDPOINT` for chat, embeddings, and TTS. STT uses
-Azure's versioned deployment endpoint. The configured normal LLM, mini LLM,
-STT, TTS, and embedding values are deployment names from the same Azure
-resource.
-
-Speech input always uses the authenticated server transcription endpoint. The
-browser captures provisional audio segments and sends them to the API, which
-uses Azure OpenAI for student STT; patient TTS also uses Azure OpenAI. Audio
-segments are not persisted as part of the transcription request. Permission,
-device, codec, and provider failures leave written input available.
-
-Virtual-patient personality is split between semantic behavior and vocal delivery. Agent prompts determine what the patient says. A provider-neutral vocal-style policy determines pace, pause frequency, energy, intonation, hesitation, and configured delivery tone. The Azure OpenAI adapter translates that structured profile into `gpt-4o-mini-tts` `instructions` while requiring the supplied transcript to remain unchanged. The policy version and synthesis parameters are recorded in message metadata; durable audio is reused only when its policy version is current.
-
-The interview screen is presented as a call and captures four private, continuous sources on one browser timeline: student microphone audio, student camera canvas, patient TTS audio, and the rendered patient canvas. Turning off the microphone or camera preserves silence or a disabled-camera frame instead of shortening the timeline. Temporary chunks use OPFS when available and fall back to memory; completed files are uploaded to authenticated private storage.
-
-After an interview, the recap view synchronizes the two recorded video panels and mixes the two audio sources locally. Seeking also updates the cumulative transcript. Failed captures retain their full transcript and explicitly report that no recording is available. At finalization, the API derives descriptive OpenSMILE/eGeMAPSv02 observations for student speech and non-verbal observations from the private student video using the shared MediaPipe Face Landmarker, calibrated MediaPipe gaze and CCDb-HG head-gesture path. The turn-details dialog presents only the selected raw variables grouped by family. Gaze aggregates that require calibration remain unavailable until configured. These processing parameters do not validate VAD, visual alignment, nod detection, non-verbal inference, or multimodal evaluation.
+The [technical documentation](docs/README.md) covers architecture, interview media, evaluation, access and the web UI. The API and UI each use their existing Dockerfile. The local and full Compose configurations define the runtime services and volumes.
 
 ## Security and Configuration
 
 Runtime secrets and credentials must not be committed to the repository. Local and deployment configuration should be created from the provided `.env.*.example` files and stored only in ignored `.env.local` or `.env.full` files. Administrative accounts must be provisioned separately; database migrations do not contain default administrator credentials.
-
-## Processing ownership
-
-Processing ownership: `app/multimodal/pipeline.py` coordinates extraction and
-recording lifecycle; `turn_results.py` owns shared reference, label and persisted
-layer assembly used by both processing and explicit maintenance. Extraction
-manifests identify both sources. The UI keeps playback/capture in its interview
-views, turn evidence presentation in `TurnEvidenceDetails`, and review regeneration
-polling in `useReviewRefresh`. Native isolation, scientific rules and historical
-result compatibility remain unchanged.
 
 ## Quick start
 

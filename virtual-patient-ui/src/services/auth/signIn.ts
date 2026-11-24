@@ -1,4 +1,5 @@
 import {API_URL} from '../../utils/request';
+import {getAuthHeaders} from './authHeaders';
 
 export type SignInPayload = {
   email: string;
@@ -12,6 +13,7 @@ export const signIn = async (payload: SignInPayload) => {
     method: 'POST',
     credentials: 'include',
     headers: {
+      ...getAuthHeaders(),
       'Content-Type': 'application/json',
       accept: 'application/json',
       'X-Recaptcha-Token': captcha,
@@ -25,5 +27,4 @@ export const signIn = async (payload: SignInPayload) => {
     throw new Error('auth.signInFailed');
   }
 
-  return response.json();
 };

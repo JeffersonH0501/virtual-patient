@@ -2,7 +2,6 @@ import {FormEvent, useRef, useState} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useTranslation} from 'react-i18next';
 import ReCAPTCHA from 'react-google-recaptcha';
-import Cookies from 'js-cookie';
 import {AuthField} from './AuthField';
 import {SemesterSelect} from './SemesterSelect';
 import {Button} from '../common/Button';
@@ -12,7 +11,6 @@ import {ROUTES} from '../../utils/routes';
 import {signIn} from '../../services/auth/signIn';
 import {createUser, type CreateUserPayload} from '../../services/users/createUser';
 import {getUser} from '../../services/users/getUser';
-import {getAuthCookieOptions} from '../../services/auth/authCookie';
 import {useUser} from '../../hooks/useUser';
 
 export const AuthForm = ({mode, onSwitchMode}: {mode: 'signin' | 'signup'; onSwitchMode: () => void}) => {
@@ -51,12 +49,12 @@ export const AuthForm = ({mode, onSwitchMode}: {mode: 'signin' | 'signup'; onSwi
     setBusy(true);
     setError('');
     try {
-      const result = registering && role
-        ? await createUser({email: email.trim(), name: name.trim(), password, role, captcha,
-          ...(role === 'student' && semester ? {semester_range: semester, university: university.trim()} : {})})
-        : await signIn({email: email.trim(), password, captcha});
-      if (!result.access_token) throw new Error('errors.noAccessToken');
-      Cookies.set('access_token', result.access_token, getAuthCookieOptions(result.expires_in));
+      if (registering && role) {
+        await createUser({email: email.trim(), name: name.trim(), password, role, captcha,
+          ...(role === 'student' && semester ? {semester_range: semester, university: university.trim()} : {})});
+      } else {
+        await signIn({email: email.trim(), password, captcha});
+      }
       await setUser(await getUser());
       navigate(ROUTES.clinicalCases);
     } catch (failure: unknown) {

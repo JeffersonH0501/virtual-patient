@@ -67,7 +67,7 @@ services:
       - path: .env.full
         required: false
     environment: *api-environment
-    command: ["python", "scripts/setup_db.py"]
+    command: ["python", "-m", "scripts.deployment.setup_db"]
     depends_on:
       postgres:
         condition: service_healthy

@@ -1,6 +1,6 @@
-import Cookies from 'js-cookie';
 import {ROUTES} from './routes';
 import {sessionResponse} from './sessionResponses';
+import {setSessionAccountId} from '../services/auth/sessionIdentity';
 
 // Flag to prevent multiple simultaneous redirects during the same execution
 let isRedirecting = false;
@@ -16,7 +16,7 @@ const traceId: string =
  * instead of dead-ending the user. Throws a 401-tagged error.
  */
 export const handleUnauthorized = (): never => {
-  Cookies.remove('access_token');
+  setSessionAccountId(null);
   const currentPath = window.location.pathname;
   const isOnAuthPage = currentPath === ROUTES.welcome || currentPath === ROUTES.welcome + '/';
   if (!isOnAuthPage && !isRedirecting) {

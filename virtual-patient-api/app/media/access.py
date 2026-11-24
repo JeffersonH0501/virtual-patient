@@ -2,12 +2,13 @@
 import logging
 import re
 from typing import Annotated, Optional
-from fastapi import Cookie, Depends, Header, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy import inspect
 from sqlalchemy.orm import Session
 from app.core.auth import get_current_user_from_token
 from app.core.database import get_db
+from app.core.web_session import read_session_token
 from app.core.review_access import can_replay
 from app.models.medical_interview import MedicalInterviewDB
 from app.models.user import UserDB, UserRole
@@ -16,14 +17,16 @@ RANGE_PATTERN = re.compile(r'^bytes=(\d*)-(\d*)$')
 ALLOWED_CONTENT_TYPES = {'audio/webm': '.webm', 'audio/ogg': '.ogg', 'audio/mp4': '.m4a', 'video/webm': '.webm', 'video/mp4': '.mp4'}
 
 def _current_media_user(
+    request: Request,
     authorization: Annotated[Optional[str], Header()] = None,
     access_token: Annotated[Optional[str], Cookie()] = None,
     media_access_token: Annotated[Optional[str], Cookie()] = None,
     db: Session = Depends(get_db),
 ) -> UserDB:
-    token = media_access_token or access_token
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
+    else:
+        token = read_session_token(request, media_access_token, access_token)
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     user = get_current_user_from_token(token, db)

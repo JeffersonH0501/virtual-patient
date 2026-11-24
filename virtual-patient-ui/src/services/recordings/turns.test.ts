@@ -8,7 +8,7 @@ import type {LocalInterviewTurn} from '../../recording/InterviewTurnStore';
 import type {StudentCaptureTiming} from '../../types/recording';
 
 const state = vi.hoisted(() => ({owner: 'one', rows: new Map<string, LocalInterviewTurn>(), original: vi.fn()}));
-vi.mock('../auth/authHeaders', () => ({getAuthHeaders: () => ({Authorization: `Bearer header.${btoa(JSON.stringify({sub: state.owner}))}.signature`})}));
+vi.mock('../auth/sessionIdentity', () => ({getSessionAccountId: () => state.owner}));
 vi.mock('../../recording/InterviewTurnStore', () => ({InterviewTurnStore: class {
   async purgeExpired() {
     return;

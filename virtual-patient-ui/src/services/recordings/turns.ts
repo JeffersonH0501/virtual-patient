@@ -1,4 +1,5 @@
 import {getAuthHeaders} from '../auth/authHeaders';
+import {getSessionAccountId} from '../auth/sessionIdentity';
 import {handleUnauthorized} from '../../utils/apiFetch';
 import {API_URL} from '../../utils/request';
 import {InterviewTurnStore, type LocalInterviewTurn} from '../../recording/InterviewTurnStore';
@@ -13,18 +14,9 @@ const rejectionCode = (body: {detail?: unknown}, status: number): string =>
 /** Largest turn original the server accepts (`TURN_VIDEO_MAX_BYTES`); the capture rotates clips long before this. */
 export const TURN_ORIGINAL_MAX_BYTES = 128 * 1024 * 1024;
 export const turnScope = (interviewId: number): string => {
-  const token = getAuthHeaders().Authorization?.split(' ')[1];
-  if (!token) throw new Error('An authenticated capture account is required');
-  let claims: {sub?: unknown};
-  try {
-    claims = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
-  } catch {
-    // A missing/expired/non-JWT token must surface as an auth error, not crash
-    // the capture pipeline with a raw decode exception.
-    throw new Error('An authenticated capture account is required');
-  }
-  if (typeof claims.sub !== 'string' || !claims.sub) throw new Error('Capture account identity is unavailable');
-  return `${claims.sub}:${interviewId}`;
+  const accountId = getSessionAccountId();
+  if (accountId === null) throw new Error('An authenticated capture account is required');
+  return `${accountId}:${interviewId}`;
 };
 
 const delay = (ms: number, signal?: AbortSignal | null) => new Promise<void>((resolve, reject) => {

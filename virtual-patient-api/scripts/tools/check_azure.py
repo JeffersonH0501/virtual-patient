@@ -9,7 +9,7 @@ from typing import Callable
 from openai import OpenAI
 
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.azure_openai import (  # noqa: E402

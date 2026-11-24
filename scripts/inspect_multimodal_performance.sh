@@ -31,7 +31,7 @@ fi
 echo
 echo "Durable interview flow for interview ${interview_id}"
 "${compose[@]}" exec -T api \
-  python scripts/inspect_interview_flow.py "${interview_id}"
+  python -m scripts.tools.inspect_interview_flow "${interview_id}"
 
 echo
 echo "Available runtime events for interview ${interview_id} since ${since}"

@@ -73,7 +73,7 @@ wait_for_ui() {
 
 verify() {
   wait_for_ui
-  compose exec -T api python scripts/verify_deployment.py
+  compose exec -T api python -m scripts.deployment.verify_deployment
 }
 
 action="${1:-setup}"
@@ -81,7 +81,7 @@ case "$action" in
   setup)
     validate_configuration
     compose up -d --build postgres
-    compose --profile tools run --rm setup
+    compose --profile tools run --build --rm setup
     compose up -d --build api media-processing-worker ui
     verify
     ;;

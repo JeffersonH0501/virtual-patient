@@ -11,7 +11,7 @@ from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import inspect, select, text
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.database import SessionLocal, engine  # noqa: E402
@@ -19,8 +19,8 @@ from app.core.langgraph_schema import ensure_langgraph_schema  # noqa: E402
 from app.core.admin_account import synchronize_admin  # noqa: E402
 from app.models.clinical_case import CaseType, ClinicalCaseDB  # noqa: E402
 from app.models.personality import PersonalityDB  # noqa: E402
-from scripts.seed_clinical_cases import seed_clinical_cases  # noqa: E402
-from scripts.seed_personalities import main as seed_personalities  # noqa: E402
+from scripts.deployment.seed_clinical_cases import seed_clinical_cases  # noqa: E402
+from scripts.deployment.seed_personalities import main as seed_personalities  # noqa: E402
 
 
 def alembic_config() -> Config:

@@ -1,4 +1,5 @@
 import {API_URL} from '../../utils/request';
+import {getAuthHeaders} from '../auth/authHeaders';
 
 export type CreateUserPayload = {
   email: string;
@@ -11,18 +12,13 @@ export type CreateUserPayload = {
   captcha: string;
 };
 
-export type CreateUserResponse = {
-  access_token: string;
-  token_type: string;
-  expires_in?: number;
-};
-
-export const createUser = async (payload: CreateUserPayload): Promise<CreateUserResponse> => {
+export const createUser = async (payload: CreateUserPayload): Promise<void> => {
   const {captcha, ...credentials} = payload;
   const response = await fetch(`${API_URL}/users`, {
     method: 'POST',
     credentials: 'include',
     headers: {
+      ...getAuthHeaders(),
       'Content-Type': 'application/json',
       accept: 'application/json',
       'X-Recaptcha-Token': captcha,
@@ -40,5 +36,4 @@ export const createUser = async (payload: CreateUserPayload): Promise<CreateUser
     throw new Error('auth.signUpFailed');
   }
 
-  return response.json();
 };

@@ -60,11 +60,11 @@ services:
       - path: .env.local
         required: false
     environment: *api-environment
-    command: ["python", "scripts/setup_db.py"]
+    command: ["python", "-m", "scripts.deployment.setup_db"]
     volumes:
       - ./virtual-patient-api:/app
       - ../:/workspace:ro
-      - ../graphify-out:/workspace/graphify-out
+      - ../.agents/graphify/graphify-out:/workspace/.agents/graphify/graphify-out
     depends_on:
       db:
         condition: service_healthy
@@ -134,8 +134,6 @@ services:
     environment:
       # Google public test key (set in .env.local as VITE_RECAPTCHA_SITE_TEST_KEY); real keys are tunnel-only.
       VITE_RECAPTCHA_SITE_KEY: ${VITE_RECAPTCHA_SITE_TEST_KEY:-6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI}
-      VITE_API_HOST: ${VITE_API_HOST:-http://127.0.0.1}
-      VITE_API_PORT: ${VITE_API_PORT:-8000}
     ports:
       - "127.0.0.1:5173:5173"
     volumes:

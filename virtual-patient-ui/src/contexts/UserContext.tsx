@@ -6,6 +6,7 @@ import i18n from '../i18n';
 import {setStoredLanguage, clearStoredLanguage} from '../utils/languageStorage';
 import {ROUTES} from '../utils/routes';
 import Cookies from 'js-cookie';
+import {setSessionAccountId} from '../services/auth/sessionIdentity';
 
 // The API returns language codes directly (en, es) which match i18n codes
 
@@ -33,15 +34,17 @@ export const UserProvider: React.FC<UserProviderProps> = ({children}) => {
     await i18n.changeLanguage(language);
     if (userData) setStoredLanguage(language);
     else clearStoredLanguage();
+    setSessionAccountId(userData?.id ?? null);
     setUserState(userData);
   }, []);
 
   useEffect(() => {
+    Cookies.remove('access_token');
     const loadUser = async () => {
       const path = window.location.pathname;
       const isAuthPage = path === ROUTES.welcome || path === ROUTES.welcome + '/';
       try {
-        const userData = !isAuthPage && Cookies.get('access_token') ? await getUser() : null;
+        const userData = isAuthPage ? null : await getUser();
         await setUser(userData);
       } catch {
         await setUser(null);
@@ -86,6 +89,7 @@ export const UserProvider: React.FC<UserProviderProps> = ({children}) => {
   };
 
   const signOut = () => {
+    setSessionAccountId(null);
     // Clear user data
     setUserState(null);
 

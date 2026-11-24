@@ -2,13 +2,14 @@ from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from app.models.user import User, UserInDB, TokenData, UserDB, UserRole
 from app.core.database import get_db
 from app.core.config import settings
+from app.core.web_session import read_session_token
 
 # Security configuration
 SECRET_KEY = settings.secret_key
@@ -78,6 +79,7 @@ def get_current_user_from_token(token: str, db: Session) -> Optional[User]:
     return user
 
 def get_current_user(
+    request: Request,
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
     db: Session = Depends(get_db)
 ) -> User:
@@ -86,17 +88,8 @@ def get_current_user(
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
-    if credentials is None:
-        raise credentials_exception
-    try:
-        payload = jwt.decode(credentials.credentials, SECRET_KEY, algorithms=[ALGORITHM])
-        subject = payload.get("sub")
-        if payload.get("identity_version") != 2 or payload.get("type") == "refresh" or not isinstance(subject, str) or not subject.isdigit():
-            raise credentials_exception
-        token_data = TokenData(user_id=int(subject))
-    except JWTError:
-        raise credentials_exception
-    user = get_user(db, user_id=token_data.user_id)
+    token = credentials.credentials if credentials is not None else read_session_token(request)
+    user = get_current_user_from_token(token, db) if token else None
     if user is None:
         raise credentials_exception
     return user

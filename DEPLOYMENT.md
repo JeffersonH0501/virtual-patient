@@ -44,8 +44,8 @@ is not uploaded to an external object-storage service.
 
 Patient TTS uses a versioned vocal-style profile. Azure OpenAI maps the profile
 to `gpt-4o-mini-tts` `instructions`. The profile affects
-delivery only and must not add or rewrite transcript words. Stored audio paths
-are not created; message metadata retains the policy version for reproducibility.
+delivery only and must not add or rewrite transcript words. Message metadata
+retains the policy version. Saved TTS is available to the private interview replay.
 
 Interview recording uses a private filesystem provider and a persistent Docker
 volume. Storage constants and operational policy are configured separately:
@@ -68,8 +68,8 @@ Playback is authorized by the API and supports HTTP Range requests.
 Post-interview observations run through the staged multimodal pipeline, which
 uses OpenSMILE for student audio and a shared server-side video path for student
 video: MediaPipe Face Landmarker, calibrated MediaPipe gaze and CCDb-HG
-head-gesture inference, plus the smile blendshape logic. The pipeline is
-scheduled as a background task when a recording is finalized. Its methodology
+head-gesture inference, plus the smile blendshape logic. Finalization stages
+durable processing jobs for the media worker. The labeling methodology
 (threshold bands and label rules) lives in versioned YAML under
 [`virtual-patient-api/config/`](virtual-patient-api/config/README.md). Extractor and derivation constants live beside
 their implementations: OpenSMILE uses eGeMAPSv02 LLDs over mono 16 kHz PCM, and
@@ -82,7 +82,7 @@ needed.
 The gaze alignment tolerance and smile activation threshold live in the
 visual extraction and preprocessing code. The threshold engine reports
 dependent features as unavailable when a methodology value is explicitly `null`.
-See `virtual-patient-api/app/multimodal/README.md` for the pipeline flow.
+See [interview media](docs/interview-media.md) for the capture and analysis flow.
 Calibration uses `POST /calibration/process-stage` after creating an owned,
 unstarted interview draft. Migration `003_calibration_captures` adds private
 reference videos and analysis outcomes, including failed attempts. Accepted signed
@@ -96,14 +96,10 @@ and unreferenced calibration files after five minutes. The browser cannot set
 `calibration_activity_at` or `calibration_discarded`. Cleanup shares interview row locks with upload/start; interview deletion removes both rows
 and files. Worker input copies remain temporary.
 
-During an interview, four continuous sources share one browser clock:
-`student_audio`, `student_video`, `patient_audio`, and `patient_video`. Student
-video is a 1280x720 canvas representation of the camera feed, while patient
-video is a rendered virtual-patient panel rather than a physical camera signal.
-Patient audio is generated TTS, and student audio is captured from the
-microphone independently of server transcription. OPFS is used for
-temporary chunks when supported, with an in-memory fallback. The transcript
-remains usable when capture or upload fails.
+New interviews record student audio and video per turn on one browser clock.
+The private preview combines those originals with the stored patient TTS.
+See [capture and recovery](docs/interview-media.md#capture-and-recovery) for
+ownership, upload recovery and missing evidence.
 
 Common commands:
 
@@ -120,7 +116,7 @@ The Azure connectivity check makes billable requests and is not part of
 
 ```bash
 docker compose --env-file .env.local -f docker-compose.local.yml exec api \
-  python scripts/check_azure.py
+  python -m scripts.tools.check_azure
 ```
 
 The script reports normal chat, mini chat, embeddings, TTS, and STT separately.
@@ -220,16 +216,14 @@ Compose does not replace those infrastructure controls.
 
 ## Database preparation
 
-Both modes call `virtual-patient-api/scripts/setup_db.py`. The process:
-
-- applies `alembic upgrade head` to create the application schema in an empty
-  database or upgrade a database already on the release migration history;
-- adopts the release baseline for a database at `033_teacher_grading` after
-  comparing its application schema with the frozen baseline. Setup adds the
-  durable jobs table and snapshot trigger if the previous bootstrap omitted them;
-- creates or migrates the LangGraph store and checkpoint tables idempotently;
-- preserves all data and seeds only empty reference tables;
-- stops on an unversioned, older, or incompatible schema.
+Both modes run `scripts.deployment.setup_db` in the Docker `setup` service.
+It applies the current Alembic history, prepares the LangGraph store and
+checkpoint tables, synchronizes the administrator, and seeds default clinical
+cases and personalities when their corresponding reference data is empty.
+The seed modules and the post-deployment verifier live in
+[`virtual-patient-api/scripts/deployment/`](virtual-patient-api/scripts/deployment).
+Manual benchmarks, provider checks and data maintenance live in
+[`virtual-patient-api/scripts/tools/`](virtual-patient-api/scripts/tools).
 
 Database setup also provisions exactly one admin from `ADMIN_EMAIL`,
 `ADMIN_NAME`, and `ADMIN_PASSWORD` (the account uses a single display
@@ -249,24 +243,10 @@ to Spanish (`es`). Use `bash deploy-local.sh restart` or
 commands recreate the application containers because a plain Docker restart
 does not reload environment variables.
 
-The PostgreSQL container creates the database named by `POSTGRES_DB`.
-`setup_db.py` prepares its schema and does not manage server-level databases.
-
-
-### Adopt the release baseline on an existing database
-
-Take a backup and stop application traffic before running the normal setup
-command against an existing database. Use setup for the transition from
-`033_teacher_grading` so it can verify the schema before updating the revision.
-Setup accepts the equivalent index and constraint definitions and the known
-server defaults left by earlier incremental migrations. These definitions,
-application rows, and separately managed LangGraph data stay in place.
-
-For an older revision, use the previous deployment that contains the legacy
-migration chain to reach `033_teacher_grading` before updating the application.
-If the schema fails validation, reconcile it on a verified copy of the backup
-before retrying. Restore the backup and previous deployment if a rollback is
-required.
+The PostgreSQL container creates the database named by `POSTGRES_DB`. Setup
+supports an empty schema or a database on a revision from the current Alembic
+history. It stops when existing tables lack an Alembic revision or the recorded
+revision is unknown, including databases on the old migration chain.
 
 
 The feature-family terminology revision updates only current observation labels

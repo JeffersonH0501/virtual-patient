@@ -9,7 +9,7 @@ from unittest.mock import Mock
 import pytest
 
 from app.paraverbal.opensmile_extractor import StudentTurnAudio, analyze_student_turns
-from scripts import verify_deployment
+from scripts.deployment import verify_deployment
 
 
 def test_missing_audio_dependency_is_a_technical_failure(monkeypatch):
@@ -30,7 +30,7 @@ def test_native_audio_extraction_without_legacy_voice_calibration():
     completed = subprocess.run(
         [sys.executable, "-c",
          "import json; import app.multimodal.pipeline; "
-         "from scripts.verify_deployment import verify_audio_runtime; "
+         "from scripts.deployment.verify_deployment import verify_audio_runtime; "
          "print(json.dumps(verify_audio_runtime()))"],
         capture_output=True, text=True, timeout=60,
     )

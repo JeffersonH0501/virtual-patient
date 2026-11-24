@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from sqlalchemy.orm import Session, sessionmaker
 from fastapi import HTTPException
 import pytest
-from scripts import relabel_multimodal as relabel
+from scripts.tools import relabel_multimodal as relabel
 from app.multimodal import turn_results
 from app.multimodal.config_loader import load_methodology_config
 from app.multimodal.schemas import NonverbalProcessedFeatures

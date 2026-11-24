@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Response
 from app.core.media_cookie import set_media_cookie
+from app.core.web_session import is_web_session_request, set_web_session
 from sqlalchemy.orm import Session
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from datetime import timedelta
-from app.models.user import User, UserCreate, AdminUserCreate, AdminUserUpdate, UserUpdate, UserDB, UserRole, Token
+from app.models.user import User, UserCreate, AdminUserCreate, AdminUserUpdate, UserUpdate, UserDB, UserRole, Token, WebSession
 from app.core.auth import get_current_active_user, get_password_hash, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES, require_admin
 from app.core.database import get_db
 from app.core.captcha import require_captcha
@@ -41,8 +42,9 @@ def persist_user(user: UserCreate, db: Session):
     return db_user
 
 
-@router.post("", response_model=Token, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_captcha)])
-def create_user(user: UserCreate, response: Response, db: Session = Depends(get_db)):
+@router.post("", response_model=Token | WebSession, status_code=status.HTTP_201_CREATED, dependencies=[Depends(require_captcha)])
+def create_user(user: UserCreate, request: Request, response: Response, db: Session = Depends(get_db)):
+    web_session = is_web_session_request(request)
     if user.role == UserRole.STUDENT and (not user.semester_range or not user.university):
         raise HTTPException(status_code=422, detail="Students must provide semester and university")
     db_user = persist_user(user, db)
@@ -52,6 +54,10 @@ def create_user(user: UserCreate, response: Response, db: Session = Depends(get_
     access_token = create_access_token(
         data={"sub": str(db_user.id)}, expires_delta=access_token_expires
     )
+    if web_session:
+        expires_in = ACCESS_TOKEN_EXPIRE_MINUTES * 60
+        set_web_session(request, response, access_token, expires_in)
+        return {"expires_in": expires_in}
     set_media_cookie(response, access_token)
 
     return {

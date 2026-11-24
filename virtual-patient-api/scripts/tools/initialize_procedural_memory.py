@@ -10,7 +10,7 @@ from pathlib import Path
 from app.core.memory_store import PostgresStore
 from datetime import datetime
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from app.core.azure_openai import EMBEDDING_DIMENSIONS, create_embeddings

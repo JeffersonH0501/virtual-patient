@@ -159,7 +159,7 @@ wait_for_url() {
 verify() {
   wait_for_url "API" "http://127.0.0.1:8000/health"
   wait_for_url "UI" "http://127.0.0.1:5173/"
-  compose exec -T api python scripts/verify_deployment.py
+  compose exec -T api python -m scripts.deployment.verify_deployment
 }
 
 action="${1:-up}"

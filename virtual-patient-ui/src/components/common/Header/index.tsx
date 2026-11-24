@@ -5,7 +5,6 @@ import {getNavigationSection, NavigationSection, ROUTES} from '../../../utils/ro
 import {Menu} from '../Menu';
 import {HelpModal} from '../HelpModal';
 import logoDisc from '/src/assets/logo_disc.png';
-import Cookies from 'js-cookie';
 import {useTranslation} from 'react-i18next';
 import {useUser} from '../../../hooks';
 import {API_URL} from '../../../utils/request';
@@ -22,6 +21,7 @@ export const Header: FC = () => {
   const {t} = useTranslation();
   const {user, signOut} = useUser();
   const [survey, setSurvey] = useState<Survey | null>(null);
+  const [signOutError, setSignOutError] = useState(false);
   useEffect(() => {
     let active = true;
     setSurvey(null);
@@ -49,15 +49,15 @@ export const Header: FC = () => {
     `ui-navigation-link min-w-0 text-center ${activeSection === section ? 'ui-navigation-link--active' : ''}`;
 
   const handleSignOut = async () => {
-    await fetch(`${API_URL}/auth/logout`, {method: 'POST', credentials: 'include', headers: getAuthHeaders()})
-      .catch(() => undefined);
-    // Clear access token
-    Cookies.remove('access_token');
-
-    // Use UserContext signOut to clear language storage and user data
+    setSignOutError(false);
+    try {
+      const response = await fetch(`${API_URL}/auth/logout`, {method: 'POST', credentials: 'include', headers: getAuthHeaders()});
+      if (!response.ok && response.status !== 401) throw new Error('Sign-out request failed');
+    } catch {
+      setSignOutError(true);
+      return;
+    }
     signOut();
-
-    // Navigate to home
     navigate(ROUTES.welcome);
   };
 
@@ -141,6 +141,7 @@ export const Header: FC = () => {
         isOpen={isHelpModalOpen}
         onClose={() => setIsHelpModalOpen(false)}
       />
+      {signOutError && <p role="alert" className="w-full text-red-700">{t('errors.generic')}</p>}
     </header>
   );
 };

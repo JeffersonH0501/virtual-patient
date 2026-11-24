@@ -1,29 +1,37 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd /workspace
-if [[ "${1:-}" != prepare && "${1:-}" != build ]]; then
-  exec graphify "$@"
-fi
+export GRAPHIFY_OUT=/workspace/.agents/graphify/graphify-out
+case "${1:-}" in
+  query|path|explain|--help|--version) exec graphify "$@" ;;
+  prepare|build) ;;
+  *) printf '%s\n' 'Usage: project_graph.sh prepare | build | query | path | explain' >&2; exit 2 ;;
+esac
 python - "$1" <<'PY'
 import json
 import sys
 from pathlib import Path
 
+from graphify.paths import out_path
+
 root = Path('/workspace')
-out = root / 'graphify-out'
+out = out_path()
 out.mkdir(exist_ok=True)
 
 def write(name, value):
     (out / name).write_text(json.dumps(value, indent=2, ensure_ascii=False), encoding='utf-8')
 
 if sys.argv[1] == 'prepare':
-    from graphify.detect import detect
+    from graphify.detect import detect, ignored_predicate
     from graphify.extract import extract
-    detection = detect(root, cache_root=root)
+    excludes = (out.parent / '.graphifyignore').read_text(encoding='utf-8').splitlines()
+    detection = detect(root, cache_root=root, extra_excludes=excludes)
+    is_ignored = ignored_predicate(root, extra_excludes=excludes)
     # LaTeX and BibTeX are semantic inputs even when a detector version leaves them unclassified.
     documents = set(detection['files'].get('document', []))
     documents.update(str(p) for p in (root / 'DocumentoOverleaf').rglob('*')
-                     if p.suffix in {'.tex', '.bib'} and 'respaldo' not in p.name.lower())
+                     if p.suffix in {'.tex', '.bib'} and 'respaldo' not in p.name.lower()
+                     and not is_ignored(p))
     detection['files']['document'] = sorted(documents)
     # Preserve CSS and container/configuration contracts unsupported by the AST parser.
     extra_documents = sorted(p for p in detection.get('unclassified', [])
@@ -97,7 +105,8 @@ else:
     (out / 'GRAPH_REPORT.md').write_text(report, encoding='utf-8')
     assert to_html(graph, communities, str(out / 'graph.html'), community_labels=labels)
     corpus = detection['files']
-    save_manifest(_stamped_manifest_files(corpus, extraction, root), root=str(root),
+    save_manifest(_stamped_manifest_files(corpus, extraction, root),
+                  manifest_path=str(out / 'manifest.json'), root=root,
                   scan_corpus={p for files in corpus.values() for p in files})
     print(f'Graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges; {len(communities)} communities')
 PY
